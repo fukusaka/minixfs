@@ -95,20 +95,22 @@ check_status "a file is not a directory to archive" 1
 
 # Names over 100 bytes go into the prefix, and over 255 bytes into a pax
 # header, as does a long symbolic link.  The tree to compare with needs
-# paths of some 400 bytes, more than MINIX, with its PATH_MAX of 255,
-# can make.
-pathmax=$(getconf PATH_MAX "$T" 2>/dev/null)
-case $pathmax in
-''|*[!0-9]*)
-	pathmax=4096
-	;;
-esac
-if [ "$pathmax" -lt 512 ]; then
-	skip "tar stores long names" "PATH_MAX is only $pathmax here"
-	finish
-fi
+# paths and a symbolic link of some 400 bytes, and is tried first:
+# MINIX 3 makes the paths but takes links of 253 bytes at most, which
+# neither getconf(1) nor pathconf(2) tells.
 a=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 b=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+p=
+for n in 1 2 3 4 5; do
+	p="$p/$a$n"
+done
+if ! mkdir -p "$T/try$p" 2>/dev/null ||
+    ! : >"$T/try$p/$b" 2>/dev/null ||
+    ! ln -s "${p#/}/$b" "$T/try/l" 2>/dev/null ||
+    [ "$(cd "$T/try" && ls -l l | sed 's/.* -> //')" != "${p#/}/$b" ]; then
+	skip "tar stores long names" "this system cannot make the tree"
+	finish
+fi
 {
 	echo "fs version=3 order=le blocks=2048 inodes=64"
 	p=
