@@ -7,7 +7,7 @@
 #
 #  - fsck.minix must accept the images that mkimage writes, which shows
 #    that the test images themselves are sound.  It reads little-endian
-#    file systems with one-block zones only.
+#    file systems with 1024-byte blocks and one-block zones only.
 #  - Images made by mkfs.minix must be readable.
 #
 # FSCK_MINIX and MKFS_MINIX name the tools (default: from PATH).
@@ -24,7 +24,8 @@ have() {
 # fsck_accepts: fsck.minix accepts the test tree in every format it
 # reads, and notices damage.
 fsck_accepts() {
-	for fs in "namelen=14" "namelen=30"; do
+	for fs in "version=1 namelen=14" "version=1 namelen=30" \
+	    "version=2 namelen=14" "version=2 namelen=30" "version=3"; do
 		sed -e "s/@FS@/$fs/" -e "s/@ORDER@/le/" -e "s/@BLOCKS@/4096/" \
 		    -e "s/@LOGZONE@/0/" tests/tree.spec >"$T/spec"
 		mkimage "$T/spec" "$T/img"
@@ -40,10 +41,32 @@ fsck_accepts() {
 	    test "$status" -ne 0
 }
 
+# fsck_triple: a file that reaches the triple indirect zone (see
+# t_big.sh).
+fsck_triple() {
+	for fs in "version=2 namelen=14" "version=3"; do
+		cat >"$T/spec" <<EOF
+fs $fs order=le blocks=2048 inodes=16
+file /tind 0644 0 0 0 67400000 7 0:67380000
+EOF
+		mkimage "$T/spec" "$T/img"
+		run "$FSCK_MINIX" -f "$T/img"
+		check_status "fsck.minix accepts a triple indirect file ($fs)" 0
+
+		# Inode 2 is the file.
+		cp "$T/img" "$T/bad"
+		set_inode "$T/bad" 2 zone9 0
+		run "$FSCK_MINIX" -f "$T/bad"
+		check_true "fsck.minix notices a lost triple indirect ($fs)" \
+		    test "$status" -ne 0
+	done
+}
+
 # mkfs_readable: images made by mkfs.minix can be read.  Each item is
 # the options, then the version and name length they give.
 mkfs_readable() {
-	for item in "-1 -n 14:1:14" "-1 -n 30:1:30"; do
+	for item in "-1 -n 14:1:14" "-1 -n 30:1:30" "-2 -n 14:2:14" \
+	    "-2 -n 30:2:30" "-3:3:60"; do
 		opts=${item%%:*}
 		ver=${item#*:}
 		n=${ver#*:}
@@ -64,6 +87,7 @@ mkfs_readable() {
 
 if have "$FSCK_MINIX"; then
 	fsck_accepts
+	fsck_triple
 else
 	skip "fsck.minix accepts the test images" "no $FSCK_MINIX"
 fi

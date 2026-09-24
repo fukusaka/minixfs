@@ -96,9 +96,6 @@ open_image(struct cmd *c, const char *image)
 		return;
 	if (r == -EINVAL)
 		errx(1, "%s: not a MINIX file system", image);
-	if (r == -ENOTSUP)
-		errx(1, "%s: only MINIX V1 file systems can be read so far",
-		    image);
 	errx(1, "%s: %s", image, strerror(-r));
 }
 

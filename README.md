@@ -12,17 +12,19 @@ file systems, on Linux, FreeBSD, NetBSD and MINIX 3 itself:
 
 ## Status
 
-Read-only access to V1 file systems in either byte order, through the
-`minixfs` command.  V2 and V3 file systems are recognised but not read
-yet.
+Read-only access to V1, V2 and V3 file systems in either byte order,
+through the `minixfs` command.
 
 | Magic  | Version | Names | Origin |
 |--------|---------|-------|--------|
 | 0x137f | V1      | 14    | MINIX |
 | 0x138f | V1      | 30    | Linux extension |
-| 0x2468 | V2      | 14    | MINIX (recognised only) |
-| 0x2478 | V2      | 30    | Linux extension (recognised only) |
-| 0x4d5a | V3      | 60    | MINIX 3 (recognised only) |
+| 0x2468 | V2      | 14    | MINIX |
+| 0x2478 | V2      | 30    | Linux extension |
+| 0x4d5a | V3      | 60    | MINIX 3; block size from the super block |
+
+V2 and V3 inodes have a triple indirect zone, which Linux uses and MINIX
+does not; it is read as well.
 
 The byte order is taken from the magic number.  Images made on a PC are
 little-endian; those made on 68000 machines (Atari ST, Amiga, Macintosh)
@@ -87,15 +89,17 @@ Test images are made by `tests/mkimage`, a separate writer that shares no
 code with `src/`, from small text specifications (see the comment at the
 top of `tests/mkimage.c`).  The scripts:
 
-- `t_read.sh` - one tree in 8 variants: 14- and 30-character names,
-  both byte orders, and one- and two-block zones.  File sizes around the
+- `t_read.sh` - one tree in 24 variants: V1 and V2 with 14- and
+  30-character names and V3 with 1024- and 4096-byte blocks, each in both
+  byte orders and with one- and two-block zones.  File sizes around the
   block, direct, indirect and double indirect limits; holes; hard and
   symbolic links; devices; `ls`, `cat` and `extract`.
-- `t_big.sh` - a tree deeper than `PATH_MAX`.
-- `t_errors.sh` - files that are not file systems, V2 and V3 magic
-  numbers, super blocks that do not add up, zone numbers outside the data
-  area, impossible sizes, bad inode numbers, directory loops, names that
-  would escape `DEST`, and truncated images.
+- `t_big.sh` - sparse files that reach the triple indirect zone, and a
+  tree deeper than `PATH_MAX`.
+- `t_errors.sh` - files that are not file systems, super blocks that do
+  not add up, zone numbers outside the data area, impossible sizes, bad
+  inode numbers, directory loops, names that would escape `DEST`, and
+  truncated images, for every version.
 - `t_fuzz.sh` - images with random bytes damaged: every command must end
   with status 0 or 1, without crashing and without writing outside
   `DEST`.
@@ -117,8 +121,8 @@ top of `tests/mkimage.c`).  The scripts:
 ## References
 
 The on-disk format follows the definitions in the MINIX sources
-(`fs/super.h`, `fs/inode.h`, `fs/type.h` and `fs/const.h` of MINIX
-2.0.4).  No code is taken from MINIX, Linux or
+(`fs/super.h`, `fs/inode.h`, `fs/type.h` and `fs/const.h` of MINIX 2.0.4,
+and `minix/fs/mfs` of MINIX 3).  No code is taken from MINIX, Linux or
 other MINIX file system implementations.
 
 ## Contributing

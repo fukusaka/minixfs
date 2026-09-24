@@ -2,7 +2,7 @@
  * SPDX-License-Identifier: BSD-2-Clause
  * Copyright (c) 2026 Shoichi Fukusaka
  *
- * mkimage - build MINIX V1 file system images for the test suite.
+ * mkimage - build MINIX file system images for the test suite.
  *
  *	mkimage [-e EXPECTDIR] SPEC IMAGE
  *
@@ -11,7 +11,8 @@
  * standard input) holds one directive per line; fields are separated by
  * blanks and '#' starts a comment:
  *
- *	fs   order=le|be [namelen=14|30] blocks=N inodes=N [logzone=N]
+ *	fs   [version=1|2|3] order=le|be [namelen=14|30] [block=N]
+ *	     blocks=N inodes=N [logzone=N]
  *	dir  PATH MODE UID GID MTIME
  *	file PATH MODE UID GID MTIME SIZE SEED [HOLESTART:HOLELEN ...]
  *	link PATH TARGET UID GID MTIME
@@ -20,12 +21,16 @@
  *	hard PATH EXISTING
  *	raw  DIR NAME INO
  *
- * The fs line comes first.  Blocks are 1024 bytes.
+ * The fs line comes first.  namelen applies to V1 and V2; V3 names are
+ * always 60 characters.  block is the block size of V3 (default 1024); V1
+ * and V2 always use 1024.  blocks counts blocks of that size.
  *
  * MODE is octal permission bits.  File contents are a pattern made from
  * SEED; bytes inside a hole are zero, and zones that lie wholly inside a
  * hole are not allocated.  "raw" adds a directory entry with any name and
- * inode number, to make damaged images.
+ * inode number, to make damaged images.  In V2 and V3 inodes, atime is
+ * MTIME + 1 and ctime MTIME + 2, so that a reader that mixes them up is
+ * caught.
  *
  * With -e, the regular files, directories and symbolic links are also
  * written below EXPECTDIR, as "minixfs extract" should reproduce them.
@@ -43,25 +48,32 @@
 
 #define SUPER_OFFSET	1024		/* byte offset of the super block */
 #define START_BLOCK	2		/* first block of the inode map */
-#define BLOCK_SIZE	1024
-#define NR_DZONES	7		/* direct zones in an inode */
-#define NR_LEVELS	2		/* levels of indirection */
-#define NR_INDIRECTS	(BLOCK_SIZE / 2)	/* zones in an indirect block */
-#define INODE_SIZE	32
-#define DIRENT_INO	2		/* bytes of a directory inode number */
+#define NR_DZONES	7		/* direct zones in any inode */
 #define MAX_HOLES	8		/* holes in one file */
-#define MAX_NAME	30		/* longest name */
+#define MAX_NAME	60		/* longest name of any version */
 
-/* V1 super block: byte offsets. */
-#define SB_NINODES	0
-#define SB_NZONES	2
-#define SB_IMAP	4
-#define SB_ZMAP	6
-#define SB_FIRSTDATA	8
-#define SB_LOGZONE	10
-#define SB_MAXSIZE	12
-#define SB_MAGIC	16
-#define SB_STATE	18		/* Linux: 1 means cleanly unmounted */
+/* V1 and V2 super block: byte offsets. */
+#define SB12_NINODES	0
+#define SB12_NZONES	2
+#define SB12_IMAP	4
+#define SB12_ZMAP	6
+#define SB12_FIRSTDATA	8
+#define SB12_LOGZONE	10
+#define SB12_MAXSIZE	12
+#define SB12_MAGIC	16
+#define SB12_STATE	18		/* Linux: 1 means cleanly unmounted */
+#define SB12_ZONES	20
+
+/* V3 super block. */
+#define SB3_NINODES	0
+#define SB3_IMAP	6
+#define SB3_ZMAP	8
+#define SB3_FIRSTDATA	10
+#define SB3_LOGZONE	12
+#define SB3_MAXSIZE	16
+#define SB3_ZONES	20
+#define SB3_MAGIC	24
+#define SB3_BLOCKSIZE	28
 
 /* V1 inode. */
 #define I1_MODE		0
@@ -72,6 +84,18 @@
 #define I1_NLINKS	13
 #define I1_ZONE		14
 #define I1_NZONES	9
+
+/* V2 and V3 inode. */
+#define I2_MODE		0
+#define I2_NLINKS	2
+#define I2_UID		4
+#define I2_GID		6
+#define I2_FSIZE	8
+#define I2_ATIME	12
+#define I2_MTIME	16
+#define I2_CTIME	20
+#define I2_ZONE		24
+#define I2_NZONES	10
 
 enum type { T_DIR, T_FILE, T_LINK, T_CHR, T_BLK, T_FIFO, T_HARD, T_RAW };
 
@@ -84,7 +108,7 @@ struct node {
 	char		*target;	/* T_LINK */
 	enum type	type;
 	uint32_t	hole[MAX_HOLES][2];
-	uint32_t	zone[I1_NZONES];
+	uint32_t	zone[I2_NZONES];
 	uint32_t	ino;
 	uint32_t	mtime;
 	uint32_t	rdev;
@@ -103,16 +127,23 @@ struct image {
 	struct node	root;
 	unsigned char	*data;
 	int		big_endian;
+	int		version;
+	uint32_t	bsize;		/* block size */
+	uint32_t	dino;		/* bytes of a directory inode number */
 	uint32_t	firstdatazone;
 	uint32_t	imap_blocks;
 	uint32_t	inode_start;
+	uint32_t	isize;		/* bytes of an inode */
 	uint32_t	logzone;
 	uint32_t	namelen;
 	uint32_t	nblocks;
 	uint32_t	next_ino;
 	uint32_t	next_zone;
+	uint32_t	nind;		/* zone numbers in an indirect block */
 	uint32_t	ninodes;
+	uint32_t	nlevels;	/* levels of indirection */
 	uint32_t	nzones;
+	uint32_t	zbytes;		/* bytes of a zone number */
 	uint32_t	zmap_blocks;
 };
 
@@ -163,9 +194,30 @@ get16(const struct image *img, const unsigned char *p)
 	return (uint32_t)(p[1] << 8 | p[0]);
 }
 
+/* A zone number, 16 or 32 bits wide. */
+static void
+put_zone(const struct image *img, unsigned char *p, uint32_t v)
+{
+	if (img->zbytes == 2)
+		put16(img, p, v);
+	else
+		put32(img, p, v);
+}
+
+static uint32_t
+get_zone(const struct image *img, const unsigned char *p)
+{
+	if (img->zbytes == 2)
+		return get16(img, p);
+	if (img->big_endian)
+		return get16(img, p) << 16 | get16(img, p + 2);
+	return get16(img, p + 2) << 16 | get16(img, p);
+}
+
 /*
- * MINIX keeps its bit maps as arrays of 16-bit words, so on a big-endian
- * machine the two bytes of each word are swapped relative to the PC.
+ * MINIX keeps its bit maps as arrays of words: 16 bits in MINIX 1 and 2,
+ * 32 bits in MINIX 3.  On a big-endian machine the bytes of each word
+ * are therefore reversed relative to the PC.
  */
 static void
 set_bit(const struct image *img, unsigned char *map, uint32_t bit)
@@ -174,7 +226,7 @@ set_bit(const struct image *img, unsigned char *map, uint32_t bit)
 
 	byte = bit / 8;
 	if (img->big_endian)
-		byte ^= 1;
+		byte ^= img->version == 3 ? 3 : 1;
 	map[byte] |= (unsigned char)(1 << (bit % 8));
 }
 
@@ -227,7 +279,7 @@ alloc_zone(struct image *img)
 static unsigned char *
 zone_ptr(const struct image *img, uint32_t zone)
 {
-	return img->data + ((size_t)zone << img->logzone) * BLOCK_SIZE;
+	return img->data + ((size_t)zone << img->logzone) * img->bsize;
 }
 
 /*
@@ -245,14 +297,14 @@ chain(struct image *img, uint32_t ind, uint32_t level, uint64_t idx,
 
 	per = 1;
 	for (i = 1; i < level; i++)
-		per *= NR_INDIRECTS;
+		per *= img->nind;
 	if (ind == 0)
 		ind = alloc_zone(img);
-	p = zone_ptr(img, ind) + idx / per * 2;
+	p = zone_ptr(img, ind) + idx / per * img->zbytes;
 	if (level == 1)
-		put16(img, p, z);
+		put_zone(img, p, z);
 	else
-		put16(img, p, chain(img, get16(img, p), level - 1,
+		put_zone(img, p, chain(img, get_zone(img, p), level - 1,
 		    idx % per, z));
 	return ind;
 }
@@ -270,13 +322,13 @@ place_zone(struct image *img, struct node *n, uint64_t zi, uint32_t z)
 	}
 	idx = zi - NR_DZONES;
 	per = 1;
-	for (level = 1; level <= NR_LEVELS; level++) {
-		per *= NR_INDIRECTS;
+	for (level = 1; level <= img->nlevels; level++) {
+		per *= img->nind;
 		if (idx < per)
 			break;
 		idx -= per;
 	}
-	if (level > NR_LEVELS)
+	if (level > img->nlevels)
 		errx(1, "%s: file too large", n->name);
 	n->zone[NR_DZONES + level - 1] =
 	    chain(img, n->zone[NR_DZONES + level - 1], level, idx, z);
@@ -290,7 +342,7 @@ write_data(struct image *img, struct node *n, const unsigned char *buf,
 	uint64_t hi, lo, zb, zi;
 	uint32_t z;
 
-	zb = (uint64_t)BLOCK_SIZE << img->logzone;
+	zb = (uint64_t)img->bsize << img->logzone;
 	for (zi = 0; zi * zb < size; zi++) {
 		lo = zi * zb;
 		hi = lo + zb < size ? lo + zb : size;
@@ -451,8 +503,12 @@ fs_option(struct parser *ps, char *s)
 		img->big_endian = 0;
 	else if (strcmp(s, "order=be") == 0)
 		img->big_endian = 1;
+	else if (strncmp(s, "version=", 8) == 0)
+		img->version = (int)number(ps, s + 8, 10);
 	else if (strncmp(s, "namelen=", 8) == 0)
 		img->namelen = number(ps, s + 8, 10);
+	else if (strncmp(s, "block=", 6) == 0)
+		img->bsize = number(ps, s + 6, 10);
 	else if (strncmp(s, "blocks=", 7) == 0)
 		img->nblocks = number(ps, s + 7, 10);
 	else if (strncmp(s, "inodes=", 7) == 0)
@@ -463,13 +519,34 @@ fs_option(struct parser *ps, char *s)
 		syntax(ps, "unknown fs option", s);
 }
 
-/* Check the options of the fs line. */
+/* Check the options of the fs line and fill in the version's layout. */
 static void
-check_options(const struct parser *ps, const struct image *img)
+check_version(const struct parser *ps, struct image *img)
 {
-	if (img->namelen != 14 && img->namelen != 30)
-		syntax(ps, "namelen must be 14 or 30", "");
-	if (img->ninodes < 1 || img->ninodes > 65535 || img->logzone > 4)
+	if (img->version < 1 || img->version > 3)
+		syntax(ps, "version must be 1, 2 or 3", "");
+	if (img->version == 3) {
+		if (img->namelen != 0 && img->namelen != 60)
+			syntax(ps, "V3 names are 60 characters", "");
+		img->namelen = 60;
+		if (img->bsize < 1024 || img->bsize > 32768 ||
+		    img->bsize % 1024 != 0)
+			syntax(ps, "bad block size", "");
+	} else {
+		if (img->namelen == 0)
+			img->namelen = 14;
+		if (img->namelen != 14 && img->namelen != 30)
+			syntax(ps, "namelen must be 14 or 30", "");
+		if (img->bsize != 1024)
+			syntax(ps, "only V3 has a block size", "");
+	}
+	img->zbytes = img->version == 1 ? 2 : 4;
+	img->isize = img->version == 1 ? 32 : 64;
+	img->dino = img->version == 3 ? 4 : 2;
+	img->nind = img->bsize / img->zbytes;
+	img->nlevels = img->version == 1 ? 2 : 3;
+	if (img->ninodes < 1 || (img->version < 3 && img->ninodes > 65535) ||
+	    img->logzone > 4)
 		syntax(ps, "bad inodes or logzone", "");
 }
 
@@ -481,21 +558,21 @@ lay_out_blocks(const struct parser *ps, struct image *img)
 	uint32_t bits;
 
 	img->nzones = img->nblocks >> img->logzone;
-	if (img->nzones < 8 || img->nzones > 65535)
+	if (img->nzones < 8 || (img->version == 1 && img->nzones > 65535))
 		syntax(ps, "bad number of blocks", "");
 	img->nblocks = img->nzones << img->logzone;
-	bits = BLOCK_SIZE * 8;
+	bits = img->bsize * 8;
 	img->imap_blocks = (img->ninodes + 1 + bits - 1) / bits;
 	img->zmap_blocks = (img->nzones + 1 + bits - 1) / bits;
 	img->inode_start = START_BLOCK + img->imap_blocks + img->zmap_blocks;
-	itable = ((uint64_t)img->ninodes * INODE_SIZE + BLOCK_SIZE - 1) /
-	    BLOCK_SIZE;
+	itable = ((uint64_t)img->ninodes * img->isize + img->bsize - 1) /
+	    img->bsize;
 	img->firstdatazone = (uint32_t)((img->inode_start + itable +
 	    ((uint64_t)1 << img->logzone) - 1) >> img->logzone);
 	if (img->firstdatazone >= img->nzones)
 		syntax(ps, "no room for data", "");
 	img->next_zone = img->firstdatazone;
-	if ((img->data = calloc(img->nblocks, BLOCK_SIZE)) == NULL)
+	if ((img->data = calloc(img->nblocks, img->bsize)) == NULL)
 		err(1, NULL);
 }
 
@@ -506,10 +583,11 @@ parse_fs(struct parser *ps, char *p)
 	char *s;
 
 	img = ps->img;
-	img->namelen = 14;
+	img->version = 1;
+	img->bsize = 1024;
 	while ((s = field(&p)) != NULL)
 		fs_option(ps, s);
-	check_options(ps, img);
+	check_version(ps, img);
 	lay_out_blocks(ps, img);
 	img->root.type = T_DIR;
 	img->root.mode = 040755;
@@ -667,9 +745,12 @@ put_entry(const struct image *img, unsigned char *p, uint32_t ino,
 {
 	size_t len;
 
-	put16(img, p, ino);
+	if (img->dino == 2)
+		put16(img, p, ino);
+	else
+		put32(img, p, ino);
 	len = strlen(name);
-	(void)memcpy(p + DIRENT_INO, name, len < img->namelen ? len :
+	(void)memcpy(p + img->dino, name, len < img->namelen ? len :
 	    img->namelen);
 }
 
@@ -680,7 +761,7 @@ write_dir(struct image *img, struct node *dir)
 	struct node *c;
 	uint32_t esize, n, off;
 
-	esize = DIRENT_INO + img->namelen;
+	esize = img->dino + img->namelen;
 	n = 2;
 	for (c = dir->child; c != NULL; c = c->next)
 		n++;
@@ -702,16 +783,29 @@ write_inode(const struct image *img, const struct node *n)
 	unsigned char *p;
 	int i;
 
-	p = img->data + (size_t)img->inode_start * BLOCK_SIZE +
-	    (size_t)(n->ino - 1) * INODE_SIZE;
-	put16(img, p + I1_MODE, n->mode);
-	put16(img, p + I1_UID, n->uid);
-	put32(img, p + I1_FSIZE, n->size);
-	put32(img, p + I1_MTIME, n->mtime);
-	p[I1_GID] = (unsigned char)n->gid;
-	p[I1_NLINKS] = (unsigned char)n->nlinks;
-	for (i = 0; i < I1_NZONES; i++)
-		put16(img, p + I1_ZONE + 2 * i, n->zone[i]);
+	p = img->data + (size_t)img->inode_start * img->bsize +
+	    (size_t)(n->ino - 1) * img->isize;
+	if (img->version == 1) {
+		put16(img, p + I1_MODE, n->mode);
+		put16(img, p + I1_UID, n->uid);
+		put32(img, p + I1_FSIZE, n->size);
+		put32(img, p + I1_MTIME, n->mtime);
+		p[I1_GID] = (unsigned char)n->gid;
+		p[I1_NLINKS] = (unsigned char)n->nlinks;
+		for (i = 0; i < I1_NZONES; i++)
+			put16(img, p + I1_ZONE + 2 * i, n->zone[i]);
+	} else {
+		put16(img, p + I2_MODE, n->mode);
+		put16(img, p + I2_NLINKS, n->nlinks);
+		put16(img, p + I2_UID, n->uid);
+		put16(img, p + I2_GID, n->gid);
+		put32(img, p + I2_FSIZE, n->size);
+		put32(img, p + I2_ATIME, n->mtime + 1);
+		put32(img, p + I2_MTIME, n->mtime);
+		put32(img, p + I2_CTIME, n->mtime + 2);
+		for (i = 0; i < I2_NZONES; i++)
+			put32(img, p + I2_ZONE + 4 * i, n->zone[i]);
+	}
 }
 
 static void
@@ -752,12 +846,29 @@ lay_out(struct image *img, struct node *dir)
 static uint32_t
 max_size(const struct image *img)
 {
-	uint64_t bytes, zones;
+	uint64_t bytes, per, zones;
+	uint32_t i;
 
-	zones = NR_DZONES + NR_INDIRECTS +
-	    (uint64_t)NR_INDIRECTS * NR_INDIRECTS;
-	bytes = zones * ((uint64_t)BLOCK_SIZE << img->logzone);
+	if (img->version != 1)
+		return 0x7fffffff;
+	zones = NR_DZONES;
+	per = 1;
+	for (i = 0; i < img->nlevels; i++) {
+		per *= img->nind;
+		zones += per;
+	}
+	bytes = zones * ((uint64_t)img->bsize << img->logzone);
 	return bytes < 0x7fffffff ? (uint32_t)bytes : 0x7fffffff;
+}
+
+static uint32_t
+magic(const struct image *img)
+{
+	if (img->version == 3)
+		return 0x4d5a;
+	if (img->version == 2)
+		return img->namelen == 14 ? 0x2468 : 0x2478;
+	return img->namelen == 14 ? 0x137f : 0x138f;
 }
 
 static void
@@ -766,15 +877,31 @@ write_super(const struct image *img)
 	unsigned char *sb;
 
 	sb = img->data + SUPER_OFFSET;
-	put16(img, sb + SB_NINODES, img->ninodes);
-	put16(img, sb + SB_NZONES, img->nzones);
-	put16(img, sb + SB_IMAP, img->imap_blocks);
-	put16(img, sb + SB_ZMAP, img->zmap_blocks);
-	put16(img, sb + SB_FIRSTDATA, img->firstdatazone);
-	put16(img, sb + SB_LOGZONE, img->logzone);
-	put32(img, sb + SB_MAXSIZE, max_size(img));
-	put16(img, sb + SB_MAGIC, img->namelen == 14 ? 0x137f : 0x138f);
-	put16(img, sb + SB_STATE, 1);
+	if (img->version == 3) {
+		put32(img, sb + SB3_NINODES, img->ninodes);
+		put16(img, sb + SB3_IMAP, img->imap_blocks);
+		put16(img, sb + SB3_ZMAP, img->zmap_blocks);
+		put16(img, sb + SB3_FIRSTDATA, img->firstdatazone <= 0xffff ?
+		    img->firstdatazone : 0);
+		put16(img, sb + SB3_LOGZONE, img->logzone);
+		put32(img, sb + SB3_MAXSIZE, max_size(img));
+		put32(img, sb + SB3_ZONES, img->nzones);
+		put16(img, sb + SB3_MAGIC, magic(img));
+		put16(img, sb + SB3_BLOCKSIZE, img->bsize);
+	} else {
+		put16(img, sb + SB12_NINODES, img->ninodes);
+		put16(img, sb + SB12_NZONES, img->version == 1 ?
+		    img->nzones : 0);
+		put16(img, sb + SB12_IMAP, img->imap_blocks);
+		put16(img, sb + SB12_ZMAP, img->zmap_blocks);
+		put16(img, sb + SB12_FIRSTDATA, img->firstdatazone);
+		put16(img, sb + SB12_LOGZONE, img->logzone);
+		put32(img, sb + SB12_MAXSIZE, max_size(img));
+		put16(img, sb + SB12_MAGIC, magic(img));
+		put16(img, sb + SB12_STATE, 1);
+		if (img->version == 2)
+			put32(img, sb + SB12_ZONES, img->nzones);
+	}
 }
 
 /* Bit 0 of each map is never used; bits past the end are set. */
@@ -784,12 +911,12 @@ write_maps(const struct image *img)
 	unsigned char *map;
 	uint32_t bit, bits;
 
-	bits = BLOCK_SIZE * 8;
-	map = img->data + (size_t)START_BLOCK * BLOCK_SIZE;
+	bits = img->bsize * 8;
+	map = img->data + (size_t)START_BLOCK * img->bsize;
 	for (bit = 0; bit < img->imap_blocks * bits; bit++)
 		if (bit <= img->next_ino || bit > img->ninodes)
 			set_bit(img, map, bit);
-	map += (size_t)img->imap_blocks * BLOCK_SIZE;
+	map += (size_t)img->imap_blocks * img->bsize;
 	for (bit = 0; bit < img->zmap_blocks * bits; bit++)
 		if (bit <= img->next_zone - img->firstdatazone ||
 		    bit > img->nzones - img->firstdatazone)
@@ -901,7 +1028,7 @@ main(int argc, char **argv)
 
 	if ((out = fopen(argv[optind + 1], "wb")) == NULL)
 		err(1, "%s", argv[optind + 1]);
-	if (fwrite(img.data, BLOCK_SIZE, img.nblocks, out) != img.nblocks ||
+	if (fwrite(img.data, img.bsize, img.nblocks, out) != img.nblocks ||
 	    fclose(out) != 0)
 		err(1, "%s", argv[optind + 1]);
 	if (expectdir != NULL)

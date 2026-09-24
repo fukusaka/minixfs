@@ -5,11 +5,10 @@
  * mfs.h - read access to MINIX file system images.
  *
  * The library opens an image file, recognises the file system version and
- * byte order from the super block, and gives access to the inodes, file
- * data and directories of V1 file systems.  It never prints and has no
- * global state.  Functions return 0 (or a byte count) on success and a
- * negative errno value on failure, so that the result can be handed
- * straight back to FUSE.
+ * byte order from the super block, and gives access to inodes, file data
+ * and directories.  It never prints and has no global state.  Functions
+ * return 0 (or a byte count) on success and a negative errno value on
+ * failure, so that the result can be handed straight back to FUSE.
  */
 
 #ifndef MFS_H
@@ -21,8 +20,8 @@
 #include <stdint.h>
 
 #define MFS_ROOT_INO	1		/* inode number of the root directory */
-#define MFS_MAX_NAME	30		/* longest name of V1 */
-#define MFS_NR_ZONES	9		/* zone slots in a V1 inode */
+#define MFS_MAX_NAME	60		/* longest name of any version */
+#define MFS_NR_ZONES	10		/* zone slots in the largest inode */
 
 /* Super block magic numbers, in the byte order of the image. */
 #define MFS_MAGIC_V1	0x137f		/* V1, 14-character names */
@@ -64,14 +63,17 @@ struct mfs {
 	uint32_t	firstdatazone;
 	uint32_t	log_zone_size;
 	uint32_t	max_size;
-	uint32_t	block_size;	/* always 1024 */
+	uint32_t	block_size;	/* V1 and V2: always 1024 */
 	uint16_t	magic;
 
 	/* Derived from the super block. */
 	uint32_t	namelen;	/* bytes of a name in an entry */
 	uint32_t	dirent_size;	/* bytes of a directory entry */
+	uint32_t	dirent_ino;	/* bytes of the inode number in it */
 	uint32_t	inode_size;	/* bytes of an on-disk inode */
+	uint32_t	zone_num_size;	/* bytes of a zone number */
 	uint32_t	ndzones;	/* direct zones in an inode */
+	uint32_t	nlevels;	/* levels of indirection: 2 or 3 */
 	uint32_t	nindirs;	/* zone numbers in an indirect block */
 	uint32_t	inode_start;	/* first block of the inode table */
 	uint32_t	nblocks;	/* blocks the file system claims */
@@ -105,9 +107,8 @@ typedef int (*mfs_dirent_fn)(const struct mfs_dirent *, void *);
 
 /*
  * Open the image at path and check its super block.  Returns 0, -EINVAL
- * if the image is not a consistent MINIX file system, -ENOTSUP for a V2
- * or V3 file system, which cannot be read yet, or another negative errno
- * value.  On success the caller releases fs with mfs_close().
+ * if the image is not a consistent MINIX file system, or another negative
+ * errno value.  On success the caller releases fs with mfs_close().
  */
 int	mfs_open(struct mfs *, const char *);
 

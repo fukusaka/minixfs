@@ -6,7 +6,7 @@
 # ends in an orderly way: exit status 0 or 1, no crash, no sanitizer
 # report, and nothing written outside the extraction directory.
 #
-# FUZZ_COUNT sets the number of damaged images per name length and order
+# FUZZ_COUNT sets the number of damaged images per format and byte order
 # (default 100); FUZZ_SEED changes the sequence.
 
 . ./tests/lib.sh
@@ -72,7 +72,8 @@ try_extract() {
 	fi
 }
 
-for fs in "namelen=14" "namelen=30"; do
+for fs in "version=1" "version=2 namelen=30" "version=3" \
+    "version=3 block=4096"; do
 for order in le be; do
 	v="$fs/$order"
 	cat >"$T/spec" <<EOF

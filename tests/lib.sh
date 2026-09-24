@@ -298,20 +298,29 @@ poke_number() {
 	poke "$1" "$2" $_poke_number_bytes
 }
 
-# The layout of V1: "OFFSET BITS" of a field of the super block (from its
-# start) or of an inode (from the start of the inode).  See src/mfs.c for
-# the full layout.
+# The layout of each version: "OFFSET BITS" of a field of the super block
+# (from its start) or of an inode (from the start of the inode).  See
+# src/mfs.c for the full layout.
 #
 # layout VERSION FIELD
 layout() {
 	case $1:$2 in
-	1:ninodes)	echo "0 16" ;;
+	[12]:ninodes)	echo "0 16" ;;
+	3:ninodes)	echo "0 32" ;;
 	1:zones)	echo "2 16" ;;
-	1:firstdata)	echo "8 16" ;;
-	1:logzone)	echo "10 16" ;;
+	[23]:zones)	echo "20 32" ;;
+	[12]:firstdata)	echo "8 16" ;;
+	3:firstdata)	echo "10 16" ;;
+	[12]:logzone)	echo "10 16" ;;
+	3:logzone)	echo "12 16" ;;
+	3:blocksize)	echo "28 16" ;;
 	1:size)		echo "4 32" ;;
+	[23]:size)	echo "8 32" ;;
 	1:zone0)	echo "14 16" ;;
+	[23]:zone0)	echo "24 32" ;;
 	1:zone7)	echo "28 16" ;;
+	[23]:zone7)	echo "52 32" ;;
+	[23]:zone9)	echo "60 32" ;;
 	*)
 		echo "Bail out! no field $2 in V$1" >&2
 		exit 1
@@ -331,8 +340,13 @@ set_super() {
 inode_offset() {
 	_inode_offset_imap=$(info_field "$1" "inode map blocks")
 	_inode_offset_zmap=$(info_field "$1" "zone map blocks")
-	echo $(((2 + _inode_offset_imap + _inode_offset_zmap) * 1024 + \
-	    ($2 - 1) * 32))
+	_inode_offset_bs=$(info_field "$1" "block size")
+	_inode_offset_size=64
+	if [ "$(info_field "$1" version)" -eq 1 ]; then
+		_inode_offset_size=32
+	fi
+	echo $(((2 + _inode_offset_imap + _inode_offset_zmap) * \
+	    _inode_offset_bs + ($2 - 1) * _inode_offset_size))
 }
 
 # set_inode IMAGE INO FIELD VALUE - change a field of an inode.

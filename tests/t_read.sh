@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: BSD-2-Clause
 # Copyright (c) 2026 Shoichi Fukusaka
 #
-# Read the tree of tests/tree.spec from V1 images, little- and big-endian,
-# with 14- and 30-character names, and with one- and two-block zones.
+# Read the tree of tests/tree.spec from V1, V2 and V3 images, little- and
+# big-endian, with every name length and V3 block size, and with one- and
+# two-block zones.
 
 . ./tests/lib.sh
 
@@ -44,8 +45,8 @@ files="bin/sh bin/login bin/sh2 etc/empty etc/one etc/b1023 etc/b1024
 etc/b1025 etc/direct etc/direct1 etc/indirect etc/dindirect usr/a/b/c/deep
 usr/big usr/holes usr/sparse 12345678901234"
 
-# A name longer than V1 allows.
-toolong=1234567890123456789012345678901
+# A name longer than any version allows.
+toolong=1234567890123456789012345678901234567890123456789012345678901
 
 touch -t 200001010000 "$T/y2000"
 
@@ -149,19 +150,26 @@ read_extract() {
 }
 
 # format: version/name length/block size
-for format in 1/14/1024 1/30/1024; do
+for format in 1/14/1024 1/30/1024 2/14/1024 2/30/1024 3/60/1024 3/60/4096; do
 for order in le be; do
 for logzone in 0 1; do
 	version=${format%%/*}
 	namelen=${format#*/}
 	namelen=${namelen%/*}
 	bsize=${format##*/}
-	fs="namelen=$namelen"
-	# MINIX uses 14-character names; the 30-character form is the Linux
-	# extension, with a magic number of its own.
+	if [ "$version" -eq 3 ]; then
+		fs="version=3 block=$bsize"
+	else
+		fs="version=$version namelen=$namelen"
+	fi
+	# MINIX uses 14-character names in V1 and V2; the 30-character forms
+	# are the Linux extensions, with magic numbers of their own.
 	case $format in
 	1/14/*)	magic=0x137f ;;
-	*)	magic=0x138f ;;
+	1/30/*)	magic=0x138f ;;
+	2/14/*)	magic=0x2468 ;;
+	2/30/*)	magic=0x2478 ;;
+	*)	magic=0x4d5a ;;
 	esac
 	if [ "$order" = be ]; then
 		byteorder=big-endian
@@ -197,18 +205,24 @@ done
 done
 
 # Names that fill the whole entry have no terminating NUL.
-name=123456789012345678901234567890
-v="30-character names"
-cat >"$T/spec" <<EOF
-fs namelen=30 order=be blocks=256 inodes=16
+n30=123456789012345678901234567890
+for spec in "version=1 namelen=30:$n30" "version=2 namelen=30:$n30" \
+    "version=3:$n30$n30"; do
+	name=${spec#*:}
+	fs=${spec%%:*}
+	v="$fs: ${#name}-character names"
+	rm -rf "$T/full"
+	cat >"$T/spec" <<EOF
+fs $fs order=be blocks=256 inodes=16
 file /$name 0644 0 0 0 5 1
 file /abcdefghijklmn 0644 0 0 0 5 2
 EOF
-mkimage "$T/spec" "$T/img" "$T/full"
-run "$MINIXFS" ls "$T/img"
-printf '%s\n' "$name" abcdefghijklmn >"$T/want"
-check_out "$v: a name that fills its entry is listed" "$T/want"
-run "$MINIXFS" cat "$T/img" "/$name"
-check_out "$v: a name that fills its entry is found" "$T/full/$name"
+	mkimage "$T/spec" "$T/img" "$T/full"
+	run "$MINIXFS" ls "$T/img"
+	printf '%s\n' "$name" abcdefghijklmn >"$T/want"
+	check_out "$v: a name that fills its entry is listed" "$T/want"
+	run "$MINIXFS" cat "$T/img" "/$name"
+	check_out "$v: a name that fills its entry is found" "$T/full/$name"
+done
 
 finish

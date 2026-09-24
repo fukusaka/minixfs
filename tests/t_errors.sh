@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: BSD-2-Clause
 # Copyright (c) 2026 Shoichi Fukusaka
 #
-# Images that are not MINIX file systems, file systems of versions that
-# cannot be read yet, and damaged V1 file systems.  Every case must end in
-# an error message and exit status 1, never in a crash.
+# Images that are not MINIX file systems, and damaged file systems of
+# every version.  Every case must end in an error message and exit status
+# 1, never in a crash.
 
 . ./tests/lib.sh
 
@@ -26,17 +26,12 @@ not_file_systems() {
 	run "$MINIXFS" info "$T/nonexistent"
 	check_err "a missing image is reported" "No such file"
 
-	# A magic number alone does not make a file system.  V2 and V3 are
-	# recognised by their magic number, at byte 16 of the super block in
-	# V2 and at byte 24 in V3, and refused.
+	# A magic number alone does not make a file system.  The magic is at
+	# byte 16 of the super block in V1 and V2, and at byte 24 in V3.
 	for order in 1 0; do
-		for m in 1040:0x137f:not 1040:0x138f:not 1040:0x2468:only \
-		    1040:0x2478:only 1048:0x4d5a:only; do
+		for m in 1040:0x137f 1040:0x2468 1040:0x2478 1048:0x4d5a; do
 			cp "$T/zero" "$T/img"
-			off=${m%%:*}
-			magic=${m#*:}
-			want=${magic#*:}
-			magic=$((${magic%:*}))
+			magic=$((${m#*:}))
 			if [ "$order" -eq 1 ]; then
 				hi=$((magic >> 8))
 				lo=$((magic & 255))
@@ -46,16 +41,11 @@ not_file_systems() {
 				lo=$((magic >> 8))
 				o=le
 			fi
-			poke "$T/img" "$off" "$(printf '%03o' "$hi")" \
+			poke "$T/img" "${m%%:*}" "$(printf '%03o' "$hi")" \
 			    "$(printf '%03o' "$lo")"
 			run "$MINIXFS" info "$T/img"
-			if [ "$want" = not ]; then
-				check_err "$o: a V1 magic alone is refused" \
-				    "not a MINIX file system"
-			else
-				check_err "$o: a later version is refused" \
-				    "only MINIX V1 file systems"
-			fi
+			check_err "$o: magic ${m#*:} alone is refused" \
+			    "not a MINIX file system"
 		done
 	done
 }
@@ -110,6 +100,24 @@ damaged_super() {
 	    "not a MINIX file system"
 }
 
+# damaged_v3: what only V3 has.
+damaged_v3() {
+	for bs in 0 512 1000; do
+		cp "$T/good" "$T/img"
+		set_super "$T/img" blocksize "$bs"
+		run "$MINIXFS" info "$T/img"
+		check_err "$v: block size $bs is refused" \
+		    "not a MINIX file system"
+	done
+
+	# MINIX 3 writes 0 when the first data zone does not fit in 16
+	# bits, and computes it from the layout.
+	cp "$T/good" "$T/img"
+	set_super "$T/img" firstdata 0
+	run "$MINIXFS" cat "$T/img" /big
+	check_out "$v: a first data zone of 0 is computed" "$T/exp/big"
+}
+
 # damaged_inodes: zone numbers and sizes that cannot be right.  The spec
 # gives /f inode 4, /big (with a single indirect zone) 5 and /g 6.
 damaged_inodes() {
@@ -131,11 +139,14 @@ damaged_inodes() {
 	check_err "$v: an indirect zone below the data area fails" \
 	    "Input/output error"
 
-	cp "$T/good" "$T/img"
-	set_inode "$T/img" 6 size 2147483647
-	run "$MINIXFS" cat "$T/img" /g
-	check_err "$v: an impossible file size is an I/O error" \
-	    "Input/output error"
+	# Only V1 limits the size of a file to less than 4 GiB.
+	if [ "$version" -eq 1 ]; then
+		cp "$T/good" "$T/img"
+		set_inode "$T/img" 6 size 2147483647
+		run "$MINIXFS" cat "$T/img" /g
+		check_err "$v: an impossible file size is an I/O error" \
+		    "Input/output error"
+	fi
 }
 
 # damaged_dirs: directories that point to the wrong places.
@@ -205,9 +216,11 @@ truncated() {
 not_file_systems
 usage_errors
 
-for fs in "namelen=14" "namelen=30"; do
+for fs in "version=1" "version=2" "version=3" "version=3 block=4096"; do
 for order in le be; do
 	v="$fs/$order"
+	version=${fs#version=}
+	version=${version%% *}
 	cat >"$T/spec" <<EOF
 fs $fs order=$order blocks=1024 inodes=64
 dir  /d 0755 0 0 0
@@ -220,6 +233,9 @@ EOF
 	mkimage "$T/spec" "$T/good" "$T/exp"
 
 	damaged_super
+	if [ "$version" -eq 3 ]; then
+		damaged_v3
+	fi
 	damaged_inodes
 	damaged_dirs
 	truncated

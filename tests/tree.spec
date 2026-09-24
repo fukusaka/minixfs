@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: BSD-2-Clause
 # Copyright (c) 2026 Shoichi Fukusaka
-# The tree used by t_read.sh.  @FS@ (the name length), @ORDER@, @BLOCKS@
-# and @LOGZONE@ are filled in by the test.  File sizes sit on either side
-# of the block, direct-zone and indirect-zone boundaries of a file system
-# with 1024-byte zones; with 2048-byte zones they land elsewhere, which is
-# also useful.
+# The tree used by t_read.sh.  @FS@ (version, name length, block size),
+# @ORDER@, @BLOCKS@ and @LOGZONE@ are filled in by the test.  File sizes
+# sit on either side of the block, direct-zone and indirect-zone
+# boundaries of a V1 file system with 1024-byte zones; with other versions
+# and zone sizes they land elsewhere, which is also useful.
 fs @FS@ order=@ORDER@ blocks=@BLOCKS@ inodes=64 logzone=@LOGZONE@
 dir  /bin 0755 2 2 644198400
 file /bin/sh 0755 2 2 644198400 34782 1

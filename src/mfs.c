@@ -4,25 +4,33 @@
  *
  * mfs.c - read access to MINIX file system images.
  *
- * On-disk layout of a V1 file system (1024-byte blocks):
+ * On-disk layout (block numbers in units of the block size):
  *
- *	block 0			boot block
- *	block 1			super block
+ *	block 0			boot block; the super block is at byte 1024
  *	block 2 ...		inode bit map (imap_blocks)
  *	...			zone bit map (zmap_blocks)
- *	...			inode table (32-byte inodes)
+ *	...			inode table
  *	firstdatazone ...	data zones
  *
- * A zone is 2^log_zone_size blocks.  The zone slots of an inode are 7
- * direct zones, then a single and a double indirect zone; zone numbers
- * are 16 bits wide.  A directory entry is a 16-bit inode number and a
- * name of 14 characters (30 in the Linux extension).
+ * A zone is 2^log_zone_size blocks.  The versions differ as follows:
+ *
+ *			V1		V2		V3
+ *	magic at	16		16		24
+ *	block size	1024		1024		from the super block
+ *	inode		32 bytes	64 bytes	64 bytes
+ *	zone numbers	16-bit, 9	32-bit, 10	32-bit, 10
+ *	dir entry	2 + 14 or 30	2 + 14 or 30	4 + 60
+ *
+ * The zone slots of an inode are 7 direct zones, then a single, a double
+ * and (V2 and V3) a triple indirect zone.  MINIX itself never uses the
+ * triple indirect zone, but Linux does.
  *
  * Everything is stored in the byte order of the machine that made the
  * file system: little-endian on the PC, big-endian on the 68000 (Atari
  * ST, Amiga, Macintosh).  The byte order is found from the magic number.
  *
- * The layout follows fs/super.h, fs/inode.h and fs/type.h of MINIX 2.0.4.
+ * The layouts follow fs/super.h, fs/inode.h and fs/type.h of MINIX 2.0.4
+ * and minix/fs/mfs of MINIX 3.
  */
 
 #include <sys/stat.h>
@@ -39,11 +47,9 @@
 #define SUPER_OFFSET	1024		/* byte offset of the super block */
 #define SUPER_SIZE	1024		/* bytes read for the super block */
 #define START_BLOCK	2		/* first block of the inode map */
-#define BLOCK_SIZE	1024
-#define NR_DZONES	7		/* direct zones in an inode */
-#define NR_LEVELS	2		/* levels of indirection */
-#define ZONE_NUM_SIZE	2		/* bytes of a zone number */
-#define DIRENT_INO	2		/* bytes of a directory inode number */
+#define STATIC_BLOCK	1024		/* block size of V1 and V2 */
+#define NR_DZONES	7		/* direct zones in any inode */
+#define MAX_BLOCK	65536		/* largest V3 block size accepted */
 #define MAX_LOG_ZONE	10		/* largest zone: 1024 blocks */
 
 /* V1 and V2 super block: byte offsets and widths in bits. */
@@ -55,9 +61,18 @@
 #define SB12_LOGZONE	10		/* 16 */
 #define SB12_MAXSIZE	12		/* 32 */
 #define SB12_MAGIC	16		/* 16 */
+#define SB12_ZONES	20		/* 32, V2 only */
 
-/* The V3 magic number is further on. */
+/* V3 super block. */
+#define SB3_NINODES	0		/* 32 */
+#define SB3_IMAP	6		/* 16 */
+#define SB3_ZMAP	8		/* 16 */
+#define SB3_FIRSTDATA	10		/* 16; 0 if it does not fit */
+#define SB3_LOGZONE	12		/* 16 */
+#define SB3_MAXSIZE	16		/* 32 */
+#define SB3_ZONES	20		/* 32 */
 #define SB3_MAGIC	24		/* 16 */
+#define SB3_BLOCKSIZE	28		/* 16 */
 
 /* V1 inode, 32 bytes. */
 #define I1_SIZE		32
@@ -69,6 +84,19 @@
 #define I1_NLINKS	13		/* 8 */
 #define I1_ZONE		14		/* 9 x 16 */
 #define I1_NZONES	9
+
+/* V2 and V3 inode, 64 bytes. */
+#define I2_SIZE		64
+#define I2_MODE		0		/* 16 */
+#define I2_NLINKS	2		/* 16 */
+#define I2_UID		4		/* 16 */
+#define I2_GID		6		/* 16 */
+#define I2_FSIZE	8		/* 32 */
+#define I2_ATIME	12		/* 32 */
+#define I2_MTIME	16		/* 32 */
+#define I2_CTIME	20		/* 32 */
+#define I2_ZONE		24		/* 10 x 32 */
+#define I2_NZONES	10
 
 static uint16_t
 get16(const struct mfs *fs, const unsigned char *p)
@@ -86,6 +114,15 @@ get32(const struct mfs *fs, const unsigned char *p)
 		    (uint32_t)p[2] << 8 | p[3];
 	return (uint32_t)p[3] << 24 | (uint32_t)p[2] << 16 |
 	    (uint32_t)p[1] << 8 | p[0];
+}
+
+/* A number of 2 or 4 bytes, such as a zone or inode number. */
+static uint32_t
+getn(const struct mfs *fs, const unsigned char *p, uint32_t size)
+{
+	if (size == 2)
+		return get16(fs, p);
+	return get32(fs, p);
 }
 
 /* Read exactly len bytes at off, or fail with -EIO. */
@@ -112,40 +149,39 @@ read_at(int fd, void *buf, size_t len, off_t off)
 	return 0;
 }
 
-/* Is the 16-bit number at p magic, in either byte order? */
-static int
-is_magic(const unsigned char *p, uint16_t magic)
-{
-	return (p[1] << 8 | p[0]) == magic || (p[0] << 8 | p[1]) == magic;
-}
-
 /*
  * Recognise the magic number and set the version and byte order.
- * Returns 0 for V1, -ENOTSUP for V2 and V3, which cannot be read yet, or
- * -EINVAL if this is not a MINIX file system.
+ * Returns 0, or -EINVAL if this is not a MINIX file system.
  */
 static int
 recognise(struct mfs *fs, const unsigned char *sb)
 {
-	static const uint16_t v1[] = { MFS_MAGIC_V1, MFS_MAGIC_V1L };
+	static const struct {
+		uint16_t	magic;
+		int		version;
+		int		offset;
+	} known[] = {
+		{ MFS_MAGIC_V1,  1, SB12_MAGIC },
+		{ MFS_MAGIC_V1L, 1, SB12_MAGIC },
+		{ MFS_MAGIC_V2,  2, SB12_MAGIC },
+		{ MFS_MAGIC_V2L, 2, SB12_MAGIC },
+		{ MFS_MAGIC_V3,  3, SB3_MAGIC }
+	};
 	const unsigned char *p;
 	size_t i;
 
-	p = sb + SB12_MAGIC;
-	for (i = 0; i < sizeof(v1) / sizeof(v1[0]); i++) {
-		if ((p[1] << 8 | p[0]) == v1[i])
+	for (i = 0; i < sizeof(known) / sizeof(known[0]); i++) {
+		p = sb + known[i].offset;
+		if ((p[1] << 8 | p[0]) == known[i].magic)
 			fs->order = MFS_LITTLE_ENDIAN;
-		else if ((p[0] << 8 | p[1]) == v1[i])
+		else if ((p[0] << 8 | p[1]) == known[i].magic)
 			fs->order = MFS_BIG_ENDIAN;
 		else
 			continue;
-		fs->magic = v1[i];
-		fs->version = 1;
+		fs->magic = known[i].magic;
+		fs->version = known[i].version;
 		return 0;
 	}
-	if (is_magic(p, MFS_MAGIC_V2) || is_magic(p, MFS_MAGIC_V2L) ||
-	    is_magic(sb + SB3_MAGIC, MFS_MAGIC_V3))
-		return -ENOTSUP;
 	return -EINVAL;
 }
 
@@ -153,30 +189,69 @@ recognise(struct mfs *fs, const unsigned char *sb)
 static void
 read_super(struct mfs *fs, const unsigned char *sb)
 {
-	fs->ninodes = get16(fs, sb + SB12_NINODES);
-	fs->nzones = get16(fs, sb + SB12_NZONES);
-	fs->imap_blocks = get16(fs, sb + SB12_IMAP);
-	fs->zmap_blocks = get16(fs, sb + SB12_ZMAP);
-	fs->firstdatazone = get16(fs, sb + SB12_FIRSTDATA);
-	fs->log_zone_size = get16(fs, sb + SB12_LOGZONE);
-	fs->max_size = get32(fs, sb + SB12_MAXSIZE);
-	fs->block_size = BLOCK_SIZE;
+	if (fs->version == 3) {
+		fs->ninodes = get32(fs, sb + SB3_NINODES);
+		fs->imap_blocks = get16(fs, sb + SB3_IMAP);
+		fs->zmap_blocks = get16(fs, sb + SB3_ZMAP);
+		fs->firstdatazone = get16(fs, sb + SB3_FIRSTDATA);
+		fs->log_zone_size = get16(fs, sb + SB3_LOGZONE);
+		fs->max_size = get32(fs, sb + SB3_MAXSIZE);
+		fs->nzones = get32(fs, sb + SB3_ZONES);
+		fs->block_size = get16(fs, sb + SB3_BLOCKSIZE);
+	} else {
+		fs->ninodes = get16(fs, sb + SB12_NINODES);
+		fs->imap_blocks = get16(fs, sb + SB12_IMAP);
+		fs->zmap_blocks = get16(fs, sb + SB12_ZMAP);
+		fs->firstdatazone = get16(fs, sb + SB12_FIRSTDATA);
+		fs->log_zone_size = get16(fs, sb + SB12_LOGZONE);
+		fs->max_size = get32(fs, sb + SB12_MAXSIZE);
+		if (fs->version == 1)
+			fs->nzones = get16(fs, sb + SB12_NZONES);
+		else
+			fs->nzones = get32(fs, sb + SB12_ZONES);
+		fs->block_size = STATIC_BLOCK;
+	}
 
-	fs->namelen = fs->magic == MFS_MAGIC_V1 ? 14 : 30;
-	fs->dirent_size = DIRENT_INO + fs->namelen;
-	fs->inode_size = I1_SIZE;
+	switch (fs->magic) {
+	case MFS_MAGIC_V1:
+	case MFS_MAGIC_V2:
+		fs->namelen = 14;
+		break;
+	case MFS_MAGIC_V1L:
+	case MFS_MAGIC_V2L:
+		fs->namelen = 30;
+		break;
+	default:
+		fs->namelen = 60;
+		break;
+	}
+	fs->dirent_ino = fs->version == 3 ? 4 : 2;
+	fs->dirent_size = fs->dirent_ino + fs->namelen;
+	fs->inode_size = fs->version == 1 ? I1_SIZE : I2_SIZE;
+	fs->zone_num_size = fs->version == 1 ? 2 : 4;
 	fs->ndzones = NR_DZONES;
-	fs->nindirs = BLOCK_SIZE / ZONE_NUM_SIZE;
+	fs->nlevels = fs->version == 1 ? 2 : 3;
 	fs->inode_start = START_BLOCK + fs->imap_blocks + fs->zmap_blocks;
 }
 
-/* Bytes a file can have: the zones its slots reach, times the zone size. */
+/*
+ * Bytes a file can have: the zones its slots reach, times the zone size.
+ * The count saturates at 2^32 zones, beyond any 32-bit file size.
+ */
 static uint64_t
 max_file_size(const struct mfs *fs)
 {
-	uint64_t zones;
+	uint64_t per, zones;
+	uint32_t i;
 
-	zones = fs->ndzones + fs->nindirs + (uint64_t)fs->nindirs * fs->nindirs;
+	zones = fs->ndzones;
+	per = 1;
+	for (i = 0; i < fs->nlevels; i++) {
+		per *= fs->nindirs;
+		zones += per;
+		if (zones > UINT32_MAX)
+			return (uint64_t)UINT32_MAX + 1;
+	}
 	return zones * ((uint64_t)fs->block_size << fs->log_zone_size);
 }
 
@@ -184,11 +259,30 @@ max_file_size(const struct mfs *fs)
 static int
 check_super(struct mfs *fs)
 {
-	uint64_t data, itable, nblocks;
+	uint64_t data, first, itable, nblocks;
 
+	if (fs->block_size < SUPER_SIZE || fs->block_size > MAX_BLOCK ||
+	    fs->block_size % 512 != 0)
+		return -EINVAL;
 	if (fs->ninodes == 0 || fs->nzones == 0 || fs->imap_blocks == 0 ||
 	    fs->zmap_blocks == 0 || fs->log_zone_size > MAX_LOG_ZONE)
 		return -EINVAL;
+	fs->nindirs = fs->block_size / fs->zone_num_size;
+	itable = ((uint64_t)fs->ninodes * fs->inode_size + fs->block_size - 1)
+	    / fs->block_size;
+
+	/*
+	 * V3 writes 0 when the first data zone does not fit in 16 bits; it
+	 * then follows the inode table, as MINIX 3 computes it.
+	 */
+	if (fs->version == 3 && fs->firstdatazone == 0) {
+		first = (fs->inode_start + itable +
+		    ((uint64_t)1 << fs->log_zone_size) - 1) >>
+		    fs->log_zone_size;
+		if (first > UINT32_MAX)
+			return -EINVAL;
+		fs->firstdatazone = (uint32_t)first;
+	}
 	if (fs->firstdatazone >= fs->nzones)
 		return -EINVAL;
 
@@ -200,8 +294,6 @@ check_super(struct mfs *fs)
 	    (uint64_t)fs->nzones - fs->firstdatazone + 1)
 		return -EINVAL;
 
-	itable = ((uint64_t)fs->ninodes * fs->inode_size + fs->block_size - 1)
-	    / fs->block_size;
 	data = (uint64_t)fs->firstdatazone << fs->log_zone_size;
 	nblocks = (uint64_t)fs->nzones << fs->log_zone_size;
 	if (fs->inode_start + itable > data || data > nblocks ||
@@ -271,25 +363,12 @@ mfs_read_block(struct mfs *fs, uint32_t block, void *buf)
 	    (off_t)block * fs->block_size);
 }
 
-int
-mfs_read_inode(struct mfs *fs, uint32_t num, struct mfs_inode *ip)
+/* Decode a V1 inode at p. */
+static void
+decode_v1(const struct mfs *fs, const unsigned char *p, struct mfs_inode *ip)
 {
-	const unsigned char *p;
-	uint64_t off;
-	int i, r;
+	int i;
 
-	if (num == 0 || num > fs->ninodes)
-		return -EIO;
-	off = (uint64_t)(num - 1) * fs->inode_size;
-	/* The block number fits: check_super() bounded the inode table. */
-	r = mfs_read_block(fs, fs->inode_start +
-	    (uint32_t)(off / fs->block_size), fs->ibuf);
-	if (r < 0)
-		return r;
-	p = fs->ibuf + off % fs->block_size;
-
-	(void)memset(ip, 0, sizeof(*ip));
-	ip->num = num;
 	ip->mode = get16(fs, p + I1_MODE);
 	ip->uid = get16(fs, p + I1_UID);
 	ip->size = get32(fs, p + I1_FSIZE);
@@ -300,6 +379,47 @@ mfs_read_inode(struct mfs *fs, uint32_t num, struct mfs_inode *ip)
 		ip->zone[i] = get16(fs, p + I1_ZONE + 2 * i);
 	ip->atime = ip->mtime;
 	ip->ctime = ip->mtime;
+}
+
+/* Decode a V2 or V3 inode at p. */
+static void
+decode_v2(const struct mfs *fs, const unsigned char *p, struct mfs_inode *ip)
+{
+	int i;
+
+	ip->mode = get16(fs, p + I2_MODE);
+	ip->nlinks = get16(fs, p + I2_NLINKS);
+	ip->uid = get16(fs, p + I2_UID);
+	ip->gid = get16(fs, p + I2_GID);
+	ip->size = get32(fs, p + I2_FSIZE);
+	ip->atime = get32(fs, p + I2_ATIME);
+	ip->mtime = get32(fs, p + I2_MTIME);
+	ip->ctime = get32(fs, p + I2_CTIME);
+	for (i = 0; i < I2_NZONES; i++)
+		ip->zone[i] = get32(fs, p + I2_ZONE + 4 * i);
+}
+
+int
+mfs_read_inode(struct mfs *fs, uint32_t num, struct mfs_inode *ip)
+{
+	uint64_t off;
+	int r;
+
+	if (num == 0 || num > fs->ninodes)
+		return -EIO;
+	off = (uint64_t)(num - 1) * fs->inode_size;
+	/* The block number fits: check_super() bounded the inode table. */
+	r = mfs_read_block(fs, fs->inode_start +
+	    (uint32_t)(off / fs->block_size), fs->ibuf);
+	if (r < 0)
+		return r;
+
+	(void)memset(ip, 0, sizeof(*ip));
+	ip->num = num;
+	if (fs->version == 1)
+		decode_v1(fs, fs->ibuf + off % fs->block_size, ip);
+	else
+		decode_v2(fs, fs->ibuf + off % fs->block_size, ip);
 
 	/* A size the zones cannot reach means a damaged inode. */
 	if (ip->size > fs->max_file)
@@ -329,7 +449,8 @@ indirect(struct mfs *fs, uint32_t ind, uint32_t idx, uint32_t *zone)
 		return r;
 	if ((r = mfs_read_block(fs, ind << fs->log_zone_size, fs->ibuf)) < 0)
 		return r;
-	*zone = get16(fs, fs->ibuf + idx * ZONE_NUM_SIZE);
+	*zone = getn(fs, fs->ibuf + idx * fs->zone_num_size,
+	    fs->zone_num_size);
 	return check_zone(fs, *zone);
 }
 
@@ -352,13 +473,13 @@ mfs_bmap(struct mfs *fs, const struct mfs_inode *ip, uint32_t fblock,
 		/* Find the level of indirection that holds the zone. */
 		idx -= fs->ndzones;
 		per = 1;
-		for (level = 1; level <= NR_LEVELS; level++) {
+		for (level = 1; level <= fs->nlevels; level++) {
 			per *= fs->nindirs;
 			if (idx < per)
 				break;
 			idx -= per;
 		}
-		if (level > NR_LEVELS)
+		if (level > fs->nlevels)
 			return -EFBIG;
 
 		/* Walk down from the zone slot of that level. */
@@ -437,10 +558,10 @@ mfs_readdir(struct mfs *fs, const struct mfs_inode *dp, mfs_dirent_fn fn,
 		for (i = 0; i + fs->dirent_size <= (size_t)n;
 		    i += fs->dirent_size) {
 			p = buf + i;
-			de.ino = get16(fs, p);
+			de.ino = getn(fs, p, fs->dirent_ino);
 			if (de.ino == 0)
 				continue;
-			(void)memcpy(de.name, p + DIRENT_INO, fs->namelen);
+			(void)memcpy(de.name, p + fs->dirent_ino, fs->namelen);
 			de.name[fs->namelen] = '\0';
 			if ((r = fn(&de, arg)) != 0)
 				break;
