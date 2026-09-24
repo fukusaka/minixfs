@@ -38,7 +38,9 @@ top of `tests/mkimage.c`).  The scripts:
   30-character names and V3 with 1024- and 4096-byte blocks, each in both
   byte orders and with one- and two-block zones.  File sizes around the
   block, direct, indirect and double indirect limits; holes; hard and
-  symbolic links; devices; `ls`, `cat` and `extract`.
+  symbolic links; devices; `ls`, `cat` and `extract`, which makes the
+  pipe, warns of the devices it leaves out, refuses `-d` without root
+  and, where fakeroot(1) is installed, makes the devices with `-d`.
 - `t_big.sh` - sparse files that reach the triple indirect zone, and a
   tree deeper than `PATH_MAX`.
 - `t_errors.sh` - files that are not file systems, super blocks that do

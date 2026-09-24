@@ -95,7 +95,15 @@ read_extract() {
 	rm -rf "$T/x"
 	run "$MINIXFS" extract "$img" "$T/x"
 	check_note "$v: extract counts what it did" \
-	    "^17 files, 7 directories, 1 symbolic links; 3 special"
+	    "^17 files, 7 directories, 1 symbolic links, 0 devices, 1 pipes\$"
+	check_note "$v: extract warns of the devices it did not make" \
+	    "warning: 2 devices not made; make them with extract -d as root"
+	check_true "$v: extract makes the pipe" test -p "$T/x/dev/fifo"
+	check_mode "$v: extract keeps the mode of the pipe" "$T/x/dev/fifo" \
+	    prw-------
+	check_older "$v: extract sets the time of the pipe" "$T/x/dev/fifo" \
+	    "$T/y2000"
+	rm "$T/x/dev/fifo"
 	check_same_tree "$v: extract reproduces the tree" "$exp" "$T/x"
 	check_mode "$v: extract drops set-uid" "$T/x/bin/login" -rwxr-xr-x
 	check_mode "$v: extract keeps the mode of a file" "$T/x/etc/one" \
@@ -118,6 +126,32 @@ read_extract() {
 
 	run "$MINIXFS" extract "$img" "$T/x" /bin/sh
 	check_err "$v: extract of a file fails" "Not a directory"
+
+	# Devices are made with -d, as root only.
+	rm -rf "$T/x"
+	if [ "$(id -u)" -ne 0 ]; then
+		run "$MINIXFS" extract -d "$img" "$T/x"
+		check_err "$v: extract -d takes root" "takes root"
+		check_true "$v: extract -d does nothing without root" \
+		    test ! -e "$T/x"
+	fi
+	if command -v fakeroot >/dev/null 2>&1; then
+		# fakeroot preloads its library, which AddressSanitizer
+		# would refuse to follow.
+		cmd="\"$MINIXFS\" extract -d \"$img\" \"$T/x\""
+		cmd="$cmd && ls -l \"$T/x/dev\""
+		ASAN_OPTIONS=verify_asan_link_order=0 fakeroot sh -c "$cmd" \
+		    >"$T/out" 2>"$T/err"
+		status=$?
+		check_note "$v: extract -d as root makes the devices" \
+		    "^17 files, 7 directories, 1 symbolic links, 2 devices,"
+		check_out_has "$v: the character device has its numbers" \
+		    "^crw--w---- .* 4, *0 .*tty0\$"
+		check_out_has "$v: the block device has its numbers" \
+		    "^brw-rw-rw- .* 2, *1 .*fd0\$"
+	else
+		skip "$v: extract -d as root" "no fakeroot"
+	fi
 }
 
 # format: version/name length/block size

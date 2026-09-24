@@ -7,7 +7,7 @@
  *	minixfs [-T SIZE:HEADS:SIDE] info IMAGE
  *	minixfs [-T ...] ls [-lR] IMAGE [PATH]
  *	minixfs [-T ...] cat IMAGE PATH
- *	minixfs [-T ...] extract [-v] IMAGE DEST [PATH]
+ *	minixfs [-T ...] extract [-dv] IMAGE DEST [PATH]
  *	minixfs [-T ...] tar IMAGE [PATH] > ARCHIVE
  *
  * -T reads an image that holds the file system in the tracks of one side
@@ -18,6 +18,8 @@
  * The exit status is 0 on success, 1 if anything failed and 2 for a
  * usage error.
  */
+
+#include "compat.h"
 
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -76,7 +78,7 @@ usage(void)
 	    "usage: minixfs [-T SIZE:HEADS:SIDE] info IMAGE\n"
 	    "       minixfs [-T ...] ls [-lR] IMAGE [PATH]\n"
 	    "       minixfs [-T ...] cat IMAGE PATH\n"
-	    "       minixfs [-T ...] extract [-v] IMAGE DEST [PATH]\n"
+	    "       minixfs [-T ...] extract [-dv] IMAGE DEST [PATH]\n"
 	    "       minixfs [-T ...] tar IMAGE [PATH] > ARCHIVE\n");
 	exit(2);
 }
@@ -625,7 +627,11 @@ struct extract {
 	unsigned long	dirs;
 	unsigned long	files;
 	unsigned long	links;
-	unsigned long	skipped;
+	unsigned long	devs;
+	unsigned long	pipes;
+	unsigned long	devs_skipped;	/* without -d */
+	unsigned long	sockets;	/* cannot be made */
+	int		devices;	/* -d: make devices, as root */
 	int		verbose;
 };
 
@@ -700,6 +706,44 @@ extract_link(struct extract *x, const struct mfs_inode *ip,
 	x->links++;
 }
 
+/*
+ * A device, which is made only with -d, as root, or a pipe.  Like files,
+ * they get the permission bits without set-uid, set-gid and sticky bits.
+ */
+static void
+extract_special(struct extract *x, const struct mfs_inode *ip,
+    const char *src, const char *dest)
+{
+	mode_t type;
+	dev_t dev;
+
+	if (mfs_is_dev(ip) && !x->devices) {
+		if (x->verbose)
+			(void)printf("%s: device not made\n", src);
+		x->devs_skipped++;
+		return;
+	}
+	if (mfs_is_dev(ip)) {
+		type = (ip->mode & MFS_S_IFMT) == MFS_S_IFCHR ? S_IFCHR :
+		    S_IFBLK;
+		dev = makedev(mfs_rdev(ip) >> 8 & 0xff, mfs_rdev(ip) & 0xff);
+		if (mknod(dest, type | 0600, dev) == -1) {
+			problem(x->c, "%s: %s", dest, strerror(errno));
+			return;
+		}
+		x->devs++;
+	} else {
+		if (mkfifo(dest, 0600) == -1) {
+			problem(x->c, "%s: %s", dest, strerror(errno));
+			return;
+		}
+		x->pipes++;
+	}
+	if (chmod(dest, ip->mode & 0777) == -1)
+		problem(x->c, "%s: %s", dest, strerror(errno));
+	set_times(x->c, dest, ip);
+}
+
 static void extract_dir(struct extract *, const struct mfs_inode *,
     const char *, const char *);
 
@@ -744,13 +788,16 @@ extract_entry(struct extract *x, const struct mfs_inode *ip,
 	case MFS_S_IFLNK:
 		extract_link(x, ip, src, dest);
 		break;
+	case MFS_S_IFCHR:
+	case MFS_S_IFBLK:
+	case MFS_S_IFIFO:
+		extract_special(x, ip, src, dest);
+		break;
 	default:
-		/*
-		 * Devices need privileges and sockets make no sense as
-		 * copies; "ls -l" shows them, and "tar" keeps devices and
-		 * pipes.
-		 */
-		x->skipped++;
+		/* A socket makes no sense as a copy. */
+		if (x->verbose)
+			(void)printf("%s: socket not made\n", src);
+		x->sockets++;
 		break;
 	}
 }
@@ -793,8 +840,11 @@ cmd_extract(int argc, char **argv)
 
 	(void)memset(&x, 0, sizeof(x));
 	optind = 1;
-	while ((ch = getopt(argc, argv, "v")) != -1) {
+	while ((ch = getopt(argc, argv, "dv")) != -1) {
 		switch (ch) {
+		case 'd':
+			x.devices = 1;
+			break;
 		case 'v':
 			x.verbose = 1;
 			break;
@@ -808,6 +858,8 @@ cmd_extract(int argc, char **argv)
 		usage();
 	dest = argv[1];
 	path = argc == 3 ? argv[2] : "/";
+	if (x.devices && geteuid() != 0)
+		errx(1, "extract -d makes devices, which takes root");
 
 	open_image(&c, argv[0]);
 	x.c = &c;
@@ -821,9 +873,17 @@ cmd_extract(int argc, char **argv)
 			extract_dir(&x, &ino, path, dest);
 	}
 	mfs_close(&c.fs);
-	(void)fprintf(stderr, "%lu files, %lu directories, %lu symbolic links;"
-	    " %lu special files skipped\n", x.files, x.dirs, x.links,
-	    x.skipped);
+	(void)fprintf(stderr, "%lu files, %lu directories, %lu symbolic links,"
+	    " %lu devices, %lu pipes\n", x.files, x.dirs, x.links, x.devs,
+	    x.pipes);
+	/* What is missing from the copy must not go unnoticed. */
+	if (x.devs_skipped > 0)
+		warnx("warning: %lu devices not made; make them with extract "
+		    "-d as root, or keep them with \"minixfs tar\"",
+		    x.devs_skipped);
+	if (x.sockets > 0)
+		warnx("warning: %lu sockets not made; a socket cannot be "
+		    "copied", x.sockets);
 	return c.status;
 }
 
