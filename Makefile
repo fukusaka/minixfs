@@ -23,8 +23,8 @@ MKIMAGE =	tests/mkimage
 # the FUSE 2 interface.
 FUSEPROG =	mount_minixfs
 FUSE_VERSION =	31
-FUSE_CFLAGS !=	pkg-config --cflags fuse3 2>/dev/null || true
-FUSE_LIBS !=	pkg-config --libs fuse3 2>/dev/null || true
+FUSE_CFLAGS !=	(pkg-config --cflags fuse3) 2>/dev/null || true
+FUSE_LIBS !=	(pkg-config --libs fuse3) 2>/dev/null || true
 
 SANFLAGS =	-O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined \
 		-fno-sanitize-recover=all
