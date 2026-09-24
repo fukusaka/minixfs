@@ -1090,14 +1090,28 @@ int
 mfs_set_entry(struct mfs *fs, const struct mfs_inode *dp, uint32_t off,
     uint32_t ino)
 {
-	uint32_t block;
+	unsigned char *p;
+	uint32_t block, i, n;
 	int r;
 
 	if (off >= dp->size)
 		return -EINVAL;
 	if ((r = entry_block(fs, dp, off, &block)) < 0)
 		return r;
-	put_ino(fs, fs->dbuf + off % fs->block_size, ino);
+	p = fs->dbuf + off % fs->block_size;
+	put_ino(fs, p, ino);
+	/*
+	 * Minix-vmd frees each slot of a flex entry it removes, and counts
+	 * free slots one by one when it adds an entry: do the same.
+	 */
+	if (fs->flex && ino == 0) {
+		n = p[FLEX_EXTENT] + 1;
+		for (i = 0; i < n && p + FLEX_SLOT <= fs->dbuf +
+		    fs->block_size; i++, p += FLEX_SLOT) {
+			put_ino(fs, p, 0);
+			p[FLEX_EXTENT] = 0;
+		}
+	}
 	return mfs_write_block(fs, block, fs->dbuf);
 }
 

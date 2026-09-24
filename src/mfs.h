@@ -338,6 +338,7 @@ int	mfs_put_inode(struct mfs *, const struct mfs_inode *);
  * Set the inode number of the directory entry at byte offset off of the
  * directory *dp; 0 removes the entry.  Returns 0 or a negative errno
  * value.  This works on the flex directories of Minix-vmd too, where
+ * removing an entry frees each of its slots, as Minix-vmd does, and
  * mfs_put_entry() and mfs_add_entry() give -ENOTSUP.
  */
 int	mfs_set_entry(struct mfs *, const struct mfs_inode *, uint32_t,

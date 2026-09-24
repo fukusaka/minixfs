@@ -15,6 +15,22 @@ names="a abcd abcde abcdefghijkl abcdefghijklm abcdefghijklmnopqrst"
 names="$names abcdefghijklmnopqrstu"
 long=abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz01234567
 
+# free_counts IMAGE INO - the free slots of the flex directory INO, in its
+# first zone, that give a count of slots: none, if entries are freed as
+# Minix-vmd frees them.
+free_counts() {
+	_free_counts_off=$(($(get_inode "$1" "$2" zone0) * 1024))
+	od -An -tu1 -v -j "$_free_counts_off" \
+	    -N "$(get_inode "$1" "$2" size)" "$1" | awk '
+	    { for (i = 1; i <= NF; i++) b[n++] = $i }
+	    END {
+		for (s = 0; s + 8 <= n; s += 8)
+			if (b[s] == 0 && b[s + 1] == 0 && b[s + 2] != 0)
+				bad++
+		print bad + 0
+	    }'
+}
+
 for fs in "1 le" "2 le" "2 be"; do
 	version=${fs% *}
 	order=${fs#* }
@@ -35,7 +51,7 @@ for fs in "1 le" "2 le" "2 be"; do
 			echo "file /many/name_of_twenty_$i 0644 0 0 0 1 $i"
 			i=$((i + 1))
 		done
-		echo "raw /d bad 200"
+		echo "raw /d bad_and_long_name 200"
 	} >"$T/spec"
 	rm -rf "$T/exp"
 	mkimage "$T/spec" "$T/good" "$T/exp"
@@ -46,7 +62,7 @@ for fs in "1 le" "2 le" "2 be"; do
 	    "log zone size" 0
 	check_info "$v: info reads the clean flag" "$T/good" clean yes
 	run "$MINIXFS" ls "$T/good" /d
-	for n in $names $long bad; do
+	for n in $names $long bad_and_long_name; do
 		echo "$n"
 	done >"$T/want"
 	check_out "$v: names of every length read back" "$T/want"
@@ -59,12 +75,15 @@ for fs in "1 le" "2 le" "2 be"; do
 	# The raw entry names a free inode; fsck removes it in place.
 	run "$FSCK_MINIXFS" "$T/good"
 	check_found "$v: fsck reads flex directories" \
-	    "/d/bad: names inode 200, which is free"
+	    "/d/bad_and_long_name: names inode 200, which is free"
 	cp "$T/good" "$T/img"
 	run "$FSCK_MINIXFS" -y "$T/img"
 	check_status "$v: fsck -y removes an entry of a flex directory" 0
 	run "$FSCK_MINIXFS" "$T/img"
 	check_status "$v: nothing is left after fsck -y" 0
+	# As Minix-vmd, fsck frees each slot of the entry it removed.
+	check_true "$v: a removed entry leaves no count of slots" \
+	    test "$(free_counts "$T/img" 2)" -eq 0
 	rm -rf "$T/x"
 	run "$MINIXFS" extract "$T/img" "$T/x"
 	check_same_tree "$v: the files read back whole" "$T/exp" "$T/x"
