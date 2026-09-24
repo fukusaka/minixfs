@@ -56,12 +56,17 @@ for older librefuse).
     minixfs ls [-lR] IMAGE [PATH]
     minixfs cat IMAGE PATH
     minixfs extract [-v] IMAGE DEST [PATH]
+    minixfs tar IMAGE [PATH] > ARCHIVE
 
 `info` prints the super block.  `ls -l` shows mode, links, owner, group,
 size (or major and minor numbers for devices) and modification time in
 UTC.  `extract` copies a directory tree out of the image, keeping
 permission bits (without set-uid, set-gid and sticky bits) and times.
-Devices, pipes and sockets are counted but not created.
+Devices, pipes and sockets are counted but not created.  `tar` writes
+the tree to standard output as a POSIX ustar archive instead, devices
+and pipes included, with hard links as links and names longer than
+ustar holds in pax headers; tar(1) lists it without privileges and
+makes the devices when run as root.  Sockets cannot be stored.
 
 `extract` never writes outside `DEST`: directory entries whose names are
 empty, `.`, `..` or contain `/` are refused, and so are directory loops.

@@ -75,6 +75,10 @@ top of `tests/mkimage.c`).  The scripts:
   `fsck.minix` find the same damage, and `fsck.minix` accepts what
   `fsck_minixfs -y` repaired, also into `/lost+found` with `-l`.
   Skipped otherwise.
+- `t_tar.sh` - where tar(1) is installed: `minixfs tar` of the test tree
+  in several formats is read back by tar(1): contents, modes, owners and
+  times, devices with their numbers, pipes, hard and symbolic links, a
+  directory as the top, and names too long for a plain ustar header.
 - `t_fuse.sh` - where `mount_minixfs` is built and mounting is allowed:
   the tree read through the kernel in four formats, with its names,
   contents, modes, owners, inode numbers and device numbers.  Skipped

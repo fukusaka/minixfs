@@ -8,6 +8,7 @@
  *	minixfs ls [-lR] IMAGE [PATH]
  *	minixfs cat IMAGE PATH
  *	minixfs extract [-v] IMAGE DEST [PATH]
+ *	minixfs tar IMAGE [PATH] > ARCHIVE
  *
  * Each command reports every problem it meets and goes on where it can.
  * The exit status is 0 on success, 1 if anything failed and 2 for a
@@ -68,7 +69,8 @@ usage(void)
 	    "usage: minixfs info IMAGE\n"
 	    "       minixfs ls [-lR] IMAGE [PATH]\n"
 	    "       minixfs cat IMAGE PATH\n"
-	    "       minixfs extract [-v] IMAGE DEST [PATH]\n");
+	    "       minixfs extract [-v] IMAGE DEST [PATH]\n"
+	    "       minixfs tar IMAGE [PATH] > ARCHIVE\n");
 	exit(2);
 }
 
@@ -624,8 +626,9 @@ extract_entry(struct extract *x, const struct mfs_inode *ip,
 		break;
 	default:
 		/*
-		 * Devices, pipes and sockets need privileges or make no
-		 * sense as copies; "ls -l" shows them.
+		 * Devices need privileges and sockets make no sense as
+		 * copies; "ls -l" shows them, and "tar" keeps devices and
+		 * pipes.
 		 */
 		x->skipped++;
 		break;
@@ -704,6 +707,413 @@ cmd_extract(int argc, char **argv)
 	return c.status;
 }
 
+/* tar */
+
+/*
+ * A POSIX ustar archive on standard output.  Names longer than ustar holds
+ * go into pax extended headers.  Files with more than one link are stored
+ * once and then as hard links; sockets cannot be stored.
+ */
+
+#define TAR_BLOCK	512		/* the unit of an archive */
+#define TAR_RECORD	10240		/* archives end on a whole record */
+#define TAR_NAME	100		/* bytes of name and linkname */
+#define TAR_PREFIX	155		/* bytes of prefix */
+
+/* Where the first name of a file with more than one link went. */
+struct tar_link {
+	uint32_t	ino;		/* 0: a free slot */
+	char		*name;
+};
+
+struct tar {
+	struct walk	w;
+	struct cmd	*c;
+	struct tar_link	*links;		/* open addressing, by inode */
+	size_t		nlinks;
+	size_t		maxlinks;	/* a power of 2 */
+	uint64_t	written;	/* bytes, for the last record */
+	unsigned long	dirs;
+	unsigned long	files;
+	unsigned long	symlinks;
+	unsigned long	hardlinks;
+	unsigned long	special;
+	unsigned long	skipped;
+	int		failed;		/* standard output failed */
+};
+
+/* A ustar header, as it is laid out. */
+struct tar_header {
+	char	name[TAR_NAME];
+	char	mode[8];
+	char	uid[8];
+	char	gid[8];
+	char	size[12];
+	char	mtime[12];
+	char	chksum[8];
+	char	typeflag;
+	char	linkname[TAR_NAME];
+	char	magic[6];
+	char	version[2];
+	char	uname[32];
+	char	gname[32];
+	char	devmajor[8];
+	char	devminor[8];
+	char	prefix[TAR_PREFIX];
+	char	pad[12];
+};
+
+static void
+tar_write(struct tar *t, const void *buf, size_t len)
+{
+	if (t->failed)
+		return;
+	if (fwrite(buf, 1, len, stdout) != len) {
+		problem(t->c, "standard output: %s", strerror(errno));
+		t->failed = 1;
+		return;
+	}
+	t->written += len;
+}
+
+/* Zeros up to the next multiple of unit. */
+static void
+tar_pad(struct tar *t, size_t unit)
+{
+	static const char zero[TAR_BLOCK];
+	size_t n;
+
+	n = (unit - t->written % unit) % unit;
+	while (n > 0) {
+		tar_write(t, zero, n < sizeof(zero) ? n : sizeof(zero));
+		n -= n < sizeof(zero) ? n : sizeof(zero);
+	}
+}
+
+/* An octal number in a field of len bytes, NUL-terminated. */
+static void
+octal(char *field, size_t len, uint64_t v)
+{
+	char buf[24];
+
+	(void)snprintf(buf, sizeof(buf), "%0*" PRIo64, (int)len - 1, v);
+	(void)memcpy(field, buf, len - 1);
+	field[len - 1] = '\0';
+}
+
+/*
+ * Split name into prefix and name of a ustar header at a '/'.  Returns
+ * -1 if it does not fit.
+ */
+static int
+split_name(struct tar_header *h, const char *name)
+{
+	const char *p;
+	size_t len;
+
+	len = strlen(name);
+	if (len <= TAR_NAME) {
+		(void)memcpy(h->name, name, len);
+		return 0;
+	}
+	for (p = name + len - TAR_NAME - 1; *p != '\0'; p++) {
+		if (*p != '/' || p == name || p[1] == '\0')
+			continue;
+		if ((size_t)(p - name) > TAR_PREFIX)
+			return -1;
+		(void)memcpy(h->prefix, name, (size_t)(p - name));
+		(void)memcpy(h->name, p + 1, len - (size_t)(p - name) - 1);
+		return 0;
+	}
+	return -1;
+}
+
+/* One "LEN key=value\n" record of a pax header, into buf. */
+static size_t
+pax_record(char *buf, size_t max, const char *key, const char *value)
+{
+	size_t len, n;
+
+	/* The length counts its own digits. */
+	len = strlen(key) + strlen(value) + 3;
+	for (n = 1; n < 20; n++) {
+		if (snprintf(NULL, 0, "%zu", len + n) == (int)n)
+			break;
+	}
+	len += n;
+	if (len >= max)
+		return 0;
+	(void)snprintf(buf, max, "%zu %s=%s\n", len, key, value);
+	return len;
+}
+
+static void
+tar_header(struct tar *t, struct tar_header *h)
+{
+	unsigned char *p;
+	unsigned sum;
+	size_t i;
+
+	(void)memcpy(h->magic, "ustar", 6);
+	(void)memcpy(h->version, "00", 2);
+	(void)memset(h->chksum, ' ', sizeof(h->chksum));
+	sum = 0;
+	p = (unsigned char *)h;
+	for (i = 0; i < sizeof(*h); i++)
+		sum += p[i];
+	(void)snprintf(h->chksum, sizeof(h->chksum), "%06o", sum);
+	h->chksum[7] = ' ';
+	tar_write(t, h, sizeof(*h));
+}
+
+/*
+ * Write the header of a member: name, and for a link or symbolic link,
+ * target.  What does not fit goes into a pax header before it.
+ */
+static void
+tar_member(struct tar *t, const struct mfs_inode *ip, const char *name,
+    char type, const char *target, uint32_t size)
+{
+	struct tar_header h, x;
+	char pax[2 * PATH_MAX + 64];
+	size_t n;
+
+	(void)memset(&h, 0, sizeof(h));
+	n = 0;
+	if (split_name(&h, name) == -1) {
+		(void)memcpy(h.name, name, TAR_NAME);
+		n += pax_record(pax + n, sizeof(pax) - n, "path", name);
+	}
+	if (target != NULL) {
+		if (strlen(target) <= TAR_NAME)
+			(void)memcpy(h.linkname, target, strlen(target));
+		else
+			n += pax_record(pax + n, sizeof(pax) - n, "linkpath",
+			    target);
+	}
+	if (n > 0) {
+		(void)memset(&x, 0, sizeof(x));
+		(void)memcpy(x.name, "PaxHeader", 9);
+		octal(x.mode, sizeof(x.mode), 0644);
+		octal(x.uid, sizeof(x.uid), 0);
+		octal(x.gid, sizeof(x.gid), 0);
+		octal(x.size, sizeof(x.size), n);
+		octal(x.mtime, sizeof(x.mtime), ip->mtime);
+		x.typeflag = 'x';
+		tar_header(t, &x);
+		tar_write(t, pax, n);
+		tar_pad(t, TAR_BLOCK);
+	}
+	octal(h.mode, sizeof(h.mode), ip->mode & 07777);
+	octal(h.uid, sizeof(h.uid), ip->uid);
+	octal(h.gid, sizeof(h.gid), ip->gid);
+	octal(h.size, sizeof(h.size), size);
+	octal(h.mtime, sizeof(h.mtime), ip->mtime);
+	h.typeflag = type;
+	if (type == '3' || type == '4') {
+		octal(h.devmajor, sizeof(h.devmajor), mfs_rdev(ip) >> 8 & 0xff);
+		octal(h.devminor, sizeof(h.devminor), mfs_rdev(ip) & 0xff);
+	}
+	tar_header(t, &h);
+}
+
+/*
+ * The name under which inode ino went into the archive first, or NULL
+ * after noting that it goes in now as name.
+ */
+static const char *
+first_name(struct tar *t, uint32_t ino, const char *name)
+{
+	struct tar_link *old;
+	size_t i, j, max;
+
+	if (t->nlinks * 2 >= t->maxlinks) {
+		old = t->links;
+		max = t->maxlinks;
+		t->maxlinks = max == 0 ? 64 : max * 2;
+		t->links = calloc(t->maxlinks, sizeof(*t->links));
+		if (t->links == NULL)
+			err(1, NULL);
+		for (i = 0; i < max; i++) {
+			if (old[i].ino == 0)
+				continue;
+			j = old[i].ino & (t->maxlinks - 1);
+			while (t->links[j].ino != 0)
+				j = (j + 1) & (t->maxlinks - 1);
+			t->links[j] = old[i];
+		}
+		free(old);
+	}
+	for (i = ino & (t->maxlinks - 1); t->links[i].ino != 0;
+	    i = (i + 1) & (t->maxlinks - 1)) {
+		if (t->links[i].ino == ino)
+			return t->links[i].name;
+	}
+	t->links[i].ino = ino;
+	if ((t->links[i].name = strdup(name)) == NULL)
+		err(1, NULL);
+	t->nlinks++;
+	return NULL;
+}
+
+/* The contents of a regular file, padded to whole blocks. */
+static void
+tar_contents(struct tar *t, const struct mfs_inode *ip, const char *name)
+{
+	static unsigned char buf[COPY_SIZE];
+	uint32_t off;
+	ssize_t n;
+
+	for (off = 0; off < ip->size; off += (uint32_t)n) {
+		n = mfs_pread(&t->c->fs, ip, buf, sizeof(buf), off);
+		if (n <= 0) {
+			problem(t->c, "%s:%s: %s", t->c->image, name,
+			    n == 0 ? "short file" : strerror((int)-n));
+			/* The header gave the size: fill it with zeros. */
+			(void)memset(buf, 0, sizeof(buf));
+			for (; off < ip->size; off += (uint32_t)n) {
+				n = (ssize_t)(ip->size - off < sizeof(buf) ?
+				    ip->size - off : sizeof(buf));
+				tar_write(t, buf, (size_t)n);
+			}
+			break;
+		}
+		tar_write(t, buf, (size_t)n);
+	}
+	tar_pad(t, TAR_BLOCK);
+}
+
+static void tar_dir(struct tar *, const struct mfs_inode *, const char *,
+    const char *);
+
+/* One member; src names it in the image and name in the archive. */
+static void
+tar_entry(struct tar *t, const struct mfs_inode *ip, const char *src,
+    const char *name)
+{
+	char target[PATH_MAX], *dname;
+	const char *first;
+	ssize_t n;
+
+	if (!mfs_is_dir(ip) && ip->nlinks > 1 &&
+	    (first = first_name(t, ip->num, name)) != NULL) {
+		tar_member(t, ip, name, '1', first, 0);
+		t->hardlinks++;
+		return;
+	}
+	switch (ip->mode & MFS_S_IFMT) {
+	case MFS_S_IFDIR:
+		if ((dname = join(t->c, name, "")) == NULL)
+			return;
+		tar_member(t, ip, dname, '5', NULL, 0);
+		free(dname);
+		t->dirs++;
+		if (walk_enter(t->c, &t->w, ip->num, src) == 0) {
+			tar_dir(t, ip, src, name);
+			walk_leave(&t->w);
+		}
+		break;
+	case MFS_S_IFREG:
+		tar_member(t, ip, name, '0', NULL, ip->size);
+		tar_contents(t, ip, src);
+		t->files++;
+		break;
+	case MFS_S_IFLNK:
+		if (ip->size >= sizeof(target)) {
+			problem(t->c, "%s:%s: symbolic link too long",
+			    t->c->image, src);
+			return;
+		}
+		if ((n = mfs_pread(&t->c->fs, ip, target, ip->size, 0)) < 0) {
+			problem(t->c, "%s:%s: %s", t->c->image, src,
+			    strerror((int)-n));
+			return;
+		}
+		target[n] = '\0';
+		tar_member(t, ip, name, '2', target, 0);
+		t->symlinks++;
+		break;
+	case MFS_S_IFCHR:
+	case MFS_S_IFBLK:
+	case MFS_S_IFIFO:
+		tar_member(t, ip, name, mfs_is_dev(ip) ?
+		    ((ip->mode & MFS_S_IFMT) == MFS_S_IFCHR ? '3' : '4') : '6',
+		    NULL, 0);
+		t->special++;
+		break;
+	default:
+		t->skipped++;
+		break;
+	}
+}
+
+static void
+tar_dir(struct tar *t, const struct mfs_inode *dp, const char *src,
+    const char *name)
+{
+	struct mfs_inode ino;
+	struct dirlist dl;
+	size_t i;
+	char *m, *s;
+
+	if (read_dir(t->c, dp, src, &dl) == -1)
+		return;
+	for (i = 0; i < dl.n && !t->failed; i++) {
+		if ((s = join(t->c, src, dl.ent[i].name)) == NULL)
+			break;
+		if (!safe_name(dl.ent[i].name)) {
+			problem(t->c, "%s:%s: unsafe name, not archived",
+			    t->c->image, s);
+		} else if ((m = join(t->c, name, dl.ent[i].name)) != NULL) {
+			if (entry_inode(t->c, &dl.ent[i], s, &ino) == 0)
+				tar_entry(t, &ino, s, m);
+			free(m);
+		}
+		free(s);
+	}
+	free(dl.ent);
+}
+
+static int
+cmd_tar(int argc, char **argv)
+{
+	static const char zero[2 * TAR_BLOCK];
+	struct mfs_inode ino;
+	struct tar t;
+	struct cmd c;
+	const char *path;
+	size_t i;
+
+	if (argc < 2 || argc > 3)
+		usage();
+	path = argc == 3 ? argv[2] : "/";
+	if (isatty(STDOUT_FILENO))
+		errx(1, "standard output is a terminal; redirect it");
+
+	(void)memset(&t, 0, sizeof(t));
+	open_image(&c, argv[1]);
+	t.c = &c;
+	if (lookup(&c, path, &ino) == 0) {
+		if (!mfs_is_dir(&ino))
+			problem(&c, "%s:%s: %s", c.image, path,
+			    strerror(ENOTDIR));
+		else if (walk_enter(&c, &t.w, ino.num, path) == 0)
+			tar_dir(&t, &ino, path, "");
+	}
+	tar_write(&t, zero, sizeof(zero));
+	tar_pad(&t, TAR_RECORD);
+	if (fflush(stdout) == EOF && !t.failed)
+		problem(&c, "standard output: %s", strerror(errno));
+	mfs_close(&c.fs);
+	for (i = 0; i < t.maxlinks; i++)
+		free(t.links[i].name);
+	free(t.links);
+	(void)fprintf(stderr, "%lu files, %lu directories, %lu symbolic links,"
+	    " %lu hard links, %lu devices and pipes; %lu sockets skipped\n",
+	    t.files, t.dirs, t.symlinks, t.hardlinks, t.special, t.skipped);
+	return c.status;
+}
+
 int
 main(int argc, char **argv)
 {
@@ -714,7 +1124,8 @@ main(int argc, char **argv)
 		{ "info", cmd_info },
 		{ "ls", cmd_ls },
 		{ "cat", cmd_cat },
-		{ "extract", cmd_extract }
+		{ "extract", cmd_extract },
+		{ "tar", cmd_tar }
 	};
 	size_t i;
 
