@@ -12,7 +12,7 @@
  * blanks and '#' starts a comment:
  *
  *	fs   [version=1|2|3] order=le|be [namelen=14|30] [block=N]
- *	     blocks=N inodes=N [logzone=N] [spare=N] [gap=N]
+ *	     blocks=N inodes=N [logzone=N] [spare=N] [gap=N] [skip=N]
  *	dir  PATH MODE UID GID MTIME
  *	file PATH MODE UID GID MTIME SIZE SEED [HOLESTART:HOLELEN ...]
  *	link PATH TARGET UID GID MTIME
@@ -25,7 +25,8 @@
  * always 60 characters.  block is the block size of V3 (default 1024); V1
  * and V2 always use 1024.  blocks counts blocks of that size.  spare gives
  * each bit map N more blocks than it needs, and gap leaves N zones between
- * the inode table and the first data zone, as other mkfs may.
+ * the inode table and the first data zone, as other mkfs may.  skip
+ * leaves the first N data zones free, so that the files lie further in.
  *
  * MODE is octal permission bits.  File contents are a pattern made from
  * SEED; bytes inside a hole are zero, and zones that lie wholly inside a
@@ -140,6 +141,7 @@ struct image {
 	uint32_t	logzone;
 	uint32_t	spare;		/* map blocks beyond the need */
 	uint32_t	gap;		/* zones before the first data zone */
+	uint32_t	skip;		/* data zones left free at the start */
 	uint32_t	namelen;
 	uint32_t	nblocks;
 	uint32_t	next_ino;
@@ -524,6 +526,8 @@ fs_option(struct parser *ps, char *s)
 		img->spare = number(ps, s + 6, 10);
 	else if (strncmp(s, "gap=", 4) == 0)
 		img->gap = number(ps, s + 4, 10);
+	else if (strncmp(s, "skip=", 5) == 0)
+		img->skip = number(ps, s + 5, 10);
 	else
 		syntax(ps, "unknown fs option", s);
 }
@@ -580,7 +584,7 @@ lay_out_blocks(const struct parser *ps, struct image *img)
 	    ((uint64_t)1 << img->logzone) - 1) >> img->logzone) + img->gap;
 	if (img->firstdatazone >= img->nzones)
 		syntax(ps, "no room for data", "");
-	img->next_zone = img->firstdatazone;
+	img->next_zone = img->firstdatazone + img->skip;
 	if ((img->data = calloc(img->nblocks, img->bsize)) == NULL)
 		err(1, NULL);
 }
@@ -928,7 +932,8 @@ write_maps(const struct image *img)
 			set_bit(img, map, bit);
 	map += (size_t)img->imap_blocks * img->bsize;
 	for (bit = 0; bit < img->zmap_blocks * bits; bit++)
-		if (bit <= img->next_zone - img->firstdatazone ||
+		if (bit == 0 || (bit > img->skip &&
+		    bit <= img->next_zone - img->firstdatazone) ||
 		    bit > img->nzones - img->firstdatazone)
 			set_bit(img, map, bit);
 }

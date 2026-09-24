@@ -865,3 +865,165 @@ out:
 	free(buf);
 	return r;
 }
+
+/*
+ * Shrinking.
+ */
+
+/* A zone number past the new end, and where it is kept. */
+struct tail_ref {
+	struct mfs_zref	ref;		/* block 0: slot of inode ino */
+	uint32_t	ino;
+	uint32_t	zone;
+};
+
+struct shrink {
+	struct mfs	*fs;
+	struct tail_ref	*refs;
+	size_t		n;
+	size_t		max;
+	uint32_t	newz;
+	uint32_t	ino;
+};
+
+static int
+note_tail(uint32_t zone, int level, const struct mfs_zref *ref, void *arg)
+{
+	struct shrink *s;
+	struct tail_ref *t;
+
+	(void)level;
+	s = arg;
+	if (zone < s->fs->firstdatazone || zone >= s->fs->nzones)
+		return MFS_WALK_SKIP;
+	if (zone < s->newz)
+		return 0;
+	if (s->n == s->max) {
+		s->max = s->max == 0 ? 64 : s->max * 2;
+		if ((t = realloc(s->refs, s->max * sizeof(*t))) == NULL)
+			return -ENOMEM;
+		s->refs = t;
+	}
+	t = &s->refs[s->n++];
+	t->ref = *ref;
+	t->ino = s->ino;
+	t->zone = zone;
+	return 0;
+}
+
+int
+mfs_shrink(struct mfs *fs, uint32_t nblocks)
+{
+	struct mfs_inode ip;
+	struct shrink s;
+	struct mfs_zref at;
+	unsigned char *buf, *zmap;
+	uint32_t *newloc, bit, cursor, i, ino, n, ntail, z, zb;
+	int pad, r;
+
+	if (!fs->writable)
+		return -EROFS;
+	if (fs->tracks.size != 0)
+		return -EINVAL;
+	(void)memset(&s, 0, sizeof(s));
+	s.fs = fs;
+	s.newz = nblocks >> fs->log_zone_size;
+	if (s.newz >= fs->nzones)
+		return -EINVAL;
+	if (s.newz <= fs->firstdatazone)
+		return -ENOSPC;
+	zb = 1U << fs->log_zone_size;
+	ntail = fs->nzones - s.newz;
+	zmap = NULL;
+	buf = malloc(fs->block_size);
+	newloc = calloc(ntail, sizeof(*newloc));
+	if (buf == NULL || newloc == NULL) {
+		r = -ENOMEM;
+		goto out;
+	}
+
+	/* Read: every zone number past the new end, and the zone map. */
+	for (ino = 1; ino <= fs->ninodes; ino++) {
+		if ((r = mfs_get_inode(fs, ino, &ip)) < 0)
+			goto out;
+		if (ip.mode == 0 || mfs_is_dev(&ip))
+			continue;
+		s.ino = ino;
+		if ((r = mfs_walk_zones(fs, &ip, note_tail, &s)) < 0)
+			goto out;
+	}
+	if ((r = mfs_load_map(fs, MFS_ZMAP, &zmap)) < 0)
+		goto out;
+
+	/* Give each of those zones a free one below the new end. */
+	n = s.newz - fs->firstdatazone;
+	cursor = 1;
+	for (i = 0; i < s.n; i++) {
+		z = s.refs[i].zone - s.newz;
+		if (newloc[z] != 0)
+			continue;
+		while (cursor <= n && mfs_map_bit(fs, zmap, cursor))
+			cursor++;
+		if (cursor > n) {
+			r = -ENOSPC;
+			goto out;
+		}
+		mfs_set_map_bit(fs, zmap, cursor, 1);
+		newloc[z] = fs->firstdatazone + cursor - 1;
+	}
+
+	/* Write: the zones move down, then the numbers follow them. */
+	for (z = 0; z < ntail; z++) {
+		if (newloc[z] == 0)
+			continue;
+		for (i = 0; i < zb; i++) {
+			if ((r = mfs_read_block(fs, ((s.newz + z) <<
+			    fs->log_zone_size) + i, buf)) < 0 ||
+			    (r = mfs_write_block(fs, (newloc[z] <<
+			    fs->log_zone_size) + i, buf)) < 0)
+				goto out;
+		}
+	}
+	for (i = 0; i < s.n; i++) {
+		z = newloc[s.refs[i].zone - s.newz];
+		if (s.refs[i].ref.block == 0) {
+			if ((r = mfs_get_inode(fs, s.refs[i].ino, &ip)) < 0)
+				goto out;
+			ip.zone[s.refs[i].ref.index] = z;
+			if ((r = mfs_put_inode(fs, &ip)) < 0)
+				goto out;
+			continue;
+		}
+		/* The indirect zone that lists it may have moved too. */
+		at = s.refs[i].ref;
+		bit = at.block >> fs->log_zone_size;
+		if (bit >= s.newz)
+			at.block = newloc[bit - s.newz] << fs->log_zone_size;
+		if ((r = mfs_set_zref(fs, NULL, &at, z)) < 0)
+			goto out;
+	}
+
+	/* The bits past the new end follow the old ones, or else are set. */
+	n = fs->nzones - fs->firstdatazone;
+	pad = (uint64_t)n + 1 < (uint64_t)fs->zmap_blocks *
+	    fs->block_size * 8 ? mfs_map_bit(fs, zmap, n + 1) : 1;
+	for (bit = s.newz - fs->firstdatazone + 1; bit <= n; bit++)
+		mfs_set_map_bit(fs, zmap, bit, pad);
+	if ((r = mfs_store_map(fs, MFS_ZMAP, zmap)) < 0 ||
+	    (r = grow_super(fs, s.newz, fs->zmap_blocks,
+	    fs->firstdatazone)) < 0)
+		goto out;
+	fs->nzones = s.newz;
+	fs->nblocks = s.newz << fs->log_zone_size;
+	if (ftruncate(fs->fd, (off_t)fs->nblocks * fs->block_size) == -1) {
+		r = -errno;
+		goto out;
+	}
+	fs->file_size = fs->image_size = (off_t)fs->nblocks * fs->block_size;
+out:
+	free(s.refs);
+	free(newloc);
+	free(zmap);
+	free(buf);
+	return r;
+}

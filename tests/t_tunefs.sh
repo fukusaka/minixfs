@@ -244,7 +244,56 @@ for logzone in 0 1; do
 		    "$(info_field "$T/img" "zone map blocks")" -gt "$zmap"
 	fi
 	run "$TUNEFS_MINIXFS" -s "$blocks" "$T/img"
-	check_err "$v: -s cannot shrink" "it can only grow"
+	tuned "-s $blocks back"
+	check_info "$v: -s shrinks back to the zones" "$T/img" zones \
+	    $((blocks >> logzone))
+	run "$MINIXFS" tar "$T/img"
+	check_out "$v: shrinking back keeps every file" "$T/want.tar"
+done
+done
+done
+
+# -s to shrink: with the files far in, past the new end, they move down
+# to free zones; with too little room, nothing changes.
+for format in 1/14 2/30 3/1024 3/4096; do
+for order in le be; do
+for logzone in 0 1; do
+	version=${format%/*}
+	if [ "$version" -eq 3 ]; then
+		fs="version=3 block=${format#*/}"
+	else
+		fs="version=$version namelen=${format#*/}"
+	fi
+	v="V$format/$order/$logzone"
+	blocks=8192
+	skip=5000
+	if [ "${format#*/}" -eq 4096 ]; then
+		blocks=2048
+		skip=1200
+	fi
+	skip=$((skip >> logzone))
+	sed -e "s/@FS@/$fs/" -e "s/@ORDER@/$order/" \
+	    -e "s/@BLOCKS@/$blocks/" -e "s/@LOGZONE@/$logzone/" \
+	    -e "1s/\$/ skip=$skip/" tests/tree.spec >"$T/spec"
+	mkimage "$T/spec" "$T/img"
+	run "$MINIXFS" tar "$T/img"
+	cp "$T/out" "$T/want.tar"
+	bs=$(info_field "$T/img" "block size")
+
+	cp "$T/img" "$T/before"
+	run "$TUNEFS_MINIXFS" -s 64 "$T/img"
+	check_err "$v: -s refuses a size too small for the files" \
+	    "does not fit in 64 blocks; nothing changed"
+	check_same_file "$v: a size too small changes nothing" \
+	    "$T/before" "$T/img"
+
+	size=$((blocks - (skip << logzone) + 64))
+	run "$TUNEFS_MINIXFS" -s "$size" "$T/img"
+	tuned "-s $size, moving the files down"
+	check_true "$v: shrinking cuts the image" \
+	    test "$(($(wc -c <"$T/img")))" -eq $((size * bs))
+	run "$MINIXFS" tar "$T/img"
+	check_out "$v: the files that moved down are whole" "$T/want.tar"
 done
 done
 done
@@ -254,7 +303,8 @@ rm -f "$T/img"
 run "$TUNEFS_MINIXFS" -s 70000 "$T/img"
 check_err "V1 cannot count 70000 zones" "too many zones for V1"
 run "$TUNEFS_MINIXFS" -T 4608:2:0 -s 2000 "$T/img"
-check_err "an image of one side of a disk cannot grow" "cannot grow"
+check_err "an image of one side of a disk cannot change size" \
+    "cannot change size"
 
 # -B, -l and -s refuse a file system that is not marked clean, since it
 # may be mounted, unless -f is given; fsck_minixfs -y marks it clean.

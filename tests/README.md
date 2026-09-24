@@ -88,8 +88,10 @@ top of `tests/mkimage.c`).  The scripts:
   lists all names too long for 14 characters and changes nothing,
   changes nothing when the directories would not fit, and refuses V3;
   `-s` keeps every file of the test tree through a growth the zone map
-  has room for and one that moves the inode table and the zones, and
-  refuses to shrink, to outgrow V1 and to grow one side of a disk;
+  has room for, one that moves the inode table and the zones, and a
+  shrink back; it shrinks an image whose files lie past the new end
+  (mkimage `skip=`) by moving them down, changes nothing for a size too
+  small, and refuses to outgrow V1 and to resize one side of a disk;
   `-B`, `-l` and `-s` refuse a file system not marked clean without
   `-f`, and work after `fsck_minixfs -y`; bad values are usage errors.
 - `t_utillinux.sh` - where util-linux is installed: `fsck.minix` accepts

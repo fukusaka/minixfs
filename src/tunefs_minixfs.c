@@ -25,11 +25,13 @@
  *		Names too long for 14 are listed, and nothing is changed.
  *	-m	the maximum file size in the super block: what MINIX works
  *		out, what Linux and newfs_minixfs write, or a number
- *	-s	grow the file system and the image file to so many blocks;
- *		if the zone map needs more blocks, the inode table and
- *		the data zones move up to make room
+ *	-s	grow or shrink the file system and the image file to so
+ *		many blocks.  To grow, if the zone map needs more blocks,
+ *		the inode table and the data zones move up to make room;
+ *		to shrink, the zones in use past the new end move to free
+ *		zones before it, and the zone map keeps its blocks
  *	-T	an image that holds one side of a disk, as for minixfs(1);
- *		it cannot grow
+ *		it cannot change size
  *
  * Each change is printed as the old and the new value.  The byte order
  * is changed first, then the name length, then the size.  Changes that
@@ -367,31 +369,33 @@ clean_value(const struct mfs *fs, uint16_t state)
 	return mfs_is_clean(&t) ? "clean" : "dirty";
 }
 
-/* -s: grow the file system, or say why not. */
+/* -s: grow or shrink the file system, or say why not. */
 static void
-grow(struct mfs *fs, const struct options *o, int write)
+resize(struct mfs *fs, const struct options *o, int write)
 {
 	uint32_t newz;
-	int r;
+	int r, shrink;
 
 	newz = o->nblocks >> fs->log_zone_size;
 	if (o->tracks.size != 0)
-		errx(1, "%s: an image of one side of a disk cannot grow",
-		    o->image);
-	if (newz < fs->nzones)
-		errx(1, "%s: %" PRIu32 " blocks are fewer than the %" PRIu32
-		    " it has; it can only grow", o->image, o->nblocks,
-		    fs->nblocks);
+		errx(1, "%s: an image of one side of a disk cannot change "
+		    "size", o->image);
+	shrink = newz < fs->nzones;
 	(void)printf("blocks: %" PRIu32 " -> %" PRIu32 "\n", fs->nblocks,
 	    newz << fs->log_zone_size);
 	if (!write)
 		return;
-	switch (r = mfs_grow(fs, o->nblocks)) {
+	r = shrink ? mfs_shrink(fs, o->nblocks) : mfs_grow(fs, o->nblocks);
+	switch (r) {
 	case 0:
 		return;
 	case -EFBIG:
 		errx(1, "%s: too many zones for V%d", o->image, fs->version);
 	case -ENOSPC:
+		if (shrink)
+			errx(1, "%s: what is in use does not fit in %" PRIu32
+			    " blocks; nothing changed", o->image,
+			    o->nblocks);
 		errx(1, "%s: the zone map needs more blocks, and the zones "
 		    "that move up to make room need a larger size", o->image);
 	default:
@@ -442,7 +446,7 @@ main(int argc, char **argv)
 			errx(1, "%s: name length: %s", o.image, strerror(-r));
 	}
 	if (o.nblocks != 0)
-		grow(&fs, &o, write);
+		resize(&fs, &o, write);
 	for (i = 0; i < 2; i++) {
 		if ((r = load_end(&fs, i == 0 ? MFS_IMAP : MFS_ZMAP,
 		    &maps[i])) < 0)

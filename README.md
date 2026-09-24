@@ -185,11 +185,15 @@ gives a V1 or V2 file system names of 14 or 30 characters: the magic
 number changes and every directory is written anew with entries of the
 new size.  Before anything is written, every name is checked, and names
 too long for 14 characters are all listed and nothing changes; so it
-does when the larger directories would not fit.  `-s` grows the file
-system, and the image file with it, to so many blocks; if the zone map
-has no room for the new zones, it gets more blocks, and the inode table
-and every data zone in use move up to make room, with every zone number
-changed to match.  It cannot shrink.  `-c` marks the file
+does when the larger directories would not fit.  `-s` grows or shrinks
+the file system, and the image file with it, to so many blocks.  To
+grow, if the zone map has no room for the new zones, it gets more
+blocks, and the inode table and every data zone in use move up to make
+room, with every zone number changed to match.  To shrink, the zones in
+use past the new end move to free zones before it, with the zone
+numbers that name them; the zone map keeps its blocks, which
+`fsck_minixfs -w` notes.  What is in use has to fit, or nothing
+changes.  `-c` marks the file
 system clean or dirty, where Linux and MINIX 3 keep the mark.  `-e`
 sets the bits of the maps past the last inode or zone to 0, as the mkfs
 of MINIX leaves them, or 1, as that of Linux.  `-m` sets the maximum

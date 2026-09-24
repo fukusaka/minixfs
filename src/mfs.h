@@ -437,6 +437,17 @@ int	mfs_change_namelen(struct mfs *, uint32_t);
 int	mfs_grow(struct mfs *, uint32_t);
 
 /*
+ * Shrink the file system to nblocks blocks, cut down to whole zones, and
+ * the image file with it.  The zones in use past the new end move to
+ * free zones before it, and the zone numbers in inodes and indirect
+ * zones follow them; the zone map keeps its blocks.  Returns 0; -EINVAL
+ * to grow or with -T tracks; -ENOSPC if what is in use does not fit; or
+ * another negative errno value, after which nothing has been written if
+ * it came from reading.
+ */
+int	mfs_shrink(struct mfs *, uint32_t);
+
+/*
  * Making file systems (mfs_format.c).
  */
 
