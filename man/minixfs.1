@@ -8,29 +8,29 @@
 .Nd inspect and extract MINIX file system images
 .Sh SYNOPSIS
 .Nm
-.Op Fl T Ar size : Ns Ar heads : Ns Ar side
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
 .Cm info
 .Ar image
 .Nm
-.Op Fl T Ar size : Ns Ar heads : Ns Ar side
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
 .Cm ls
 .Op Fl lR
 .Ar image
 .Op Ar path
 .Nm
-.Op Fl T Ar size : Ns Ar heads : Ns Ar side
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
 .Cm cat
 .Ar image
 .Ar path
 .Nm
-.Op Fl T Ar size : Ns Ar heads : Ns Ar side
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
 .Cm extract
 .Op Fl dv
 .Ar image
 .Ar dest
 .Op Ar path
 .Nm
-.Op Fl T Ar size : Ns Ar heads : Ns Ar side
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
 .Cm tar
 .Ar image
 .Op Ar path
@@ -120,7 +120,7 @@ Sockets cannot be stored and are counted as left out.
 .El
 .Sh OPTIONS
 .Bl -tag -width Ds
-.It Fl T Ar size : Ns Ar heads : Ns Ar side
+.It Fl M Ar size : Ns Ar heads : Ns Ar side
 Read an image that holds the file system in the tracks of one side of a
 disk only: tracks of
 .Ar size
@@ -131,7 +131,7 @@ of them to a cylinder, of which side
 from 0, holds the file system.
 A single-sided 360K disk read as a double-sided 720K one, as are some
 Atari MINIX 1.5 disks, is
-.Fl T Ar 4608:2:0 :
+.Fl M Ar 4608:2:0 :
 every other track of the image is empty.
 The super block of such an image is still in place, so
 .Cm info
@@ -157,7 +157,7 @@ Move the whole tree, devices and hard links included, onto a new image:
 .Pp
 Read an Atari disk that was read as double-sided:
 .Bd -literal -offset indent
-$ minixfs -T 4608:2:0 extract disk02 out
+$ minixfs -M 4608:2:0 extract disk02 out
 .Ed
 .Sh SEE ALSO
 .Xr tar 1 ,

@@ -10,7 +10,7 @@
 .Nm
 .Op Fl lwy
 .Op Fl e Cm 0 | 1
-.Op Fl T Ar size : Ns Ar heads : Ns Ar side
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
 .Ar image
 .Sh DESCRIPTION
 .Nm
@@ -107,7 +107,7 @@ Note, as warnings that are not problems, what the fsck of MINIX 3 warns
 about: map blocks beyond what the maps need, a first data zone later
 than the inode table allows, a maximum file size other than the one
 MINIX works out, and zones of more than 256 blocks.
-.It Fl T Ar size : Ns Ar heads : Ns Ar side
+.It Fl M Ar size : Ns Ar heads : Ns Ar side
 Check, and repair in place, an image that holds the file system in the
 tracks of one side of a disk only, as for
 .Xr minixfs 1 ;

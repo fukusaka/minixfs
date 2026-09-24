@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: BSD-2-Clause
 # Copyright (c) 2026 Shoichi Fukusaka
 #
-# -T SIZE:HEADS:SIDE: an image that holds a file system in the tracks of
+# -M SIZE:HEADS:SIDE: an image that holds a file system in the tracks of
 # one side only, as when a single-sided disk is read as double-sided,
 # reads as the file system itself, and fsck_minixfs -y repairs it in
 # place without touching the other side.
@@ -75,9 +75,9 @@ check_true "the spread image is twice the size" \
     test "$(($(wc -c <"$T/two")))" -eq $((2 * track * tracks))
 
 run "$FSCK_MINIXFS" "$T/two"
-check_status "without -T the spread image is damaged" 1
+check_status "without -M the spread image is damaged" 1
 
-# info tells what is odd about the spread image, and nothing with -T.
+# info tells what is odd about the spread image, and nothing with -M.
 size=$((track * tracks))
 check_info "info gives the size of the image" "$T/two" "image size" \
     $((2 * size))
@@ -87,14 +87,14 @@ check_info "info counts the tracks of 0xe5" "$T/two" "fill sectors" \
     "$size bytes, 50% of the image, in $tracks runs"
 check_info "info gives the commonest length of them" "$T/two" \
     "commonest fill run" "$track bytes, $tracks times"
-run "$MINIXFS" -T "$track:2:0" info "$T/two"
-check_out_has "with -T the file system fills the image" \
+run "$MINIXFS" -M "$track:2:0" info "$T/two"
+check_out_has "with -M the file system fills the image" \
     "^file system size: $size\$"
-check_out_has "with -T there is no fill" \
+check_out_has "with -M there is no fill" \
     "^fill sectors: 0 bytes, 0% of the image, in 0 runs\$"
 
 for side in 0 1; do
-	T_OPT="$track:2:$side"
+	M_OPT="$track:2:$side"
 	spread "$T/img" "$T/two" "$side"
 
 	for cmd in info "ls -lR"; do
@@ -103,54 +103,54 @@ for side in 0 1; do
 		run "$MINIXFS" $cmd "$T/img"
 		cp "$T/out" "$T/want"
 		# shellcheck disable=SC2086
-		run "$MINIXFS" -T "$T_OPT" $cmd "$T/two"
-		check_out "side $side: $cmd with -T is as without tracks" \
+		run "$MINIXFS" -M "$M_OPT" $cmd "$T/two"
+		check_out "side $side: $cmd with -M is as without tracks" \
 		    "$T/want"
 	done
 
-	run "$MINIXFS" -T "$T_OPT" cat "$T/two" /big
-	check_out "side $side: cat with -T reads across tracks" "$T/exp/big"
+	run "$MINIXFS" -M "$M_OPT" cat "$T/two" /big
+	check_out "side $side: cat with -M reads across tracks" "$T/exp/big"
 
 	rm -rf "$T/x"
-	run "$MINIXFS" -T "$T_OPT" extract "$T/two" "$T/x"
-	check_status "side $side: extract with -T succeeds" 0
+	run "$MINIXFS" -M "$M_OPT" extract "$T/two" "$T/x"
+	check_status "side $side: extract with -M succeeds" 0
 	mkdir -p "$T/exp/dev"
-	check_same_tree "side $side: extract with -T gives the tree" \
+	check_same_tree "side $side: extract with -M gives the tree" \
 	    "$T/exp" "$T/x"
 
 	run "$MINIXFS" tar "$T/img"
 	cp "$T/out" "$T/want"
-	run "$MINIXFS" -T "$T_OPT" tar "$T/two"
-	check_out "side $side: tar with -T is that of the file system" \
+	run "$MINIXFS" -M "$M_OPT" tar "$T/two"
+	check_out "side $side: tar with -M is that of the file system" \
 	    "$T/want"
 
-	run "$FSCK_MINIXFS" -T "$T_OPT" "$T/two"
-	check_status "side $side: fsck with -T finds nothing" 0
+	run "$FSCK_MINIXFS" -M "$M_OPT" "$T/two"
+	check_status "side $side: fsck with -M finds nothing" 0
 done
 
-# fsck -y -T repairs the tracks of the file system as fsck -y repairs the
+# fsck -y -M repairs the tracks of the file system as fsck -y repairs the
 # file system itself, and leaves the other side as it was.
 set_map_bit "$T/img" imap 20 1
 set_inode "$T/img" 4 nlinks 5
 spread "$T/img" "$T/two" 0
-run "$FSCK_MINIXFS" -T "$track:2:0" "$T/two"
-check_found "fsck -T finds the damage" "inode 20 is free but marked"
-run "$FSCK_MINIXFS" -y -T "$track:2:0" "$T/two"
-check_status "fsck -y -T repairs it" 0
+run "$FSCK_MINIXFS" -M "$track:2:0" "$T/two"
+check_found "fsck -M finds the damage" "inode 20 is free but marked"
+run "$FSCK_MINIXFS" -y -M "$track:2:0" "$T/two"
+check_status "fsck -y -M repairs it" 0
 run "$FSCK_MINIXFS" -y "$T/img"
 check_status "fsck -y repairs the file system itself" 0
 gather "$T/two" "$T/one"
-check_same_file "the repair with -T is the repair of the file system" \
+check_same_file "the repair with -M is the repair of the file system" \
     "$T/img" "$T/one"
 fill $((track * tracks)) >"$T/want"
-check_same_file "the repair with -T leaves the other side alone" \
+check_same_file "the repair with -M leaves the other side alone" \
     "$T/want" "$T/one.other"
 
 for bad in 0:2:0 4608:2:2 4608:2 4608:x:0 -1:2:0; do
-	run "$MINIXFS" -T "$bad" info "$T/two"
-	check_status "minixfs -T $bad is a usage error" 2
-	run "$FSCK_MINIXFS" -T "$bad" "$T/two"
-	check_status "fsck_minixfs -T $bad is a usage error" 2
+	run "$MINIXFS" -M "$bad" info "$T/two"
+	check_status "minixfs -M $bad is a usage error" 2
+	run "$FSCK_MINIXFS" -M "$bad" "$T/two"
+	check_status "fsck_minixfs -M $bad is a usage error" 2
 done
 
 finish

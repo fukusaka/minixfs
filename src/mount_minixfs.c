@@ -4,9 +4,9 @@
  *
  * mount_minixfs - mount a MINIX file system image, read-only, with FUSE.
  *
- *	mount_minixfs [-T SIZE:HEADS:SIDE] [FUSE options] IMAGE MOUNTPOINT
+ *	mount_minixfs [-M SIZE:HEADS:SIDE] [FUSE options] IMAGE MOUNTPOINT
  *
- * -T reads an image that holds the file system in the tracks of one side
+ * -M reads an image that holds the file system in the tracks of one side
  * only, as minixfs(1) does.
  *
  * The file system is served through the high-level FUSE API, which
@@ -274,13 +274,13 @@ static void
 usage(void)
 {
 	(void)fprintf(stderr,
-	    "usage: mount_minixfs [-T SIZE:HEADS:SIDE] [FUSE options] IMAGE "
+	    "usage: mount_minixfs [-M SIZE:HEADS:SIDE] [FUSE options] IMAGE "
 	    "MOUNTPOINT\n");
 	exit(2);
 }
 
 /*
- * Take IMAGE, the first argument that is not an option, and -T out of
+ * Take IMAGE, the first argument that is not an option, and -M out of
  * argv, and build the arguments for FUSE in fargv: the rest, with a
  * read-only, single-threaded mount added.  FUSE options that take a value
  * ("-o x") are passed on as they are.
@@ -301,7 +301,7 @@ split_args(int argc, char **argv, char **fargv, int *fargc,
 	for (i = 1; i < argc; i++) {
 		if (n >= MAX_ARGS - 1)
 			usage();
-		if (strcmp(argv[i], "-T") == 0 && i + 1 < argc) {
+		if (strcmp(argv[i], "-M") == 0 && i + 1 < argc) {
 			if (mfs_parse_tracks(argv[++i], tracks) < 0)
 				usage();
 		} else if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {

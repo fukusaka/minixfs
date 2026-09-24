@@ -14,29 +14,29 @@
 .Nd MINIX ファイルシステムのイメージを調べ、中身を取り出す
 .Sh SYNOPSIS
 .Nm
-.Op Fl T Ar size : Ns Ar heads : Ns Ar side
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
 .Cm info
 .Ar image
 .Nm
-.Op Fl T Ar size : Ns Ar heads : Ns Ar side
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
 .Cm ls
 .Op Fl lR
 .Ar image
 .Op Ar path
 .Nm
-.Op Fl T Ar size : Ns Ar heads : Ns Ar side
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
 .Cm cat
 .Ar image
 .Ar path
 .Nm
-.Op Fl T Ar size : Ns Ar heads : Ns Ar side
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
 .Cm extract
 .Op Fl dv
 .Ar image
 .Ar dest
 .Op Ar path
 .Nm
-.Op Fl T Ar size : Ns Ar heads : Ns Ar side
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
 .Cm tar
 .Ar image
 .Op Ar path
@@ -124,7 +124,7 @@ ustar に収まらない長い名前やリンク先は、\:pax の拡張ヘッ�
 .El
 .Sh OPTIONS
 .Bl -tag -width Ds
-.It Fl T Ar size : Ns Ar heads : Ns Ar side
+.It Fl M Ar size : Ns Ar heads : Ns Ar side
 ディスクの片面の\:トラックだけに\:ファイルシステムが\:ある\:イメージを\:読みます。
 トラックは
 .Ar size
@@ -134,7 +134,7 @@ ustar に収まらない長い名前やリンク先は、\:pax の拡張ヘッ�
 .Ar side
 （0 から数える）に\:ファイルシステムが\:あります。
 片面 360K のディスクを両面 720K として読んだもの、\:たとえば Atari MINIX 1.5 のディスクの一部は
-.Fl T Ar 4608:2:0
+.Fl M Ar 4608:2:0
 です。
 イメージのトラックは 1 つおきに空です。
 こうしたイメージでも superblock は正しい位置にあるので、\:
@@ -162,7 +162,7 @@ $ minixfs cat root.img /etc/passwd > passwd
 .Pp
 両面として読み取った Atari のディスクを読みます。
 .Bd -literal -offset indent
-$ minixfs -T 4608:2:0 extract disk02 out
+$ minixfs -M 4608:2:0 extract disk02 out
 .Ed
 .Sh SEE ALSO
 .Xr tar 1 ,

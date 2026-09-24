@@ -14,7 +14,7 @@
 .Nd MINIX ファイルシステムのイメージを FUSE でマウントする
 .Sh SYNOPSIS
 .Nm
-.Op Fl T Ar size : Ns Ar heads : Ns Ar side
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
 .Op Ar FUSE options
 .Ar image
 .Ar mountpoint
@@ -52,7 +52,7 @@ inode 番号、\:モード、\:リンク数、\:所有者、\:時刻、\:デバ�
 .Pp
 オプションは次のとおりです。
 .Bl -tag -width Ds
-.It Fl T Ar size : Ns Ar heads : Ns Ar side
+.It Fl M Ar size : Ns Ar heads : Ns Ar side
 ディスクの片面のトラックだけに\:ファイルシステムが\:あるイメージを\:読みます。
 .Xr minixfs 1
 と同じです。

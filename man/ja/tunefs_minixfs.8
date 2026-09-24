@@ -20,8 +20,8 @@
 .Op Fl e Cm 0 | 1
 .Op Fl l Cm 14 | 30
 .Op Fl m Cm minix | linux | Ar bytes
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
 .Op Fl s Ar blocks
-.Op Fl T Ar size : Ns Ar heads : Ns Ar side
 .Ar image
 .Sh DESCRIPTION
 .Nm
@@ -85,7 +85,7 @@ superblock の最大ファイルサイズを変えます。
 が書く値、\:
 .Ar bytes
 は 1 から 2147483647 までの数値です。
-.It Fl T Ar size : Ns Ar heads : Ns Ar side
+.It Fl M Ar size : Ns Ar heads : Ns Ar side
 ディスクの片面のトラックだけに\:ファイルシステムが\:あるイメージを\:、\:
 .Xr minixfs 1
 と同じように変更します。

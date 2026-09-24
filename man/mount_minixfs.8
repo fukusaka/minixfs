@@ -8,7 +8,7 @@
 .Nd mount a MINIX file system image with FUSE
 .Sh SYNOPSIS
 .Nm
-.Op Fl T Ar size : Ns Ar heads : Ns Ar side
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
 .Op Ar FUSE options
 .Ar image
 .Ar mountpoint
@@ -43,7 +43,7 @@ are passed on to FUSE.
 .Pp
 The options are:
 .Bl -tag -width Ds
-.It Fl T Ar size : Ns Ar heads : Ns Ar side
+.It Fl M Ar size : Ns Ar heads : Ns Ar side
 Read an image that holds the file system in the tracks of one side of a
 disk only, as for
 .Xr minixfs 1 .

@@ -4,13 +4,13 @@
  *
  * minixfs - inspect and extract MINIX file system images.
  *
- *	minixfs [-T SIZE:HEADS:SIDE] info IMAGE
- *	minixfs [-T ...] ls [-lR] IMAGE [PATH]
- *	minixfs [-T ...] cat IMAGE PATH
- *	minixfs [-T ...] extract [-dv] IMAGE DEST [PATH]
- *	minixfs [-T ...] tar IMAGE [PATH] > ARCHIVE
+ *	minixfs [-M SIZE:HEADS:SIDE] info IMAGE
+ *	minixfs [-M ...] ls [-lR] IMAGE [PATH]
+ *	minixfs [-M ...] cat IMAGE PATH
+ *	minixfs [-M ...] extract [-dv] IMAGE DEST [PATH]
+ *	minixfs [-M ...] tar IMAGE [PATH] > ARCHIVE
  *
- * -T reads an image that holds the file system in the tracks of one side
+ * -M reads an image that holds the file system in the tracks of one side
  * only, such as a single-sided disk read as double-sided: tracks of SIZE
  * bytes, HEADS to a cylinder, of which side SIDE (from 0) is used.
  *
@@ -45,7 +45,7 @@
 #define MAX_DEPTH	256		/* deepest directory entered */
 #define COPY_SIZE	65536		/* bytes copied at a time */
 
-/* How the image file holds the file system: -T. */
+/* How the image file holds the file system: -M. */
 static struct mfs_tracks tracks;
 
 /* One command on one image. */
@@ -75,11 +75,11 @@ static void
 usage(void)
 {
 	(void)fprintf(stderr,
-	    "usage: minixfs [-T SIZE:HEADS:SIDE] info IMAGE\n"
-	    "       minixfs [-T ...] ls [-lR] IMAGE [PATH]\n"
-	    "       minixfs [-T ...] cat IMAGE PATH\n"
-	    "       minixfs [-T ...] extract [-dv] IMAGE DEST [PATH]\n"
-	    "       minixfs [-T ...] tar IMAGE [PATH] > ARCHIVE\n");
+	    "usage: minixfs [-M SIZE:HEADS:SIDE] info IMAGE\n"
+	    "       minixfs [-M ...] ls [-lR] IMAGE [PATH]\n"
+	    "       minixfs [-M ...] cat IMAGE PATH\n"
+	    "       minixfs [-M ...] extract [-dv] IMAGE DEST [PATH]\n"
+	    "       minixfs [-M ...] tar IMAGE [PATH] > ARCHIVE\n");
 	exit(2);
 }
 
@@ -1355,8 +1355,8 @@ main(int argc, char **argv)
 	};
 	size_t i;
 
-	/* -T comes before the command, whose options getopt() reads. */
-	if (argc > 2 && strcmp(argv[1], "-T") == 0) {
+	/* -M comes before the command, whose options getopt() reads. */
+	if (argc > 2 && strcmp(argv[1], "-M") == 0) {
 		if (mfs_parse_tracks(argv[2], &tracks) < 0)
 			usage();
 		argc -= 2;

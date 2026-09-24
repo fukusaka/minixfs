@@ -5,8 +5,8 @@
  * tunefs_minixfs - change the settings of a MINIX file system.
  *
  *	tunefs_minixfs [-fN] [-B le|be] [-c clean|dirty] [-e 0|1]
- *	    [-l 14|30] [-m minix|linux|bytes] [-s blocks]
- *	    [-T SIZE:HEADS:SIDE] image
+ *	    [-l 14|30] [-m minix|linux|bytes]
+ *	    [-M SIZE:HEADS:SIDE] [-s blocks] image
  *
  * Without options, or with -N, the settings are printed and nothing is
  * written; -N shows what the other options would change.
@@ -32,7 +32,7 @@
  *		the inode table and the data zones move up to make room;
  *		to shrink, the zones in use past the new end move to free
  *		zones before it, and the zone map keeps its blocks
- *	-T	an image that holds one side of a disk, as for minixfs(1);
+ *	-M	an image that holds one side of a disk, as for minixfs(1);
  *		it cannot change size
  *
  * Each change is printed as the old and the new value.  The byte order
@@ -61,7 +61,7 @@
 
 /* What the command line asks for. */
 struct options {
-	struct mfs_tracks tracks;	/* -T */
+	struct mfs_tracks tracks;	/* -M */
 	const char	*image;
 	const char	*max;		/* -m, or NULL */
 	int		order;		/* -B: an mfs_order, or -1 as is */
@@ -78,8 +78,8 @@ usage(void)
 {
 	(void)fprintf(stderr,
 	    "usage: tunefs_minixfs [-fN] [-B le|be] [-c clean|dirty] [-e 0|1]\n"
-	    "           [-l 14|30] [-m minix|linux|bytes] [-s blocks]\n"
-	    "           [-T SIZE:HEADS:SIDE] image\n");
+	    "           [-l 14|30] [-m minix|linux|bytes]\n"
+	    "           [-M SIZE:HEADS:SIDE] [-s blocks] image\n");
 	exit(2);
 }
 
@@ -107,7 +107,7 @@ parse(int argc, char **argv, struct options *o)
 	o->clean = -1;
 	o->end = -1;
 	o->order = -1;
-	while ((ch = getopt(argc, argv, "B:c:e:fl:m:Ns:T:")) != -1) {
+	while ((ch = getopt(argc, argv, "B:c:e:fl:m:M:Ns:")) != -1) {
 		switch (ch) {
 		case 'B':
 			if (strcmp(optarg, "le") == 0)
@@ -147,15 +147,15 @@ parse(int argc, char **argv, struct options *o)
 		case 'm':
 			o->max = optarg;
 			break;
+		case 'M':
+			if (mfs_parse_tracks(optarg, &o->tracks) < 0)
+				usage();
+			break;
 		case 'N':
 			o->dry_run = 1;
 			break;
 		case 's':
 			o->nblocks = blocks(optarg);
-			break;
-		case 'T':
-			if (mfs_parse_tracks(optarg, &o->tracks) < 0)
-				usage();
 			break;
 		default:
 			usage();

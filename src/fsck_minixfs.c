@@ -4,7 +4,7 @@
  *
  * fsck_minixfs - check a MINIX file system image, and repair it.
  *
- *	fsck_minixfs [-lwy] [-e 0|1] [-T SIZE:HEADS:SIDE] image
+ *	fsck_minixfs [-lwy] [-e 0|1] [-M SIZE:HEADS:SIDE] image
  *
  * The check reads the super block, walks the tree from the root, and then
  * compares what it found with the inode table and the bit maps:
@@ -58,7 +58,7 @@
  * works out, and zones of more than 256 blocks.  Such a layout works, so
  * it is not a problem.
  *
- * -T reads and repairs an image that holds the file system in the
+ * -M reads and repairs an image that holds the file system in the
  * tracks of one side only, as minixfs(1) does.
  *
  * Each problem is printed on a line of its own, with "(repaired)" or
@@ -130,7 +130,7 @@ struct opts {
 	int		lost;			/* -l */
 	int		end;			/* -e 0 or 1; -1: no check */
 	int		warn;			/* -w */
-	struct mfs_tracks tracks;		/* -T */
+	struct mfs_tracks tracks;		/* -M */
 };
 
 /* The state of one check. */
@@ -174,7 +174,7 @@ static void
 usage(void)
 {
 	(void)fprintf(stderr, "usage: fsck_minixfs [-lwy] [-e 0|1] "
-	    "[-T SIZE:HEADS:SIDE] image\n");
+	    "[-M SIZE:HEADS:SIDE] image\n");
 	exit(EXIT_USAGE);
 }
 
@@ -1422,7 +1422,7 @@ main(int argc, char **argv)
 	o.end = -1;
 	o.warn = 0;
 	(void)memset(&o.tracks, 0, sizeof(o.tracks));
-	while ((ch = getopt(argc, argv, "e:lT:wy")) != -1) {
+	while ((ch = getopt(argc, argv, "e:lM:wy")) != -1) {
 		switch (ch) {
 		case 'e':
 			if (strcmp(optarg, "0") == 0)
@@ -1435,7 +1435,7 @@ main(int argc, char **argv)
 		case 'l':
 			o.lost = 1;
 			break;
-		case 'T':
+		case 'M':
 			if (mfs_parse_tracks(optarg, &o.tracks) < 0)
 				usage();
 			break;

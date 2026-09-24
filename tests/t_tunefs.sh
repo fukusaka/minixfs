@@ -302,7 +302,7 @@ rm -f "$T/img"
 "$NEWFS_MINIXFS" -V 1 -s 1000 "$T/img"
 run "$TUNEFS_MINIXFS" -s 70000 "$T/img"
 check_err "V1 cannot count 70000 zones" "too many zones for V1"
-run "$TUNEFS_MINIXFS" -T 4608:2:0 -s 2000 "$T/img"
+run "$TUNEFS_MINIXFS" -M 4608:2:0 -s 2000 "$T/img"
 check_err "an image of one side of a disk cannot change size" \
     "cannot change size"
 
@@ -343,7 +343,7 @@ run "$TUNEFS_MINIXFS" -s 2000 "$T/img"
 check_status "-s works after fsck -y" 0
 
 for bad in "-B middle" "-c maybe" "-e 2" "-m 0" "-m 2147483648" \
-    "-m big" "-T 0:2:0" "-l 20" "-s 0" "-s x"; do
+    "-m big" "-M 0:2:0" "-l 20" "-s 0" "-s x"; do
 	# The option and its value are split on purpose.
 	# shellcheck disable=SC2086
 	run "$TUNEFS_MINIXFS" $bad "$T/img"

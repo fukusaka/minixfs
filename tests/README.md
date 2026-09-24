@@ -104,13 +104,13 @@ top of `tests/mkimage.c`).  The scripts:
   in several formats is read back by tar(1): contents, modes, owners and
   times, devices with their numbers, pipes, hard and symbolic links, a
   directory as the top, and names too long for a plain ustar header.
-- `t_tracks.sh` - `-T`: a file system spread over the tracks of either
+- `t_tracks.sh` - `-M`: a file system spread over the tracks of either
   side of a double-sided image reads with `info`, `ls`, `cat`,
   `extract`, `tar` and `fsck_minixfs` as the file system itself, and
-  `fsck_minixfs -y -T` repairs it as `-y` repairs the file system and
-  leaves the other side alone; bad `-T` values are usage errors.  `info`
+  `fsck_minixfs -y -M` repairs it as `-y` repairs the file system and
+  leaves the other side alone; bad `-M` values are usage errors.  `info`
   gives the sizes and the runs of 0xe5 of the spread image, and none
-  with `-T`.
+  with `-M`.
 - `t_vmd.sh` - Minix-vmd, as `tests/mkimage` writes it with `vmd`: the
   variant and its zone size and clean flag, names of every length up to
   60 in flex directories, entries that start a new block, `fsck` and

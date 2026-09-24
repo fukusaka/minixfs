@@ -174,7 +174,7 @@ void	mfs_close(struct mfs *);
 
 /*
  * Read len bytes of the device at byte offset off, through the tracks
- * of -T if any.  Returns 0, or -EIO past the end of the image.
+ * of -M if any.  Returns 0, or -EIO past the end of the image.
  */
 int	mfs_read_device(struct mfs *, void *, size_t, off_t);
 
@@ -441,7 +441,7 @@ int	mfs_change_namelen(struct mfs *, uint32_t);
  * the image file with it.  When the zone map has no room for the new
  * zones, it gets more blocks: the inode table and every data zone in use
  * move up, and every zone number is changed to match.  Returns 0;
- * -EINVAL to shrink or with -T tracks; -EFBIG for more zones than the
+ * -EINVAL to shrink or with -M tracks; -EFBIG for more zones than the
  * version counts; -ENOSPC if the zones that move up would not fit; or
  * another negative errno value.
  */
@@ -452,7 +452,7 @@ int	mfs_grow(struct mfs *, uint32_t);
  * the image file with it.  The zones in use past the new end move to
  * free zones before it, and the zone numbers in inodes and indirect
  * zones follow them; the zone map keeps its blocks.  Returns 0; -EINVAL
- * to grow or with -T tracks; -ENOSPC if what is in use does not fit; or
+ * to grow or with -M tracks; -ENOSPC if what is in use does not fit; or
  * another negative errno value, after which nothing has been written if
  * it came from reading.
  */

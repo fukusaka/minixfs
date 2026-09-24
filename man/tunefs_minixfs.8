@@ -14,8 +14,8 @@
 .Op Fl e Cm 0 | 1
 .Op Fl l Cm 14 | 30
 .Op Fl m Cm minix | linux | Ar bytes
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
 .Op Fl s Ar blocks
-.Op Fl T Ar size : Ns Ar heads : Ns Ar side
 .Ar image
 .Sh DESCRIPTION
 .Nm
@@ -82,7 +82,7 @@ from the zones that the double indirect zone reaches, to what Linux and
 write, or to
 .Ar bytes ,
 from 1 to 2147483647.
-.It Fl T Ar size : Ns Ar heads : Ns Ar side
+.It Fl M Ar size : Ns Ar heads : Ns Ar side
 Change an image that holds the file system in the tracks of one side of
 a disk only, as for
 .Xr minixfs 1 .
