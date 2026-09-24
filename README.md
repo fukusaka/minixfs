@@ -145,7 +145,8 @@ V3 keeps it in the flags of MINIX 3, which mounts a file system that is
 not clean read-only; `newfs_minixfs` marks new file systems clean.
 
     tunefs_minixfs [-N] [-B le|be] [-c clean|dirty] [-e 0|1]
-        [-l 14|30] [-m minix|linux|bytes] [-T SIZE:HEADS:SIDE] image
+        [-l 14|30] [-m minix|linux|bytes] [-s blocks]
+        [-T SIZE:HEADS:SIDE] image
 
 changes the settings of a file system; without options, or with `-N`,
 it prints them and writes nothing, and `-N` shows what the options
@@ -157,7 +158,11 @@ gives a V1 or V2 file system names of 14 or 30 characters: the magic
 number changes and every directory is written anew with entries of the
 new size.  Before anything is written, every name is checked, and names
 too long for 14 characters are all listed and nothing changes; so it
-does when the larger directories would not fit.  `-c` marks the file
+does when the larger directories would not fit.  `-s` grows the file
+system, and the image file with it, to so many blocks; if the zone map
+has no room for the new zones, it gets more blocks, and the inode table
+and every data zone in use move up to make room, with every zone number
+changed to match.  It cannot shrink.  `-c` marks the file
 system clean or dirty, where Linux and MINIX 3 keep the mark.  `-e`
 sets the bits of the maps past the last inode or zone to 0, as the mkfs
 of MINIX leaves them, or 1, as that of Linux.  `-m` sets the maximum

@@ -385,6 +385,17 @@ int	mfs_convert_order(struct mfs *, enum mfs_order);
 int	mfs_change_namelen(struct mfs *, uint32_t);
 
 /*
+ * Grow the file system to nblocks blocks, cut down to whole zones, and
+ * the image file with it.  When the zone map has no room for the new
+ * zones, it gets more blocks: the inode table and every data zone in use
+ * move up, and every zone number is changed to match.  Returns 0;
+ * -EINVAL to shrink or with -T tracks; -EFBIG for more zones than the
+ * version counts; -ENOSPC if the zones that move up would not fit; or
+ * another negative errno value.
+ */
+int	mfs_grow(struct mfs *, uint32_t);
+
+/*
  * Making file systems (mfs_format.c).
  */
 

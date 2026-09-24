@@ -197,8 +197,67 @@ rm -f "$T/img"
 run "$TUNEFS_MINIXFS" -l 30 "$T/img"
 check_err "V3 has no name length to change" "always 60 characters"
 
+# -s: the test tree keeps every file through a small growth, which the
+# zone map has room for, and a large one, for which the zone map needs
+# more blocks and the inode table and the zones move up.
+for format in 1/14 2/30 3/1024 3/4096; do
+for order in le be; do
+for logzone in 0 1; do
+	version=${format%/*}
+	if [ "$version" -eq 3 ]; then
+		fs="version=3 block=${format#*/}"
+	else
+		fs="version=$version namelen=${format#*/}"
+	fi
+	v="V$format/$order/$logzone"
+	blocks=$((8388608 / ${format#*/}))
+	if [ "$version" -ne 3 ]; then
+		blocks=8192
+	fi
+	sed -e "s/@FS@/$fs/" -e "s/@ORDER@/$order/" \
+	    -e "s/@BLOCKS@/$blocks/" -e "s/@LOGZONE@/$logzone/" \
+	    tests/tree.spec >"$T/spec"
+	mkimage "$T/spec" "$T/img"
+	run "$MINIXFS" tar "$T/img"
+	cp "$T/out" "$T/want.tar"
+	bs=$(info_field "$T/img" "block size")
+	zmap=$(info_field "$T/img" "zone map blocks")
+
+	cp "$T/img" "$T/before"
+	run "$TUNEFS_MINIXFS" -N -s $((blocks + 64)) "$T/img"
+	check_out_has "$v: -N -s shows the change" \
+	    "^blocks: $blocks -> $((blocks + 64))\$"
+	check_same_file "$v: -N -s writes nothing" "$T/before" "$T/img"
+
+	for size in $((blocks + 64)) $((3 * blocks)); do
+		run "$TUNEFS_MINIXFS" -s "$size" "$T/img"
+		tuned "-s $size"
+		check_true "$v: -s $size grows the image" \
+		    test "$(($(wc -c <"$T/img")))" -eq $((size * bs))
+		check_info "$v: -s $size gives the zones" "$T/img" zones \
+		    $((size >> logzone))
+		run "$MINIXFS" tar "$T/img"
+		check_out "$v: -s $size keeps every file" "$T/want.tar"
+	done
+	if [ "$version" -ne 3 ] || [ "${format#*/}" -eq 1024 ]; then
+		check_true "$v: the zone map got more blocks" test \
+		    "$(info_field "$T/img" "zone map blocks")" -gt "$zmap"
+	fi
+	run "$TUNEFS_MINIXFS" -s "$blocks" "$T/img"
+	check_err "$v: -s cannot shrink" "it can only grow"
+done
+done
+done
+
+rm -f "$T/img"
+"$NEWFS_MINIXFS" -V 1 -s 1000 "$T/img"
+run "$TUNEFS_MINIXFS" -s 70000 "$T/img"
+check_err "V1 cannot count 70000 zones" "too many zones for V1"
+run "$TUNEFS_MINIXFS" -T 4608:2:0 -s 2000 "$T/img"
+check_err "an image of one side of a disk cannot grow" "cannot grow"
+
 for bad in "-B middle" "-c maybe" "-e 2" "-m 0" "-m 2147483648" \
-    "-m big" "-T 0:2:0" "-l 20"; do
+    "-m big" "-T 0:2:0" "-l 20" "-s 0" "-s x"; do
 	# The option and its value are split on purpose.
 	# shellcheck disable=SC2086
 	run "$TUNEFS_MINIXFS" $bad "$T/img"

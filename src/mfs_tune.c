@@ -12,6 +12,7 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "layout.h"
 #include "mfs.h"
@@ -617,6 +618,249 @@ out:
 		free(rs.dirs[i].zones);
 	}
 	free(rs.dirs);
+	free(zmap);
+	free(buf);
+	return r;
+}
+
+/*
+ * Growing.
+ */
+
+#define MAX_16		0xffff
+
+/* The zones to move and the numbers to change, found before writing. */
+struct grow {
+	struct mfs	*fs;
+	unsigned char	*indirect;	/* bit per zone: an indirect zone */
+};
+
+static int
+note_grow(uint32_t zone, int level, const struct mfs_zref *ref, void *arg)
+{
+	struct grow *g;
+
+	(void)ref;
+	g = arg;
+	if (zone < g->fs->firstdatazone || zone >= g->fs->nzones)
+		return MFS_WALK_SKIP;
+	if (level > 0)
+		set_bit(g->indirect, zone);
+	return 0;
+}
+
+/* Move n blocks from block from to block to, which is higher. */
+static int
+move_blocks(struct mfs *fs, uint32_t from, uint32_t to, uint32_t n,
+    unsigned char *buf)
+{
+	uint32_t i;
+	int r;
+
+	for (i = n; i-- > 0; ) {
+		if ((r = mfs_read_block(fs, from + i, buf)) < 0 ||
+		    (r = mfs_write_block(fs, to + i, buf)) < 0)
+			return r;
+	}
+	return 0;
+}
+
+/* Add delta to a zone number of the old data area, and leave others. */
+static uint32_t
+moved(uint32_t zone, uint32_t first, uint32_t nzones, uint32_t delta)
+{
+	if (zone < first || zone >= nzones)
+		return zone;
+	return zone + delta;
+}
+
+static void
+put_zone(const struct mfs *fs, unsigned char *p, uint32_t zone)
+{
+	if (fs->zone_num_size == 2)
+		put16(fs->order, p, zone);
+	else
+		put32(fs->order, p, zone);
+}
+
+static uint32_t
+get_zone(const struct mfs *fs, const unsigned char *p)
+{
+	if (fs->zone_num_size == 2 && fs->order == MFS_BIG_ENDIAN)
+		return (uint32_t)(p[0] << 8 | p[1]);
+	if (fs->zone_num_size == 2)
+		return (uint32_t)(p[1] << 8 | p[0]);
+	if (fs->order == MFS_BIG_ENDIAN)
+		return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 |
+		    (uint32_t)p[2] << 8 | p[3];
+	return (uint32_t)p[3] << 24 | (uint32_t)p[2] << 16 |
+	    (uint32_t)p[1] << 8 | p[0];
+}
+
+/* Write the new size, zone map blocks and first data zone. */
+static int
+grow_super(struct mfs *fs, uint32_t nzones, uint32_t zmap_blocks,
+    uint32_t first)
+{
+	unsigned char sb[SUPER_SIZE];
+	int r;
+
+	if ((r = mfs_read_device(fs, sb, sizeof(sb), SUPER_OFFSET)) < 0)
+		return r;
+	if (fs->version == 3) {
+		put32(fs->order, sb + SB3_ZONES, nzones);
+		put16(fs->order, sb + SB3_ZMAP, zmap_blocks);
+		put16(fs->order, sb + SB3_FIRSTDATA, first <= MAX_16 ? first :
+		    0);
+	} else {
+		if (fs->version == 1)
+			put16(fs->order, sb + SB12_NZONES, nzones);
+		else
+			put32(fs->order, sb + SB12_ZONES, nzones);
+		put16(fs->order, sb + SB12_ZMAP, zmap_blocks);
+		put16(fs->order, sb + SB12_FIRSTDATA, first);
+	}
+	return mfs_write_device(fs, sb, sizeof(sb), SUPER_OFFSET);
+}
+
+int
+mfs_grow(struct mfs *fs, uint32_t nblocks)
+{
+	struct mfs_inode ip;
+	struct grow g;
+	unsigned char *buf, *oldmap, *zmap;
+	uint64_t bits, oldbits, need, newbits;
+	uint32_t delta, first, grow_blocks, i, ino, itable, k, newz, z;
+	uint32_t oldfirst, oldz;
+	int pad, r;
+
+	if (!fs->writable)
+		return -EROFS;
+	if (fs->tracks.size != 0)
+		return -EINVAL;
+	newz = nblocks >> fs->log_zone_size;
+	if (newz < fs->nzones)
+		return -EINVAL;
+	if (newz == fs->nzones)
+		return 0;
+	if (fs->version == 1 && newz > MAX_16)
+		return -EFBIG;
+
+	/* The zone map needs a bit for each data zone, and bit 0. */
+	bits = (uint64_t)fs->block_size * 8;
+	oldfirst = fs->firstdatazone;
+	oldz = fs->nzones;
+	itable = (uint32_t)(((uint64_t)fs->ninodes * fs->inode_size +
+	    fs->block_size - 1) / fs->block_size);
+	k = fs->zmap_blocks;
+	need = ((uint64_t)newz - oldfirst + 1 + bits - 1) / bits;
+	first = oldfirst;
+	if (need > k) {
+		if (need > MAX_16)
+			return -EFBIG;
+		k = (uint32_t)need;
+		z = (START_BLOCK + fs->imap_blocks + k + itable +
+		    (1U << fs->log_zone_size) - 1) >> fs->log_zone_size;
+		if (z > first)
+			first = z;
+	}
+	delta = first - oldfirst;
+	if (fs->version != 3 && first > MAX_16)
+		return -EFBIG;
+	/* The zones that move up must fit. */
+	if (oldz + delta > newz)
+		return -ENOSPC;
+	grow_blocks = (k - fs->zmap_blocks);
+
+	(void)memset(&g, 0, sizeof(g));
+	g.fs = fs;
+	oldmap = zmap = NULL;
+	buf = malloc(fs->block_size);
+	g.indirect = calloc((size_t)oldz / 8 + 1, 1);
+	if (buf == NULL || g.indirect == NULL) {
+		r = -ENOMEM;
+		goto out;
+	}
+
+	/* Read: the indirect zones, and the zone map. */
+	for (ino = 1; ino <= fs->ninodes && delta > 0; ino++) {
+		if ((r = mfs_get_inode(fs, ino, &ip)) < 0)
+			goto out;
+		if (ip.mode != 0 && !mfs_is_dev(&ip) &&
+		    (r = mfs_walk_zones(fs, &ip, note_grow, &g)) < 0)
+			goto out;
+	}
+	if ((r = mfs_load_map(fs, MFS_ZMAP, &oldmap)) < 0)
+		goto out;
+	if ((zmap = calloc(k, fs->block_size)) == NULL) {
+		r = -ENOMEM;
+		goto out;
+	}
+	(void)memcpy(zmap, oldmap, (size_t)fs->zmap_blocks * fs->block_size);
+	oldbits = (uint64_t)oldz - oldfirst;
+	newbits = (uint64_t)newz - first;
+	/* The bits past the end follow the old ones, or else are set. */
+	pad = oldbits + 1 < (uint64_t)fs->zmap_blocks * bits ?
+	    mfs_map_bit(fs, oldmap, (uint32_t)oldbits + 1) : 1;
+	for (i = (uint32_t)oldbits + 1; i < k * bits; i++)
+		mfs_set_map_bit(fs, zmap, i, i > newbits ? pad : 0);
+
+	/* Write: the file grows, then the zones and the inode table move. */
+	if (ftruncate(fs->fd, (off_t)((uint64_t)newz << fs->log_zone_size) *
+	    fs->block_size) == -1) {
+		r = -errno;
+		goto out;
+	}
+	fs->nblocks = newz << fs->log_zone_size;
+	fs->file_size = fs->image_size = (off_t)fs->nblocks * fs->block_size;
+	for (z = oldz; delta > 0 && z-- > oldfirst; ) {
+		if (!mfs_map_bit(fs, oldmap, z - oldfirst + 1))
+			continue;
+		r = move_blocks(fs, z << fs->log_zone_size,
+		    (z + delta) << fs->log_zone_size,
+		    1U << fs->log_zone_size, buf);
+		if (r < 0)
+			goto out;
+	}
+	if (grow_blocks > 0 && (r = move_blocks(fs, fs->inode_start,
+	    fs->inode_start + grow_blocks, itable, buf)) < 0)
+		goto out;
+	fs->inode_start += grow_blocks;
+	fs->zmap_blocks = k;
+
+	/* The zone numbers in inodes and indirect zones follow. */
+	for (ino = 1; ino <= fs->ninodes && delta > 0; ino++) {
+		if ((r = mfs_get_inode(fs, ino, &ip)) < 0)
+			goto out;
+		if (ip.mode == 0 || mfs_is_dev(&ip))
+			continue;
+		for (i = 0; i < MFS_NR_ZONES; i++)
+			ip.zone[i] = moved(ip.zone[i], oldfirst, oldz, delta);
+		if ((r = mfs_put_inode(fs, &ip)) < 0)
+			goto out;
+	}
+	for (z = oldfirst; z < oldz && delta > 0; z++) {
+		if (!test_bit(g.indirect, z))
+			continue;
+		if ((r = mfs_read_block(fs, (z + delta) << fs->log_zone_size,
+		    buf)) < 0)
+			goto out;
+		for (i = 0; i < fs->nindirs; i++)
+			put_zone(fs, buf + i * fs->zone_num_size,
+			    moved(get_zone(fs, buf + i * fs->zone_num_size),
+			    oldfirst, oldz, delta));
+		if ((r = mfs_write_block(fs, (z + delta) << fs->log_zone_size,
+		    buf)) < 0)
+			goto out;
+	}
+	if ((r = mfs_store_map(fs, MFS_ZMAP, zmap)) < 0 ||
+	    (r = grow_super(fs, newz, k, first)) < 0)
+		goto out;
+	fs->nzones = newz;
+	fs->firstdatazone = first;
+out:
+	free(g.indirect);
+	free(oldmap);
 	free(zmap);
 	free(buf);
 	return r;

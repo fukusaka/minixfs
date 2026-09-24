@@ -80,7 +80,10 @@ top of `tests/mkimage.c`).  The scripts:
   directory that needs an indirect zone, through 14 -> 30 -> 14,
   lists all names too long for 14 characters and changes nothing,
   changes nothing when the directories would not fit, and refuses V3;
-  bad values are usage errors.
+  `-s` keeps every file of the test tree through a growth the zone map
+  has room for and one that moves the inode table and the zones, and
+  refuses to shrink, to outgrow V1 and to grow one side of a disk; bad
+  values are usage errors.
 - `t_utillinux.sh` - where util-linux is installed: `fsck.minix` accepts
   the test images and those of `newfs_minixfs`, images from `mkfs.minix`
   are readable and pass `fsck_minixfs`, and `fsck_minixfs` and

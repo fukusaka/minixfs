@@ -5,7 +5,8 @@
  * tunefs_minixfs - change the settings of a MINIX file system.
  *
  *	tunefs_minixfs [-N] [-B le|be] [-c clean|dirty] [-e 0|1]
- *	    [-l 14|30] [-m minix|linux|bytes] [-T SIZE:HEADS:SIDE] image
+ *	    [-l 14|30] [-m minix|linux|bytes] [-s blocks]
+ *	    [-T SIZE:HEADS:SIDE] image
  *
  * Without options, or with -N, the settings are printed and nothing is
  * written; -N shows what the other options would change.
@@ -22,14 +23,18 @@
  *		Names too long for 14 are listed, and nothing is changed.
  *	-m	the maximum file size in the super block: what MINIX works
  *		out, what Linux and newfs_minixfs write, or a number
- *	-T	an image that holds one side of a disk, as for minixfs(1)
+ *	-s	grow the file system and the image file to so many blocks;
+ *		if the zone map needs more blocks, the inode table and
+ *		the data zones move up to make room
+ *	-T	an image that holds one side of a disk, as for minixfs(1);
+ *		it cannot grow
  *
  * Each change is printed as the old and the new value.  The byte order
- * is changed first, then the name length.  Changes that rewrite more
- * than the super block and the maps work on a file system that
- * fsck_minixfs passes, and one cut short leaves it half changed: keep a
- * copy.  Exit status: 0 on success, 1 if anything failed, 2 for a usage
- * error.
+ * is changed first, then the name length, then the size.  Changes that
+ * rewrite more than the super block and the maps work on a file system
+ * that fsck_minixfs passes and that is not mounted, and one cut short
+ * leaves it half changed: keep a copy.  Exit status: 0 on success, 1 if
+ * anything failed, 2 for a usage error.
  */
 
 #include <err.h>
@@ -51,6 +56,7 @@ struct options {
 	const char	*max;		/* -m, or NULL */
 	int		order;		/* -B: an mfs_order, or -1 as is */
 	uint32_t	namelen;	/* -l: 14 or 30, or 0 as is */
+	uint32_t	nblocks;	/* -s, or 0 as is */
 	int		clean;		/* -c: 1 clean, 0 dirty, -1 as is */
 	int		end;		/* -e: 0 or 1, or -1 as is */
 	int		dry_run;	/* -N */
@@ -61,9 +67,24 @@ usage(void)
 {
 	(void)fprintf(stderr,
 	    "usage: tunefs_minixfs [-N] [-B le|be] [-c clean|dirty] [-e 0|1]\n"
-	    "           [-l 14|30] [-m minix|linux|bytes]\n"
+	    "           [-l 14|30] [-m minix|linux|bytes] [-s blocks]\n"
 	    "           [-T SIZE:HEADS:SIDE] image\n");
 	exit(2);
+}
+
+/* The size that -s asks for. */
+static uint32_t
+blocks(const char *s)
+{
+	unsigned long v;
+	char *end;
+
+	errno = 0;
+	v = strtoul(s, &end, 10);
+	if (errno != 0 || *end != '\0' || end == s || s[0] == '-' || v == 0 ||
+	    v > UINT32_MAX)
+		errx(2, "%s: bad size", s);
+	return (uint32_t)v;
 }
 
 static void
@@ -75,7 +96,7 @@ parse(int argc, char **argv, struct options *o)
 	o->clean = -1;
 	o->end = -1;
 	o->order = -1;
-	while ((ch = getopt(argc, argv, "B:c:e:l:m:NT:")) != -1) {
+	while ((ch = getopt(argc, argv, "B:c:e:l:m:Ns:T:")) != -1) {
 		switch (ch) {
 		case 'B':
 			if (strcmp(optarg, "le") == 0)
@@ -115,6 +136,9 @@ parse(int argc, char **argv, struct options *o)
 		case 'N':
 			o->dry_run = 1;
 			break;
+		case 's':
+			o->nblocks = blocks(optarg);
+			break;
 		case 'T':
 			if (mfs_parse_tracks(optarg, &o->tracks) < 0)
 				usage();
@@ -132,8 +156,8 @@ parse(int argc, char **argv, struct options *o)
 static int
 changes(const struct options *o)
 {
-	return o->order != -1 || o->namelen != 0 || o->clean != -1 ||
-	    o->end != -1 || o->max != NULL;
+	return o->order != -1 || o->namelen != 0 || o->nblocks != 0 ||
+	    o->clean != -1 || o->end != -1 || o->max != NULL;
 }
 
 /* The maximum file size that -m asks for. */
@@ -333,6 +357,38 @@ clean_value(const struct mfs *fs, uint16_t state)
 	return mfs_is_clean(&t) ? "clean" : "dirty";
 }
 
+/* -s: grow the file system, or say why not. */
+static void
+grow(struct mfs *fs, const struct options *o, int write)
+{
+	uint32_t newz;
+	int r;
+
+	newz = o->nblocks >> fs->log_zone_size;
+	if (o->tracks.size != 0)
+		errx(1, "%s: an image of one side of a disk cannot grow",
+		    o->image);
+	if (newz < fs->nzones)
+		errx(1, "%s: %" PRIu32 " blocks are fewer than the %" PRIu32
+		    " it has; it can only grow", o->image, o->nblocks,
+		    fs->nblocks);
+	(void)printf("blocks: %" PRIu32 " -> %" PRIu32 "\n", fs->nblocks,
+	    newz << fs->log_zone_size);
+	if (!write)
+		return;
+	switch (r = mfs_grow(fs, o->nblocks)) {
+	case 0:
+		return;
+	case -EFBIG:
+		errx(1, "%s: too many zones for V%d", o->image, fs->version);
+	case -ENOSPC:
+		errx(1, "%s: the zone map needs more blocks, and the zones "
+		    "that move up to make room need a larger size", o->image);
+	default:
+		errx(1, "%s: size: %s", o->image, strerror(-r));
+	}
+}
+
 int
 main(int argc, char **argv)
 {
@@ -370,6 +426,8 @@ main(int argc, char **argv)
 		if (write && (r = mfs_change_namelen(&fs, o.namelen)) < 0)
 			errx(1, "%s: name length: %s", o.image, strerror(-r));
 	}
+	if (o.nblocks != 0)
+		grow(&fs, &o, write);
 	for (i = 0; i < 2; i++) {
 		if ((r = load_end(&fs, i == 0 ? MFS_IMAP : MFS_ZMAP,
 		    &maps[i])) < 0)
@@ -379,6 +437,7 @@ main(int argc, char **argv)
 	if (!changes(&o)) {
 		(void)printf("byte order: %s\n", order_name(fs.order));
 		(void)printf("name length: %" PRIu32 "\n", fs.namelen);
+		(void)printf("blocks: %" PRIu32 "\n", fs.nblocks);
 		(void)printf("state: %s\n", clean_value(&fs, fs.state));
 		(void)printf("max file size: %" PRIu32 " (MINIX works out %"
 		    PRIu32 ")\n", fs.max_size, mfs_minix_max_size(&fs));
