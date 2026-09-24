@@ -4,7 +4,7 @@
  *
  * fsck_minixfs - check a MINIX file system image, and repair it.
  *
- *	fsck_minixfs [-y] image
+ *	fsck_minixfs [-ly] [-e 0|1] image
  *
  * The check reads the super block, walks the tree from the root, and then
  * compares what it found with the inode table and the bit maps:
@@ -23,7 +23,15 @@
  *	  allows or cut short by a NUL byte;
  *	- link counts against the entries that name each inode, inodes in
  *	  use that no directory names, both bit maps, and bit 0 of each map,
- *	  which is never used but must be set.
+ *	  which is never used but must be set;
+ *	- with -e, the bits of each map past the last inode or zone, which
+ *	  must be 0 or 1 as given.  The mkfs of MINIX leaves them clear and
+ *	  that of Linux sets them, so they are not checked without -e.
+ *
+ * The walk goes breadth first and reads each directory once, so that
+ * neither depth nor loops of directories can stop it; a directory that a
+ * second directory names is a problem.  Paths are made only for the
+ * report, from the name of each directory and the one that names it.
  *
  * Without -y the image is only read.  With -y each problem is repaired
  * where it can be: bad entries are removed, "." and ".." are pointed
@@ -33,7 +41,11 @@
  * are cleared, sizes are cut to what the zones reach, to whole directory
  * entries and to the text of a symbolic link, link counts are set, inodes
  * that no directory names are freed, the bit maps are made to match, and
- * the super block gets a sensible maximum file size.  A root that is not
+ * the super block gets a sensible maximum file size, and with -e the
+ * bits past the end of the maps are set as given.  With -l as well,
+ * inodes that no directory names are not freed but linked into
+ * /lost+found as "#" and their inode number, trees below directories
+ * and all, and /lost+found is made if it is not there.  A root that is not
  * a directory and an image shorter than the file system are left.  The
  * image is then checked again, and marked clean if nothing is left: in
  * V1 and V2 as Linux marks it, in V3 with the clean flag of MINIX 3, which
@@ -54,6 +66,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "mfs.h"
@@ -66,6 +79,9 @@
 #define MAX_SIZE	0x7fffffff	/* s_max_size is signed in MINIX */
 #define NEED_DOT	1		/* "." is missing */
 #define NEED_DOTDOT	2		/* ".." is missing */
+#define LOST_MODE	0040700		/* of a new /lost+found */
+#define LOST_PATH	"/lost+found"
+#define NO_UP		((size_t)-1)	/* up of what is in /lost+found */
 
 /* What check_inode() found. */
 enum kind {
@@ -75,34 +91,56 @@ enum kind {
 	K_BAD				/* no valid type, or unreadable */
 };
 
-/* A directory waiting to be read. */
+/*
+ * A directory reached by the walk.  The queue keeps them all, the root
+ * first, so that a path is made only when a problem is reported: from the
+ * name of each directory and the index of the one that names it.
+ */
 struct pending {
-	char		*path;
+	size_t		up;			/* index; NO_UP: /lost+found */
 	uint32_t	ino;
 	uint32_t	parent;
+	char		name[MFS_MAX_NAME + 1];
+};
+
+/* Where an inode is: entry name of queue[dir], or queue[dir] itself. */
+struct place {
+	size_t		dir;			/* NO_UP: /lost+found */
+	const char	*name;			/* NULL: the directory */
 };
 
 /* A directory whose "." or ".." is missing. */
 struct dotfix {
-	char		*path;
-	uint32_t	ino;
-	uint32_t	parent;
+	size_t		dir;			/* index in the queue */
 	int		need;			/* NEED_DOT, NEED_DOTDOT */
+};
+
+/* What the command line asks for. */
+struct opts {
+	int		repair;			/* -y */
+	int		lost;			/* -l */
+	int		end;			/* -e 0 or 1; -1: no check */
 };
 
 /* The state of one check. */
 struct check {
 	struct mfs		fs;
-	struct pending		*queue;		/* directories to read */
+	struct pending		*queue;		/* directories reached */
 	struct dotfix		*fixes;		/* dots to put back */
 	struct mfs_inode	*cur;		/* whose zones are walked */
 	const char		*image;
-	const char		*path;		/* the name of *cur */
+	struct place		place;		/* where *cur is */
+	char			*pathbuf;	/* for path_of() */
+	size_t			pathmax;
 	uint32_t		*refs;		/* entries naming each inode */
 	unsigned char		*reached;	/* bit per inode: named */
 	unsigned char		*used;		/* bit per zone: in a file */
 	unsigned char		*allocated;	/* bit per zone: by a repair */
-	size_t			head;		/* first pending directory */
+	unsigned char		*ialloc;	/* bit per inode: by a repair */
+	unsigned char		*kept;		/* bit per inode: not freed */
+	uint32_t		*orphans;	/* linked into /lost+found */
+	size_t			norphans;
+	size_t			head;		/* first directory to read */
 	size_t			nqueue;
 	size_t			maxqueue;
 	size_t			nfixes;
@@ -110,8 +148,11 @@ struct check {
 	unsigned long		problems;
 	unsigned long		unrepaired;
 	uint32_t		inodes_used;
+	uint32_t		lost_ino;	/* of /lost+found */
 	uint32_t		zones_used;
 	int			repair;		/* -y */
+	int			lost;		/* -l */
+	int			end;		/* -e, or -1 */
 	int			quiet;		/* report nothing but the sum */
 	int			cur_dirty;	/* *cur needs writing back */
 	char			why[64];	/* what makes an inode bad */
@@ -120,7 +161,7 @@ struct check {
 static void
 usage(void)
 {
-	(void)fprintf(stderr, "usage: fsck_minixfs [-y] image\n");
+	(void)fprintf(stderr, "usage: fsck_minixfs [-ly] [-e 0|1] image\n");
 	exit(EXIT_USAGE);
 }
 
@@ -178,23 +219,68 @@ new_bits(uint64_t n)
 	return bits;
 }
 
+/* Put "/" and name before s, and return where they start. */
 static char *
-join(const char *dir, const char *name)
+prepend(char *s, const char *name)
 {
-	char *s;
+	size_t n;
 
-	if ((s = malloc(strlen(dir) + strlen(name) + 2)) == NULL)
-		err(EXIT_CANNOT, NULL);
-	if (strcmp(dir, "/") == 0)
-		(void)sprintf(s, "/%s", name);
-	else
-		(void)sprintf(s, "%s/%s", dir, name);
+	n = strlen(name);
+	s -= n;
+	(void)memcpy(s, name, n);
+	*--s = '/';
 	return s;
 }
 
-/* Queue a directory; path becomes the queue's. */
+/* The path of a place, in a buffer that the next call reuses. */
+static const char *
+path_of(struct check *c, const struct place *pl)
+{
+	size_t i, len;
+	char *s;
+
+	len = pl->name != NULL ? strlen(pl->name) + 1 : 0;
+	for (i = pl->dir; i != 0 && i != NO_UP; i = c->queue[i].up)
+		len += strlen(c->queue[i].name) + 1;
+	if (i == NO_UP)
+		len += sizeof(LOST_PATH) - 1;
+	if (len == 0)
+		return "/";
+	if (len >= c->pathmax) {
+		c->pathmax = len + 1;
+		if ((s = realloc(c->pathbuf, c->pathmax)) == NULL)
+			err(EXIT_CANNOT, NULL);
+		c->pathbuf = s;
+	}
+	s = c->pathbuf + len;
+	*s = '\0';
+	if (pl->name != NULL)
+		s = prepend(s, pl->name);
+	for (i = pl->dir; i != 0 && i != NO_UP; i = c->queue[i].up)
+		s = prepend(s, c->queue[i].name);
+	if (i == NO_UP)
+		(void)memcpy(c->pathbuf, LOST_PATH, sizeof(LOST_PATH) - 1);
+	return c->pathbuf;
+}
+
+/* The path of the directory queue[dir]. */
+static const char *
+dir_path(struct check *c, size_t dir)
+{
+	struct place pl;
+
+	pl.dir = dir;
+	pl.name = NULL;
+	return path_of(c, &pl);
+}
+
+/*
+ * Queue a directory, the entry name of queue[up]; the root has up 0 and
+ * an empty name.
+ */
 static void
-enqueue(struct check *c, uint32_t ino, uint32_t parent, char *path)
+enqueue(struct check *c, uint32_t ino, uint32_t parent, size_t up,
+    const char *name)
 {
 	struct pending *q;
 
@@ -205,10 +291,11 @@ enqueue(struct check *c, uint32_t ino, uint32_t parent, char *path)
 			err(EXIT_CANNOT, NULL);
 		c->queue = q;
 	}
-	c->queue[c->nqueue].ino = ino;
-	c->queue[c->nqueue].parent = parent;
-	c->queue[c->nqueue].path = path;
-	c->nqueue++;
+	q = &c->queue[c->nqueue++];
+	q->up = up;
+	q->ino = ino;
+	q->parent = parent;
+	(void)snprintf(q->name, sizeof(q->name), "%s", name);
 }
 
 /* Under -y, clear the zone number at ref; see problem() for the result. */
@@ -224,7 +311,7 @@ clear_zone(struct check *c, const struct mfs_zref *ref)
 	return r;
 }
 
-/* Note one zone of the file c->path. */
+/* Note one zone of the file c->cur. */
 static int
 zone_fn(uint32_t zone, int level, const struct mfs_zref *ref, void *arg)
 {
@@ -235,13 +322,14 @@ zone_fn(uint32_t zone, int level, const struct mfs_zref *ref, void *arg)
 	c = arg;
 	if (zone < c->fs.firstdatazone || zone >= c->fs.nzones) {
 		problem(c, clear_zone(c, ref), "%s: zone %" PRIu32
-		    " is outside the data area", c->path, zone);
+		    " is outside the data area", path_of(c, &c->place), zone);
 		return MFS_WALK_SKIP;
 	}
 	n = zone - c->fs.firstdatazone;
 	if (test_bit(c->used, n)) {
 		problem(c, clear_zone(c, ref), "%s: zone %" PRIu32
-		    " is used by another file too", c->path, zone);
+		    " is used by another file too", path_of(c, &c->place),
+		    zone);
 		/* What it lists belongs to the other file. */
 		return MFS_WALK_SKIP;
 	}
@@ -278,7 +366,7 @@ put_inode(struct check *c, const struct mfs_inode *ip)
 
 /* Sizes that cannot be right. */
 static void
-check_size(struct check *c, struct mfs_inode *ip, const char *path)
+check_size(struct check *c, struct mfs_inode *ip, const struct place *pl)
 {
 	uint32_t size;
 
@@ -286,19 +374,19 @@ check_size(struct check *c, struct mfs_inode *ip, const char *path)
 		size = ip->size;
 		ip->size = (uint32_t)c->fs.max_file;
 		problem(c, put_inode(c, ip), "%s: size %" PRIu32 " is more "
-		    "than the zones reach", path, size);
+		    "than the zones reach", path_of(c, pl), size);
 	}
 	if (mfs_is_dir(ip) && ip->size % c->fs.dirent_size != 0) {
 		size = ip->size;
 		ip->size -= ip->size % c->fs.dirent_size;
 		problem(c, put_inode(c, ip), "%s: directory size %" PRIu32
-		    " is not a whole number of entries", path, size);
+		    " is not a whole number of entries", path_of(c, pl), size);
 	}
 }
 
 /* A device file keeps its device number in zone 0 and nothing else. */
 static void
-check_dev(struct check *c, struct mfs_inode *ip, const char *path)
+check_dev(struct check *c, struct mfs_inode *ip, const struct place *pl)
 {
 	int i, found;
 
@@ -311,7 +399,7 @@ check_dev(struct check *c, struct mfs_inode *ip, const char *path)
 	}
 	if (found)
 		problem(c, put_inode(c, ip), "%s: device file has zone "
-		    "numbers besides its device number", path);
+		    "numbers besides its device number", path_of(c, pl));
 }
 
 /*
@@ -320,7 +408,8 @@ check_dev(struct check *c, struct mfs_inode *ip, const char *path)
  * c->why says what is wrong with it.
  */
 static int
-check_symlink(struct check *c, struct mfs_inode *ip, const char *path)
+check_symlink(struct check *c, struct mfs_inode *ip,
+    const struct place *pl)
 {
 	char text[MAX_SYMLINK];
 	uint32_t size;
@@ -345,17 +434,18 @@ check_symlink(struct check *c, struct mfs_inode *ip, const char *path)
 		size = ip->size;
 		ip->size = (uint32_t)len;
 		problem(c, put_inode(c, ip), "%s: symbolic link of %" PRIu32
-		    " bytes ends at a NUL byte after %zu", path, size, len);
+		    " bytes ends at a NUL byte after %zu", path_of(c, pl), size,
+		    len);
 	}
 	return 0;
 }
 
 /*
- * Check the inode that path names, the first time the walk reaches it,
+ * Check the inode at place pl, the first time the walk reaches it,
  * and repair it.  For K_BAD, c->why says what is wrong.
  */
 static enum kind
-check_inode(struct check *c, uint32_t ino, const char *path)
+check_inode(struct check *c, uint32_t ino, const struct place *pl)
 {
 	struct mfs_inode ip;
 	int r;
@@ -370,21 +460,21 @@ check_inode(struct check *c, uint32_t ino, const char *path)
 		(void)snprintf(c->why, sizeof(c->why), "of no valid type");
 		return K_BAD;
 	}
-	check_size(c, &ip, path);
-	if (mfs_is_lnk(&ip) && check_symlink(c, &ip, path) < 0)
+	check_size(c, &ip, pl);
+	if (mfs_is_lnk(&ip) && check_symlink(c, &ip, pl) < 0)
 		return K_BAD;
 	c->inodes_used++;
 	if (mfs_is_dev(&ip)) {
-		check_dev(c, &ip, path);
+		check_dev(c, &ip, pl);
 	} else {
 		c->cur = &ip;
 		c->cur_dirty = 0;
-		c->path = path;
+		c->place = *pl;
 		if ((r = mfs_walk_zones(&c->fs, &ip, zone_fn, c)) < 0)
-			problem(c, 1, "%s: %s", path, strerror(-r));
+			problem(c, 1, "%s: %s", path_of(c, pl), strerror(-r));
 		if (c->cur_dirty && (r = mfs_put_inode(&c->fs, &ip)) < 0)
 			problem(c, r, "%s: inode %" PRIu32 " cannot be written",
-			    path, ino);
+			    path_of(c, pl), ino);
 		c->cur = NULL;
 	}
 	return mfs_is_dir(&ip) ? K_DIR : K_OTHER;
@@ -424,14 +514,15 @@ set_entry(struct check *c, const struct mfs_inode *dp,
 	return mfs_set_entry(&c->fs, dp, de->off, ino);
 }
 
-/* Check that "." or ".." names ino, and count the link it makes. */
+/* Check that "." or ".." of queue[dir] names ino, and count the link. */
 static void
-check_dot(struct check *c, const struct pending *d,
-    const struct mfs_inode *dp, const struct mfs_dirent *de, uint32_t ino)
+check_dot(struct check *c, size_t dir, const struct mfs_inode *dp,
+    const struct mfs_dirent *de, uint32_t ino)
 {
 	if (de->ino != ino) {
 		problem(c, set_entry(c, dp, de, ino), "%s: \"%s\" names inode %"
-		    PRIu32 ", not %" PRIu32, d->path, de->name, de->ino, ino);
+		    PRIu32 ", not %" PRIu32, dir_path(c, dir), de->name,
+		    de->ino, ino);
 		if (!c->repair)
 			return;
 	}
@@ -440,7 +531,7 @@ check_dot(struct check *c, const struct pending *d,
 
 /* Remember a directory whose "." or ".." is missing. */
 static void
-need_dots(struct check *c, const struct pending *d, int need)
+need_dots(struct check *c, size_t dir, int need)
 {
 	struct dotfix *f;
 
@@ -452,90 +543,87 @@ need_dots(struct check *c, const struct pending *d, int need)
 		c->fixes = f;
 	}
 	f = &c->fixes[c->nfixes++];
-	if ((f->path = strdup(d->path)) == NULL)
-		err(EXIT_CANNOT, NULL);
-	f->ino = d->ino;
-	f->parent = d->parent;
+	f->dir = dir;
 	f->need = need;
 }
 
-/* Check one entry of a directory, other than its "." and "..". */
+/*
+ * Check one entry of the directory queue[dir], other than its "." and
+ * "..".  The queue may grow and move, so it is used by index only.
+ */
 static void
-check_entry(struct check *c, const struct pending *d,
-    const struct mfs_inode *dp, const struct mfs_dirent *de)
+check_entry(struct check *c, size_t dir, const struct mfs_inode *dp,
+    const struct mfs_dirent *de)
 {
 	struct mfs_inode ip;
+	struct place pl;
 	enum kind kind;
-	char *path;
 
 	if (de->ino > c->fs.ninodes) {
 		problem(c, set_entry(c, dp, de, 0), "%s: entry \"%s\" names "
-		    "inode %" PRIu32 ", past the last", d->path, de->name,
-		    de->ino);
+		    "inode %" PRIu32 ", past the last", dir_path(c, dir),
+		    de->name, de->ino);
 		return;
 	}
 	if (de->name[0] == '\0' || strchr(de->name, '/') != NULL ||
 	    strcmp(de->name, ".") == 0 || strcmp(de->name, "..") == 0) {
 		problem(c, set_entry(c, dp, de, 0), "%s: bad name \"%s\"",
-		    d->path, de->name);
+		    dir_path(c, dir), de->name);
 		if (c->repair)
 			return;
 	}
-	path = join(d->path, de->name);
+	pl.dir = dir;
+	pl.name = de->name;
 	if (test_bit(c->reached, de->ino)) {
 		if (mfs_get_inode(&c->fs, de->ino, &ip) == 0 &&
 		    mfs_is_dir(&ip)) {
 			problem(c, set_entry(c, dp, de, 0), "%s: directory "
 			    "inode %" PRIu32 " is listed in more than one "
-			    "directory", path, de->ino);
-			if (c->repair) {
-				free(path);
+			    "directory", path_of(c, &pl), de->ino);
+			if (c->repair)
 				return;
-			}
 		}
 		c->refs[de->ino]++;
-		free(path);
 		return;
 	}
 
-	kind = check_inode(c, de->ino, path);
+	kind = check_inode(c, de->ino, &pl);
 	if (kind == K_FREE || kind == K_BAD) {
 		problem(c, set_entry(c, dp, de, 0), "%s: names inode %" PRIu32
-		    ", which is %s", path, de->ino,
+		    ", which is %s", path_of(c, &pl), de->ino,
 		    kind == K_FREE ? "free" : c->why);
-		if (c->repair) {
-			free(path);
+		if (c->repair)
 			return;
-		}
 	}
 	set_bit(c->reached, de->ino, 1);
 	c->refs[de->ino]++;
 	if (kind == K_DIR)
-		enqueue(c, de->ino, d->ino, path);
-	else
-		free(path);
+		enqueue(c, de->ino, c->queue[dir].ino, dir, de->name);
 }
 
 /*
- * Read and check one pending directory.  "." must be the first entry and
- * ".." the second; whatever else holds their places is an entry like any
- * other.
+ * Read and check the directory queue[dir].  "." must be the first entry
+ * and ".." the second; whatever else holds their places is an entry like
+ * any other.
  */
 static void
-check_dir(struct check *c, const struct pending *d)
+check_dir(struct check *c, size_t dir)
 {
 	struct mfs_inode ip;
 	struct mfs_dirent *de;
 	struct entries e;
+	uint32_t ino, parent;
 	size_t k;
 	int have, r;
 
+	ino = c->queue[dir].ino;
+	parent = c->queue[dir].parent;
 	(void)memset(&e, 0, sizeof(e));
-	r = mfs_get_inode(&c->fs, d->ino, &ip);
+	r = mfs_get_inode(&c->fs, ino, &ip);
 	if (r == 0)
 		r = mfs_readdir(&c->fs, &ip, collect_fn, &e);
 	if (r < 0) {
-		problem(c, 1, "%s: %s", d->path, strerror(-r));
+		problem(c, 1, "%s: %s", dir_path(c, dir), strerror(-r));
 		free(e.ent);
 		return;
 	}
@@ -543,18 +631,18 @@ check_dir(struct check *c, const struct pending *d)
 	for (k = 0; k < e.n; k++) {
 		de = &e.ent[k];
 		if (de->off == 0 && strcmp(de->name, ".") == 0) {
-			check_dot(c, d, &ip, de, d->ino);
+			check_dot(c, dir, &ip, de, ino);
 			have |= NEED_DOT;
 		} else if (de->off == c->fs.dirent_size &&
 		    strcmp(de->name, "..") == 0) {
-			check_dot(c, d, &ip, de, d->parent);
+			check_dot(c, dir, &ip, de, parent);
 			have |= NEED_DOTDOT;
 		} else {
-			check_entry(c, d, &ip, de);
+			check_entry(c, dir, &ip, de);
 		}
 	}
 	if (have != (NEED_DOT | NEED_DOTDOT))
-		need_dots(c, d, ~have & (NEED_DOT | NEED_DOTDOT));
+		need_dots(c, dir, ~have & (NEED_DOT | NEED_DOTDOT));
 	free(e.ent);
 }
 
@@ -590,14 +678,37 @@ alloc_zone(struct check *c, uint32_t *zonep)
 	return 0;
 }
 
+/* Give zone n of the file *ip a new zone: a direct or single indirect one. */
+static int
+add_zone(struct check *c, struct mfs_inode *ip, uint32_t n)
+{
+	struct mfs_zref ref;
+	uint32_t *ind, zone;
+	int r;
+
+	if (n < c->fs.ndzones)
+		return alloc_zone(c, &ip->zone[n]);
+	n -= c->fs.ndzones;
+	if (n >= c->fs.nindirs)
+		return -EFBIG;
+	ind = &ip->zone[c->fs.ndzones];
+	if (*ind == 0 && (r = alloc_zone(c, ind)) < 0)
+		return r;
+	if ((r = alloc_zone(c, &zone)) < 0)
+		return r;
+	ref.block = *ind << c->fs.log_zone_size;
+	ref.index = n;
+	return mfs_set_zref(&c->fs, ip, &ref, zone);
+}
+
 /*
- * Make the directory *dp size bytes long, giving it direct zones where
- * the new bytes fall into a hole, and write it back.
+ * Make the directory *dp size bytes long, giving it zones where the new
+ * bytes fall into a hole, and write it back.
  */
 static int
 grow_dir(struct check *c, struct mfs_inode *dp, uint32_t size)
 {
-	uint32_t block, fblock, slot;
+	uint32_t block, fblock;
 	int r;
 
 	if (size <= dp->size)
@@ -608,10 +719,8 @@ grow_dir(struct check *c, struct mfs_inode *dp, uint32_t size)
 			return r;
 		if (block != 0)
 			continue;
-		slot = fblock >> c->fs.log_zone_size;
-		if (slot >= c->fs.ndzones)
-			return -EFBIG;
-		if ((r = alloc_zone(c, &dp->zone[slot])) < 0)
+		r = add_zone(c, dp, fblock >> c->fs.log_zone_size);
+		if (r < 0)
 			return r;
 	}
 	dp->size = size;
@@ -619,7 +728,47 @@ grow_dir(struct check *c, struct mfs_inode *dp, uint32_t size)
 }
 
 /*
- * Put name, naming ino, into entry k (0 or 1) of the directory f->ino.
+ * The first entry after "." and ".." that is not in use; e holds the
+ * entries in use, in order.
+ */
+static uint32_t
+free_entry(const struct check *c, const struct entries *e)
+{
+	uint32_t off;
+	size_t i;
+
+	off = 2 * c->fs.dirent_size;
+	for (i = 0; i < e->n; i++)
+		if (e->ent[i].off == off)
+			off += c->fs.dirent_size;
+	return off;
+}
+
+/* Add an entry name, naming ino, to the directory dir. */
+static int
+add_entry(struct check *c, uint32_t dir, const char *name, uint32_t ino)
+{
+	struct mfs_inode dp;
+	struct entries e;
+	uint32_t off;
+	int r;
+
+	(void)memset(&e, 0, sizeof(e));
+	if ((r = mfs_get_inode(&c->fs, dir, &dp)) < 0 ||
+	    (r = mfs_readdir(&c->fs, &dp, collect_fn, &e)) < 0)
+		goto out;
+	off = free_entry(c, &e);
+	if (off >= dp.size &&
+	    (r = grow_dir(c, &dp, off + c->fs.dirent_size)) < 0)
+		goto out;
+	r = mfs_put_entry(&c->fs, &dp, off, ino, name);
+out:
+	free(e.ent);
+	return r;
+}
+
+/*
+ * Put name, naming ino, into entry k (0 or 1) of the directory of f.
  * An entry with another name in that place moves to a free entry, or to
  * a new one at the end.
  */
@@ -636,20 +785,16 @@ put_dot(struct check *c, const struct dotfix *f, uint32_t k,
 
 	(void)memset(&e, 0, sizeof(e));
 	off = k * c->fs.dirent_size;
-	if ((r = mfs_get_inode(&c->fs, f->ino, &dp)) < 0 ||
+	if ((r = mfs_get_inode(&c->fs, c->queue[f->dir].ino, &dp)) < 0 ||
 	    (r = grow_dir(c, &dp, off + c->fs.dirent_size)) < 0 ||
 	    (r = mfs_readdir(&c->fs, &dp, collect_fn, &e)) < 0)
 		goto out;
 
-	/* e is in the order of the offsets. */
 	old = NULL;
-	to = 2 * c->fs.dirent_size;
-	for (i = 0; i < e.n; i++) {
+	for (i = 0; i < e.n; i++)
 		if (e.ent[i].off == off)
 			old = &e.ent[i];
-		if (e.ent[i].off == to)
-			to += c->fs.dirent_size;
-	}
+	to = free_entry(c, &e);
 	if (old != NULL && strcmp(old->name, name) != 0) {
 		if (to >= dp.size &&
 		    (r = grow_dir(c, &dp, to + c->fs.dirent_size)) < 0)
@@ -681,12 +826,200 @@ fix_dots(struct check *c, const struct dotfix *f)
 	for (k = 0; k < 2; k++) {
 		if ((f->need & dots[k].need) == 0)
 			continue;
-		ino = k == 0 ? f->ino : f->parent;
+		ino = k == 0 ? c->queue[f->dir].ino : c->queue[f->dir].parent;
 		r = c->repair ? put_dot(c, f, k, dots[k].name, ino) : 0;
-		problem(c, r, "%s: \"%s\" is not entry %" PRIu32, f->path,
-		    dots[k].name, k + 1);
+		problem(c, r, "%s: \"%s\" is not entry %" PRIu32,
+		    dir_path(c, f->dir), dots[k].name, k + 1);
 		if (c->repair && r == 0)
 			c->refs[ino]++;
+	}
+}
+
+/* Read and check the directories waiting in the queue. */
+static void
+run_queue(struct check *c)
+{
+	for (; c->head < c->nqueue; c->head++)
+		check_dir(c, c->head);
+}
+
+/* Whether inode ino is in use but no directory reached so far names it. */
+static int
+is_orphan(struct check *c, uint32_t ino, struct mfs_inode *ip)
+{
+	if (test_bit(c->reached, ino))
+		return 0;
+	if (mfs_get_inode(&c->fs, ino, ip) < 0)
+		return 0;
+	return ip->mode != 0 && valid_type(ip->mode);
+}
+
+/*
+ * Find /lost+found, or choose a free inode for it; *make says which.
+ * Returns 0 or a negative errno value.
+ */
+static int
+find_lost(struct check *c, int *make)
+{
+	struct mfs_inode ip;
+	uint32_t ino;
+	int r;
+
+	*make = 0;
+	if ((r = mfs_get_inode(&c->fs, MFS_ROOT_INO, &ip)) < 0)
+		return r;
+	r = mfs_lookup(&c->fs, &ip, "lost+found", &c->lost_ino);
+	if (r == 0) {
+		if (!test_bit(c->reached, c->lost_ino) ||
+		    mfs_get_inode(&c->fs, c->lost_ino, &ip) < 0 ||
+		    !mfs_is_dir(&ip))
+			return -ENOTDIR;
+		return 0;
+	}
+	if (r != -ENOENT)
+		return r;
+	for (ino = MFS_ROOT_INO + 1; ino <= c->fs.ninodes; ino++) {
+		if (!test_bit(c->reached, ino) &&
+		    mfs_get_inode(&c->fs, ino, &ip) == 0 && ip.mode == 0) {
+			c->lost_ino = ino;
+			*make = 1;
+			return 0;
+		}
+	}
+	return -ENOSPC;
+}
+
+/*
+ * Mark the inodes that directories in use but not reached name; those
+ * that are not marked are the tops of the trees to link.
+ */
+static unsigned char *
+find_named(struct check *c)
+{
+	struct mfs_inode ip;
+	struct entries e;
+	unsigned char *named;
+	uint32_t ino;
+	size_t i;
+
+	named = new_bits((uint64_t)c->fs.ninodes + 1);
+	for (ino = 1; ino <= c->fs.ninodes; ino++) {
+		if (!is_orphan(c, ino, &ip) || !mfs_is_dir(&ip))
+			continue;
+		(void)memset(&e, 0, sizeof(e));
+		if (mfs_readdir(&c->fs, &ip, collect_fn, &e) == 0) {
+			for (i = 0; i < e.n; i++) {
+				if (e.ent[i].ino <= c->fs.ninodes &&
+				    strcmp(e.ent[i].name, ".") != 0 &&
+				    strcmp(e.ent[i].name, "..") != 0)
+					set_bit(named, e.ent[i].ino, 1);
+			}
+		}
+		free(e.ent);
+	}
+	return named;
+}
+
+/* Check the tree of orphan inode ino, to be linked into /lost+found. */
+static void
+adopt(struct check *c, uint32_t ino)
+{
+	struct place pl;
+	uint32_t *o;
+	char name[sizeof("#") + 10];
+
+	(void)snprintf(name, sizeof(name), "#%" PRIu32, ino);
+	pl.dir = NO_UP;
+	pl.name = name;
+	/* One of no valid kind is freed with the other orphans. */
+	switch (check_inode(c, ino, &pl)) {
+	case K_DIR:
+		enqueue(c, ino, c->lost_ino, NO_UP, name);
+		break;
+	case K_OTHER:
+		break;
+	default:
+		return;
+	}
+	set_bit(c->reached, ino, 1);
+	o = realloc(c->orphans, (c->norphans + 1) * sizeof(*o));
+	if (o == NULL)
+		err(EXIT_CANNOT, NULL);
+	c->orphans = o;
+	c->orphans[c->norphans++] = ino;
+	run_queue(c);
+}
+
+/* Make /lost+found in the inode that find_lost() chose. */
+static int
+make_lost(struct check *c)
+{
+	struct mfs_inode ip;
+	int r;
+
+	(void)memset(&ip, 0, sizeof(ip));
+	ip.num = c->lost_ino;
+	ip.mode = LOST_MODE;
+	ip.nlinks = 2;
+	ip.atime = ip.mtime = ip.ctime = (uint32_t)time(NULL);
+	if ((r = grow_dir(c, &ip, 2 * c->fs.dirent_size)) < 0 ||
+	    (r = mfs_put_entry(&c->fs, &ip, 0, c->lost_ino, ".")) < 0 ||
+	    (r = mfs_put_entry(&c->fs, &ip, c->fs.dirent_size, MFS_ROOT_INO,
+	    "..")) < 0 ||
+	    (r = add_entry(c, MFS_ROOT_INO, "lost+found", c->lost_ino)) < 0)
+		return r;
+	set_bit(c->reached, c->lost_ino, 1);
+	set_bit(c->ialloc, c->lost_ino, 1);
+	c->inodes_used++;
+	c->refs[c->lost_ino] += 2;
+	c->refs[MFS_ROOT_INO]++;
+	if (!c->quiet)
+		(void)printf("%s: made /lost+found\n", c->image);
+	return 0;
+}
+
+/*
+ * Under -y -l, link the inodes in use that no directory names into
+ * /lost+found: first those that no such directory names either, then,
+ * one at a time, what is left in loops.  Their trees are walked before
+ * /lost+found or anything else takes a zone.
+ */
+static void
+lost_found(struct check *c)
+{
+	struct mfs_inode ip;
+	unsigned char *named;
+	char name[sizeof("#") + 10];
+	uint32_t ino, o;
+	size_t i;
+	int make, r;
+
+	r = find_lost(c, &make);
+	if (r == 0) {
+		named = find_named(c);
+		for (ino = 1; ino <= c->fs.ninodes; ino++)
+			if (!test_bit(named, ino) && is_orphan(c, ino, &ip))
+				adopt(c, ino);
+		for (ino = 1; ino <= c->fs.ninodes; ino++)
+			if (is_orphan(c, ino, &ip))
+				adopt(c, ino);
+		free(named);
+		if (make)
+			r = make_lost(c);
+	}
+	for (i = 0; i < c->norphans; i++) {
+		o = c->orphans[i];
+		(void)snprintf(name, sizeof(name), "#%" PRIu32, o);
+		if (r == 0)
+			r = add_entry(c, c->lost_ino, name, o);
+		(void)mfs_get_inode(&c->fs, o, &ip);
+		problem(c, r, "inode %" PRIu32 " is in use (mode %o) but no "
+		    "directory names it; it goes to /lost+found/%s", o,
+		    (unsigned)ip.mode, name);
+		if (r == 0)
+			c->refs[o]++;
+		else
+			set_bit(c->kept, o, 1);
 	}
 }
 
@@ -694,26 +1027,23 @@ fix_dots(struct check *c, const struct dotfix *f)
 static void
 walk_tree(struct check *c)
 {
-	char *root;
+	struct place pl;
 	size_t i;
 
-	if ((root = strdup("/")) == NULL)
-		err(EXIT_CANNOT, NULL);
+	/* The root is queue[0], with no name. */
+	pl.dir = 0;
+	pl.name = NULL;
 	set_bit(c->reached, MFS_ROOT_INO, 1);
-	if (check_inode(c, MFS_ROOT_INO, root) != K_DIR) {
+	if (check_inode(c, MFS_ROOT_INO, &pl) != K_DIR) {
 		problem(c, 1, "/: the root is not a directory");
-		free(root);
 		return;
 	}
-	enqueue(c, MFS_ROOT_INO, MFS_ROOT_INO, root);
-	for (; c->head < c->nqueue; c->head++) {
-		check_dir(c, &c->queue[c->head]);
-		free(c->queue[c->head].path);
-	}
-	for (i = 0; i < c->nfixes; i++) {
+	enqueue(c, MFS_ROOT_INO, MFS_ROOT_INO, 0, "");
+	run_queue(c);
+	if (c->repair && c->lost)
+		lost_found(c);
+	for (i = 0; i < c->nfixes; i++)
 		fix_dots(c, &c->fixes[i]);
-		free(c->fixes[i].path);
-	}
 }
 
 /* Under -y, set a bit of a map; returns 0 as problem() wants. */
@@ -735,6 +1065,8 @@ check_links(struct check *c, uint32_t ino, struct mfs_inode *ip)
 	uint16_t mode;
 	int r;
 
+	if (test_bit(c->kept, ino))
+		return;
 	if (!test_bit(c->reached, ino)) {
 		if (ip->mode == 0)
 			return;
@@ -771,6 +1103,37 @@ check_bit0(struct check *c, unsigned char *map, const char *name,
 		    "is clear", name);
 }
 
+/*
+ * With -e, the bits of a map past the last inode or zone, from bit first
+ * to the end of its blocks.  The mkfs of MINIX leaves them clear and that
+ * of Linux sets them, so neither is wrong unless -e says which to expect.
+ */
+static void
+check_end(struct check *c, unsigned char *map, uint32_t nblocks,
+    uint32_t first, const char *name, int *dirty)
+{
+	uint64_t bit, n, wrong;
+
+	if (c->end == -1)
+		return;
+	n = (uint64_t)nblocks * c->fs.block_size * 8;
+	wrong = 0;
+	for (bit = first; bit < n; bit++) {
+		if (mfs_map_bit(&c->fs, map, (uint32_t)bit) != c->end) {
+			wrong++;
+			if (c->repair)
+				mfs_set_map_bit(&c->fs, map, (uint32_t)bit,
+				    c->end);
+		}
+	}
+	if (wrong == 0)
+		return;
+	if (c->repair)
+		*dirty = 1;
+	problem(c, 0, "%" PRIu64 " bits past the last %s in the %s map are "
+	    "%s", wrong, name, name, c->end ? "clear" : "set");
+}
+
 /* Link counts, inodes that no directory names, and the inode map. */
 static void
 check_inodes(struct check *c, unsigned char *imap, int *dirty)
@@ -780,6 +1143,8 @@ check_inodes(struct check *c, unsigned char *imap, int *dirty)
 	int inmap, inuse;
 
 	check_bit0(c, imap, "inode", dirty);
+	check_end(c, imap, c->fs.imap_blocks, c->fs.ninodes + 1, "inode",
+	    dirty);
 	for (ino = 1; ino <= c->fs.ninodes; ino++) {
 		if (mfs_get_inode(&c->fs, ino, &ip) < 0) {
 			problem(c, 1, "inode %" PRIu32 " cannot be read", ino);
@@ -788,7 +1153,10 @@ check_inodes(struct check *c, unsigned char *imap, int *dirty)
 		check_links(c, ino, &ip);
 		inuse = ip.mode != 0;
 		inmap = mfs_map_bit(&c->fs, imap, ino);
-		if (inuse && !inmap)
+		/* An inode that a repair took is not a problem of its own. */
+		if (test_bit(c->ialloc, ino))
+			(void)fix_bit(c, imap, ino, 1, dirty);
+		else if (inuse && !inmap)
 			problem(c, fix_bit(c, imap, ino, 1, dirty), "inode %"
 			    PRIu32 " is in use but free in the inode map", ino);
 		else if (!inuse && inmap)
@@ -805,6 +1173,8 @@ check_zones(struct check *c, unsigned char *zmap, int *dirty)
 	int inmap, used;
 
 	check_bit0(c, zmap, "zone", dirty);
+	check_end(c, zmap, c->fs.zmap_blocks,
+	    c->fs.nzones - c->fs.firstdatazone + 1, "zone", dirty);
 	n = c->fs.nzones - c->fs.firstdatazone;
 	for (i = 0; i < n; i++) {
 		used = test_bit(c->used, i);
@@ -891,15 +1261,17 @@ check_super(struct check *c)
 
 /* Check the image once; exit with status 3 if it cannot be. */
 static void
-check(struct check *c, const char *image, int repair, int quiet)
+check(struct check *c, const char *image, const struct opts *o, int quiet)
 {
 	int r;
 
 	(void)memset(c, 0, sizeof(*c));
 	c->image = image;
-	c->repair = repair;
+	c->repair = o->repair;
+	c->lost = o->lost;
+	c->end = o->end;
 	c->quiet = quiet;
-	if (repair)
+	if (o->repair)
 		r = mfs_open_rw(&c->fs, image);
 	else
 		r = mfs_open(&c->fs, image);
@@ -916,6 +1288,8 @@ check(struct check *c, const char *image, int repair, int quiet)
 	c->reached = new_bits((uint64_t)c->fs.ninodes + 1);
 	c->used = new_bits(c->fs.nzones);
 	c->allocated = new_bits(c->fs.nzones);
+	c->ialloc = new_bits((uint64_t)c->fs.ninodes + 1);
+	c->kept = new_bits((uint64_t)c->fs.ninodes + 1);
 
 	check_super(c);
 	walk_tree(c);
@@ -924,6 +1298,10 @@ check(struct check *c, const char *image, int repair, int quiet)
 	free(c->queue);
 	free(c->fixes);
 	free(c->allocated);
+	free(c->ialloc);
+	free(c->kept);
+	free(c->orphans);
+	free(c->pathbuf);
 	free(c->refs);
 	free(c->reached);
 	free(c->used);
@@ -962,13 +1340,27 @@ int
 main(int argc, char **argv)
 {
 	struct check c;
-	int ch, repair;
+	struct opts o;
+	int ch;
 
-	repair = 0;
-	while ((ch = getopt(argc, argv, "y")) != -1) {
+	o.repair = 0;
+	o.lost = 0;
+	o.end = -1;
+	while ((ch = getopt(argc, argv, "e:ly")) != -1) {
 		switch (ch) {
+		case 'e':
+			if (strcmp(optarg, "0") == 0)
+				o.end = 0;
+			else if (strcmp(optarg, "1") == 0)
+				o.end = 1;
+			else
+				usage();
+			break;
+		case 'l':
+			o.lost = 1;
+			break;
 		case 'y':
-			repair = 1;
+			o.repair = 1;
 			break;
 		default:
 			usage();
@@ -977,14 +1369,15 @@ main(int argc, char **argv)
 	if (argc - optind != 1)
 		usage();
 
-	check(&c, argv[optind], repair, 0);
+	check(&c, argv[optind], &o, 0);
 	summary(&c, "");
-	if (!repair)
+	if (!o.repair)
 		return c.problems == 0 ? 0 : EXIT_PROBLEMS;
 
 	/* Check again what the repairs left. */
 	if (c.problems != 0) {
-		check(&c, argv[optind], 0, 1);
+		o.repair = 0;
+		check(&c, argv[optind], &o, 1);
 		summary(&c, " after the repairs");
 	}
 	mark(argv[optind], c.problems == 0);

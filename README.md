@@ -86,7 +86,7 @@ that must come out the same each time; `-N` prints the layout and writes
 nothing.  The first 1024 bytes, where a boot block may be, are left
 alone.
 
-    fsck_minixfs [-y] image
+    fsck_minixfs [-ly] [-e 0|1] image
 
 checks a file system: the super block (maximum file size, an image that
 holds the whole file system, errors that Linux recorded), directory
@@ -99,9 +99,17 @@ entries are removed, "." and ".." are pointed where they belong or put
 back, bad zone numbers and the second use of a zone are cleared, sizes
 are cut, link counts are set, inodes that no directory names are freed,
 and the bit maps are made to match; the image is then checked again and
-marked clean, or as having errors if problems remain.  It exits with 0
-if the file system is consistent (after the repairs, with `-y`), 1 if
-problems remain and 3 if the image cannot be checked at all.
+marked clean, or as having errors if problems remain.  With `-l` as
+well, inodes that no directory names are linked into `/lost+found` as
+`#` and their number, trees and all, instead of being freed;
+`/lost+found` is made if it is not there.  MINIX and Linux have no
+`/lost+found`, and their fsck frees such inodes, so `-l` is not the
+default.  With `-e 0` or `-e 1`, the bits of each map past the last
+inode or zone must be 0 or 1: the mkfs of MINIX leaves them clear while
+that of Linux and `newfs_minixfs` set them, so they are not checked by
+default.  It exits with 0 if the file system is consistent (after the
+repairs, with `-y`), 1 if problems remain and 3 if the image cannot be
+checked at all.
 
 A file system that is not marked clean is noted but is not a problem.
 V1 and V2 keep the mark where Linux does; MINIX leaves that word zero.

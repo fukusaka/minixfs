@@ -62,12 +62,17 @@ top of `tests/mkimage.c`).  The scripts:
   missing "." and "..", and entries naming inodes past the last, free
   inodes, names with "/" and directories listed twice; `-y` repairs
   each of them so that a second check finds nothing, and leaves a
-  consistent image as it was.
+  consistent image as it was.  `-y -l` links trees that nothing names,
+  also in a loop, into a `/lost+found` that it makes or finds; `-e`
+  checks and sets the bits past the end of the maps.  A directory
+  holding more directories than the walk first has room for is
+  checked too.
 - `t_utillinux.sh` - where util-linux is installed: `fsck.minix` accepts
   the test images and those of `newfs_minixfs`, images from `mkfs.minix`
   are readable and pass `fsck_minixfs`, and `fsck_minixfs` and
   `fsck.minix` find the same damage, and `fsck.minix` accepts what
-  `fsck_minixfs -y` repaired.  Skipped otherwise.
+  `fsck_minixfs -y` repaired, also into `/lost+found` with `-l`.
+  Skipped otherwise.
 - `t_fuse.sh` - where `mount_minixfs` is built and mounting is allowed:
   the tree read through the kernel in four formats, with its names,
   contents, modes, owners, inode numbers and device numbers.  Skipped

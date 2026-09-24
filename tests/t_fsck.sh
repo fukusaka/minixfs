@@ -4,7 +4,9 @@
 #
 # fsck_minixfs: consistent file systems of every format pass; each kind
 # of damage is found and reported, and -y repairs it so that a second
-# check finds nothing and marks the file system clean.
+# check finds nothing and marks the file system clean.  With -l, trees
+# that no directory names go to /lost+found; with -e, the bits past the
+# end of the maps must be as given.
 
 . ./tests/lib.sh
 
@@ -132,6 +134,90 @@ damage_maps() {
 		fsck_damaged "bit 0 of the $map map clear" \
 		    "bit 0 of the $map map is clear"
 	done
+
+	# mkimage sets the bits past the end of the maps, as Linux does.
+	run "$FSCK_MINIXFS" -e 1 "$T/good"
+	check_status "$v: -e 1 passes set bits past the end" 0
+	run "$FSCK_MINIXFS" -e 0 "$T/good"
+	check_found "$v: -e 0 finds set bits past the end" \
+	    " bits past the last zone in the zone map are set\$"
+	cp "$T/good" "$T/img"
+	run "$FSCK_MINIXFS" -y -e 0 "$T/img"
+	check_out_has "$v: -y -e 0 clears them" \
+	    " bits past the last inode in the inode map are set (repaired)\$"
+	run "$FSCK_MINIXFS" -e 0 "$T/img"
+	check_status "$v: nothing is left of the set bits" 0
+	run "$FSCK_MINIXFS" "$T/img"
+	check_status "$v: without -e the bits past the end do not matter" 0
+	run "$FSCK_MINIXFS" -e 1 "$T/img"
+	check_found "$v: -e 1 finds clear bits past the end" \
+	    " bits past the last inode in the inode map are clear\$"
+}
+
+# damage_lost: inodes that no directory names, with and without -l.
+damage_lost() {
+	# Take "d", the third entry of the root, away from /d and its tree.
+	rzone=$(get_inode "$T/good" 1 zone0)
+	cp "$T/good" "$T/img"
+	poke_number "$T/img" $(((rzone << lz) * bs + 2 * dsize)) "$width" 0
+	set_inode "$T/img" 20 mode 33188		# 0100644
+	run "$FSCK_MINIXFS" "$T/img"
+	check_found "$v: a tree that no directory names" \
+	    "inode 2 is in use (mode 40755) but no directory names it\$"
+
+	cp "$T/img" "$T/fixed"
+	run "$FSCK_MINIXFS" -y "$T/fixed"
+	check_status "$v: -y frees the tree" 0
+	run "$MINIXFS" ls "$T/fixed"
+	check_out_has "$v: -y leaves the other files" "^f\$"
+	run "$MINIXFS" ls "$T/fixed" /lost+found
+	check_status "$v: -y makes no /lost+found" 1
+
+	cp "$T/img" "$T/fixed"
+	run "$FSCK_MINIXFS" -y -l "$T/fixed"
+	check_out_has "$v: -y -l makes /lost+found" ": made /lost+found\$"
+	check_out_has "$v: -y -l points \"..\" of the tree to /lost+found" \
+	    ": /lost+found/#2: \"..\" names inode 1, not [0-9]* (repaired)\$"
+	check_out_has "$v: -y -l links the tree into /lost+found" \
+	    "inode 2 .* it goes to /lost+found/#2 (repaired)\$"
+	check_out_has "$v: -y -l links a file into /lost+found" \
+	    "inode 20 .* it goes to /lost+found/#20 (repaired)\$"
+	run "$FSCK_MINIXFS" "$T/fixed"
+	check_status "$v: nothing is left after -y -l" 0
+	run "$MINIXFS" ls "$T/fixed" /lost+found
+	printf '#2\n#20\n' >"$T/want"
+	check_out "$v: /lost+found holds the tree and the file" "$T/want"
+	run "$MINIXFS" ls "$T/fixed" "/lost+found/#2"
+	echo e >"$T/want"
+	check_out "$v: the tree keeps its entries" "$T/want"
+	run "$MINIXFS" ls "$T/fixed" "/lost+found/#2/.."
+	printf '#2\n#20\n' >"$T/want"
+	check_out "$v: \"..\" of the tree names /lost+found" "$T/want"
+
+	# /d/e names /d, and neither has a name: the loop is linked once.
+	spec_small "$fs order=$order" >"$T/spec"
+	echo "raw /d/e up 2" >>"$T/spec"
+	mkimage "$T/spec" "$T/img"
+	poke_number "$T/img" $(((rzone << lz) * bs + 2 * dsize)) "$width" 0
+	run "$FSCK_MINIXFS" -y -l "$T/img"
+	check_status "$v: -y -l links a loop that nothing names" 0
+	run "$MINIXFS" ls "$T/img" "/lost+found/#2"
+	echo e >"$T/want"
+	check_out "$v: the loop is cut at its second name" "$T/want"
+
+	# A /lost+found that is there is used.
+	spec_small "$fs order=$order" >"$T/spec"
+	echo "dir /lost+found 0700 0 0 0" >>"$T/spec"
+	mkimage "$T/spec" "$T/img"
+	set_inode "$T/img" 20 mode 33188
+	run "$FSCK_MINIXFS" -y -l "$T/img"
+	check_status "$v: -y -l uses the /lost+found that is there" 0
+	run "$MINIXFS" ls "$T/img" /lost+found
+	echo "#20" >"$T/want"
+	check_out "$v: the file goes into it" "$T/want"
+	run "$MINIXFS" ls "$T/img"
+	check_true "$v: the root still has one /lost+found" \
+	    test "$(grep -c '^lost+found$' "$T/out")" -eq 1
 }
 
 # damage_inodes: inodes that cannot be right.
@@ -229,11 +315,6 @@ damage_inodes() {
 damage_dirs() {
 	# "." of /d is the first entry in its first zone.
 	zone=$(get_inode "$T/good" 2 zone0)
-	width=16
-	if [ "$version" -eq 3 ]; then
-		width=32
-	fi
-	dsize=$((width / 8 + $(info_field "$T/good" "name length")))
 	cp "$T/good" "$T/img"
 	poke_number "$T/img" $(((zone << lz) * bs)) "$width" 5
 	fsck_damaged "\".\" naming another inode" \
@@ -291,6 +372,8 @@ damage_dirs() {
 
 run "$FSCK_MINIXFS"
 check_status "no image is a usage error" 2
+run "$FSCK_MINIXFS" -e 2 "$T/none"
+check_status "-e takes only 0 and 1" 2
 
 dd if=/dev/zero of="$T/zero" bs=1024 count=64 2>/dev/null
 run "$FSCK_MINIXFS" "$T/zero"
@@ -320,6 +403,19 @@ done
 done
 done
 
+# More directories in one than the queue of the walk first has room for.
+{
+	echo "fs version=2 order=le blocks=4096 inodes=400"
+	i=0
+	while [ "$i" -lt 100 ]; do
+		echo "dir /d$i 0755 0 0 0"
+		i=$((i + 1))
+	done
+} >"$T/spec"
+mkimage "$T/spec" "$T/img"
+run "$FSCK_MINIXFS" "$T/img"
+check_status "a directory holding a hundred directories is consistent" 0
+
 rm -f "$T/img"
 "$NEWFS_MINIXFS" -V 3 -s 2048 "$T/img"
 run "$FSCK_MINIXFS" "$T/img"
@@ -338,6 +434,11 @@ for order in le be; do
 	mkimage "$T/spec" "$T/good" "$T/exp"
 	bs=$(info_field "$T/good" "block size")
 	lz=$(info_field "$T/good" "log zone size")
+	width=16
+	if [ "$version" -eq 3 ]; then
+		width=32
+	fi
+	dsize=$((width / 8 + $(info_field "$T/good" "name length")))
 	run "$FSCK_MINIXFS" "$T/good"
 	check_status "$v: the image to damage is consistent" 0
 	cp "$T/good" "$T/img"
@@ -349,6 +450,7 @@ for order in le be; do
 	damage_maps
 	damage_inodes
 	damage_dirs
+	damage_lost
 done
 done
 

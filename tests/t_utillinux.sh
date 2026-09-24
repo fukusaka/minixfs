@@ -124,6 +124,20 @@ EOF
 			what="fsck.minix accepts the repair of \"$damage\""
 			check_status "$fs: $what" 0
 		done
+
+		# /d and its tree lose their name, and go to /lost+found.
+		width=16
+		if [ "${fs%% *}" = version=3 ]; then
+			width=32
+		fi
+		dsize=$((width / 8 + $(info_field "$T/good" "name length")))
+		cp "$T/good" "$T/img"
+		poke_number "$T/img" \
+		    $(($(get_inode "$T/good" 1 zone0) * 1024 + 2 * dsize)) \
+		    "$width" 0
+		run "$FSCK_MINIXFS" -y -l "$T/img"
+		run "$FSCK_MINIX" -f "$T/img"
+		check_status "$fs: fsck.minix accepts /lost+found from -y -l" 0
 	done
 }
 

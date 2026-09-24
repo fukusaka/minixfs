@@ -944,20 +944,31 @@ int
 mfs_clear_zref(struct mfs *fs, struct mfs_inode *ip,
     const struct mfs_zref *ref)
 {
+	return mfs_set_zref(fs, ip, ref, 0);
+}
+
+int
+mfs_set_zref(struct mfs *fs, struct mfs_inode *ip,
+    const struct mfs_zref *ref, uint32_t zone)
+{
+	unsigned char *p;
 	int r;
 
 	if (ref->block == 0) {
 		if (ref->index >= MFS_NR_ZONES)
 			return -EINVAL;
-		ip->zone[ref->index] = 0;
+		ip->zone[ref->index] = zone;
 		return 0;
 	}
 	if (ref->index >= fs->nindirs)
 		return -EINVAL;
 	if ((r = mfs_read_block(fs, ref->block, fs->dbuf)) < 0)
 		return r;
-	(void)memset(fs->dbuf + ref->index * fs->zone_num_size, 0,
-	    fs->zone_num_size);
+	p = fs->dbuf + ref->index * fs->zone_num_size;
+	if (fs->zone_num_size == 2)
+		put16(fs->order, p, zone);
+	else
+		put32(fs->order, p, zone);
 	return mfs_write_block(fs, ref->block, fs->dbuf);
 }
 

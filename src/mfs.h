@@ -311,6 +311,10 @@ int	mfs_put_entry(struct mfs *, const struct mfs_inode *, uint32_t,
 int	mfs_clear_zref(struct mfs *, struct mfs_inode *,
 	    const struct mfs_zref *);
 
+/* As mfs_clear_zref(), but store zone number zone.  Returns 0 or -errno. */
+int	mfs_set_zref(struct mfs *, struct mfs_inode *,
+	    const struct mfs_zref *, uint32_t);
+
 /* Set bit n of a map from mfs_load_map() to v (0 or 1). */
 void	mfs_set_map_bit(const struct mfs *, unsigned char *, uint32_t, int);
 
