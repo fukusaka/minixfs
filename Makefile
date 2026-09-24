@@ -15,6 +15,9 @@ MKIMAGE =	tests/mkimage
 
 SANFLAGS =	-O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined \
 		-fno-sanitize-recover=all
+# A command run on the sanitizer binary after it is linked, for systems
+# that need it adjusted before AddressSanitizer can run (see README).
+SAN_POSTLINK =
 
 all: $(PROG)
 
@@ -39,6 +42,7 @@ check-sanitize: $(MKIMAGE)
 	rm -rf build-san && mkdir build-san
 	$(CC) $(SANFLAGS) $(WARNFLAGS) -o build-san/$(PROG) \
 	    src/mfs.c src/minixfs.c
+	if [ -n "$(SAN_POSTLINK)" ]; then $(SAN_POSTLINK) build-san/$(PROG); fi
 	MINIXFS=./build-san/$(PROG) sh tests/run.sh
 
 clean:

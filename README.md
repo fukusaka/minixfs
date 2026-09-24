@@ -59,6 +59,23 @@ error.
     make check              # the test suite
     make check-sanitize     # the same with AddressSanitizer and UBSan
 
+`SAN_POSTLINK` names a command to run on the sanitizer binary after it
+is linked.  On NetBSD/i386, AddressSanitizer does not run with ASLR, so
+turn it off for that binary:
+
+    make check-sanitize SAN_POSTLINK="/usr/sbin/paxctl +a"
+
+The base gcc of NetBSD/i386 keeps the stack aligned to 4 bytes only, as
+the i386 ABI of NetBSD requires.  The AddressSanitizer stack frames it
+lays out can then start at addresses that are not multiples of 8, and
+the runtime reports stores to local variables as errors.  Building with
+16-byte stack alignment avoids this:
+
+    make check-sanitize SAN_POSTLINK="/usr/sbin/paxctl +a" \
+        SANFLAGS="-O1 -g -fno-omit-frame-pointer \
+        -mpreferred-stack-boundary=4 -fsanitize=address,undefined \
+        -fno-sanitize-recover=all"
+
 The tests are POSIX shell scripts, so that they also run on MINIX 3,
 which has no Python 3.  They print TAP.  Variables:
 
