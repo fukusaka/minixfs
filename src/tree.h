@@ -12,6 +12,7 @@
 #include <stdint.h>
 
 #include "mfs.h"
+#include "spec.h"
 
 /* What a tree needs of a file system, and what does not fit in it. */
 struct tree_need {
@@ -34,13 +35,17 @@ struct tree_fs {
 	int		owned;		/* every file gets uid and gid */
 	uint32_t	uid;
 	uint32_t	gid;
+	struct spec	*spec;		/* -F, or NULL */
+	int		exclude;	/* -x: only what the spec gives */
 };
 
 /*
- * Walk the tree at dir and add up what it needs in *f.  Each thing that
- * cannot be copied (a name too long, an owner or a device number too
- * large) is printed and counted in problems.  Returns 0, or -1 after
- * printing why the tree cannot be read.
+ * Walk the tree at dir, with what the specification of *f adds and
+ * overrides, and add up what it needs in *f.  Each thing that cannot be
+ * copied (a name too long, an owner or a device number too large, an
+ * entry of the specification that does not say enough) is printed and
+ * counted in problems.  Returns 0, or -1 after printing why the tree
+ * cannot be read.
  */
 int	tree_scan(const char *, const struct tree_fs *, struct tree_need *);
 

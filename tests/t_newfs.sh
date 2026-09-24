@@ -288,11 +288,92 @@ tree_kinds() {
 	fi
 }
 
+# -F: an mtree(8) specification in both forms overrides and adds, with
+# names from the files of -P; -x leaves out what it does not name.
+from_spec() {
+	rm -rf "$T/t" "$T/db"
+	mkdir -p "$T/t/bin" "$T/t/etc" "$T/db"
+	echo sh >"$T/t/bin/sh"
+	echo pw >"$T/t/etc/passwd"
+	echo junk >"$T/t/junk"
+	printf 'root:*:0:0::/root:/bin/sh\nbin:*:3:7::/bin:/sbin/nologin\n' \
+	    >"$T/db/master.passwd"
+	printf 'wheel:*:0:root\noperator:*:5:root\nbin:*:7:\n' >"$T/db/group"
+	cat >"$T/spec" <<EOF
+# full paths, as in a METALOG, and relative ones
+/set type=file uname=root gname=wheel mode=0644
+. type=dir mode=0755
+./bin type=dir mode=0755
+./bin/sh mode=0555 uname=bin gname=bin time=1234567890.123456789 size=3
+./dev type=dir mode=0755
+./dev/tty0 type=char mode=0620 gname=operator device=native,4,0
+./dev/fd0 type=block mode=0666 device=netbsd,2,1
+./dev/opt type=char mode=0600 device=native,9,9 optional
+./etc type=dir mode=0755
+    passwd mode=0600
+    motd mode=0644
+    sh.link type=link mode=0777 link=../bin/sh
+    with\040space mode=0644
+..
+./var type=dir mode=0755
+./var/run type=fifo mode=0600
+EOF
+	rm -f "$T/img"
+	run "$NEWFS_MINIXFS" -V 3 -d "$T/t" -F "$T/spec" -P "$T/db" "$T/img"
+	check_status "-F makes an image" 0
+	run "$FSCK_MINIXFS" "$T/img"
+	check_status "fsck passes the image of -F" 0
+	run "$MINIXFS" ls -lR "$T/img"
+	check_out_has "-F sets the mode, owner, group and time" \
+	    "^-r-xr-xr-x   1     3     7         3 2009-02-13 23:31 bin/sh\$"
+	check_out_has "-F adds a character device" \
+	    "^crw--w----   1     0     5    4,   0 .* dev/tty0\$"
+	check_out_has "-F adds a block device" \
+	    "^brw-rw-rw- .* 2,   1 .* dev/fd0\$"
+	check_true "-F leaves out an optional entry" \
+	    test "$(grep -c 'dev/opt' "$T/out")" -eq 0
+	check_out_has "-F overrides a host file" \
+	    "^-rw-------   1     0     0         3 .* etc/passwd\$"
+	check_out_has "-F adds an empty file" \
+	    "^-rw-r--r--   1     0     0         0 .* etc/motd\$"
+	check_out_has "-F adds a symbolic link" " etc/sh.link -> \.\./bin/sh\$"
+	check_out_has "-F takes escaped names" " etc/with space\$"
+	check_out_has "-F adds a pipe" "^prw------- .* var/run\$"
+	check_out_has "-F keeps what it does not name" " junk\$"
+
+	rm -f "$T/img"
+	run "$NEWFS_MINIXFS" -V 3 -d "$T/t" -F "$T/spec" -P "$T/db" -x "$T/img"
+	check_status "-x makes an image" 0
+	run "$MINIXFS" ls "$T/img"
+	printf 'bin\ndev\netc\nvar\n' >"$T/want"
+	check_out "-x leaves out what the specification does not name" \
+	    "$T/want"
+
+	for bad in "./junk type=dir mode=0755 uname=root gname=wheel" \
+	    "./new type=file uname=root gname=wheel" \
+	    "./new/x type=file mode=0644 uname=root gname=wheel" \
+	    "./bin/sh colour=red" "./bin/sh mode=u+x" \
+	    "./bin/sh uname=nobody-at-all"; do
+		printf '. type=dir mode=0755\n%s\n' "$bad" >"$T/bad"
+		rm -f "$T/img"
+		run "$NEWFS_MINIXFS" -V 3 -d "$T/t" -F "$T/bad" -P "$T/db" \
+		    "$T/img"
+		check_status "-F refuses: $bad" 1
+		check_true "nothing is made for: $bad" test ! -e "$T/img"
+	done
+
+	run "$NEWFS_MINIXFS" -V 3 -F "$T/spec" -s 100 "$T/img"
+	check_status "-F without -d is a usage error" 2
+	run "$NEWFS_MINIXFS" -V 3 -d "$T/t" -x -s 100 "$T/img"
+	check_status "-x without -F is a usage error" 2
+}
+
 formats
 defaults
 sizes
 refusals
 from_tree
 tree_kinds
+from_spec
 
 finish

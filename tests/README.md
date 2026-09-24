@@ -56,7 +56,10 @@ top of `tests/mkimage.c`).  The scripts:
   goes into every format and comes back out with its modes, sizes and
   times; hard and symbolic links, pipes, `-o`, the size made to fit,
   `-N`, sizes too small and names too long; and, where fakeroot(1) is
-  installed, devices.
+  installed, devices.  With `-F`, a specification in both forms sets
+  modes, owners (by name, from `-P`) and times, adds devices, links,
+  pipes, empty files and escaped names, skips optional entries, `-x`
+  leaves out what it does not name, and bad entries change nothing.
 - `t_fsck.sh` - `fsck_minixfs` passes the test tree in every format and
   an empty file system, and finds each kind of damage in every version
   and byte order: a bad maximum file size, a short image, the clean mark

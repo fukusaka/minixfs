@@ -97,8 +97,9 @@ device numbers are those of the image.  Unmount it with `fusermount3 -u
 MOUNTPOINT` on Linux or `umount MOUNTPOINT` on the BSDs.
 
     newfs_minixfs -V version [-N] [-B le|be] [-b block-size]
-        [-d directory [-o uid:gid]] [-i inodes] [-l name-length]
-        [-s blocks] [-t time] [-z log-zone-size] image
+        [-d directory [-F specfile [-P dbdir] [-x]] [-o uid:gid]]
+        [-i inodes] [-l name-length] [-s blocks] [-t time]
+        [-z log-zone-size] image
 
 makes a file system, empty or, with `-d`, holding a copy of a
 directory.  The version has to be given.  The defaults
@@ -118,7 +119,19 @@ so that the same tree makes the same image; hard links stay links and
 blocks of zeros stay holes, and the root directory takes the mode, owner
 and times of the directory itself.  Sockets are left out with a
 warning.  `-o uid:gid` gives every file that owner and group
-instead, which V1 needs for a group above 255.  Everything is checked
+instead, which V1 needs for a group above 255.
+
+`-F` reads an mtree(8) specification as NetBSD's makefs `-F` does, in
+the hierarchical form and in the form with full paths of the METALOG
+that a build writes: an entry sets the type, mode, owner, group, time,
+link target and device number of what it names, overriding the
+directory; what the directory does not have is made as the entry says
+(a regular file empty), `optional` entries excepted; and a type that
+differs from that of the file is an error.  User and group names are
+looked up in `master.passwd` or `passwd` and `group` of `-P`, or else
+in those of the system.  With `-x`, only what the specification names
+goes in.  Checksums, sizes and flags in it are ignored, and names with
+patterns are not supported.  Everything is checked
 before anything is written: names too long, owners and device numbers
 too large, and room, counting holes as data.  Without `-s` and an image
 file, the image is made large enough by that count, with inodes enough
@@ -214,6 +227,7 @@ sanitizers, other shells and JUnit output.
     src/fsck_minixfs.c      the fsck_minixfs command
     src/tunefs_minixfs.c    the tunefs_minixfs command
     src/tree.h, src/tree.c  newfs_minixfs -d: copying a directory tree
+    src/spec.h, src/spec.c  newfs_minixfs -F: reading an mtree spec
     src/mfs_format.c        library: laying out and writing a new
                             file system
     src/mfs_tune.c          library: changing a file system in place

@@ -5,8 +5,9 @@
  * newfs_minixfs - make a MINIX file system, empty or from a directory.
  *
  *	newfs_minixfs -V version [-N] [-B le|be] [-b block-size]
- *	    [-d directory [-o uid:gid]] [-i inodes] [-l name-length]
- *	    [-s blocks] [-t time] [-z log-zone-size] image
+ *	    [-d directory [-F specfile [-P dbdir] [-x]] [-o uid:gid]]
+ *	    [-i inodes] [-l name-length] [-s blocks] [-t time]
+ *	    [-z log-zone-size] image
  *
  * The version has to be given.  The size is taken from -s, or else from
  * the size of an existing image file; with -s, an image file is created
@@ -16,13 +17,17 @@
  * directories, symbolic links, devices and pipes, with their modes,
  * owners and times, and hard links as links; -o gives every file the
  * owner uid and group gid instead, since the group of a V1 inode is one
- * byte.  The root directory takes
- * the mode, owner and times of the directory itself.  Everything is
- * checked before anything is written: names too long, owners and device
- * numbers too large, and whether it fits, counting holes as data.
- * Without -s and an image file, the image is made large enough by that
- * count, and the inodes are raised to what the tree needs unless -i
- * gives them.
+ * byte.  -F reads an mtree(8) specification as makefs -F does: it sets
+ * the type, mode, owner, group, time, link target and device number of
+ * what it names, and adds what the directory does not have; user and
+ * group names come from the passwd and group files of -P, or of the
+ * system.  With -x, only what the specification names goes in.  The
+ * root directory takes the mode, owner and times of the directory
+ * itself.  Everything is checked before anything is written: names too
+ * long, owners and device numbers too large, and whether it fits,
+ * counting holes as data.  Without -s and an image file, the image is
+ * made large enough by that count, and the inodes are raised to what the
+ * tree needs unless -i gives them.
  */
 
 #include <sys/stat.h>
@@ -50,6 +55,9 @@ struct options {
 	const char		*image;
 	const char		*dir;		/* -d, or NULL */
 	const char		*owner;		/* -o, or NULL */
+	const char		*specfile;	/* -F, or NULL */
+	const char		*dbdir;		/* -P, or NULL */
+	int			exclude;	/* -x */
 	int			dry_run;	/* -N */
 	int			sized;		/* -s given */
 	int			inodes;		/* -i given */
@@ -60,9 +68,9 @@ usage(void)
 {
 	(void)fprintf(stderr,
 	    "usage: newfs_minixfs -V version [-N] [-B le|be] [-b block-size]\n"
-	    "           [-d directory [-o uid:gid]] [-i inodes]\n"
-	    "           [-l name-length] [-s blocks] [-t time]\n"
-	    "           [-z log-zone-size] image\n");
+	    "           [-d directory [-F specfile [-P dbdir] [-x]]\n"
+	    "           [-o uid:gid]] [-i inodes] [-l name-length]\n"
+	    "           [-s blocks] [-t time] [-z log-zone-size] image\n");
 	exit(2);
 }
 
@@ -91,7 +99,7 @@ parse(int argc, char **argv, struct options *o)
 	p = &o->params;
 	p->order = MFS_LITTLE_ENDIAN;
 	p->time = (uint32_t)time(NULL);
-	while ((ch = getopt(argc, argv, "B:b:d:i:l:No:s:t:V:z:")) != -1) {
+	while ((ch = getopt(argc, argv, "B:b:d:F:i:l:No:P:s:t:V:xz:")) != -1) {
 		switch (ch) {
 		case 'B':
 			if (strcmp(optarg, "le") == 0)
@@ -106,6 +114,15 @@ parse(int argc, char **argv, struct options *o)
 			break;
 		case 'd':
 			o->dir = optarg;
+			break;
+		case 'F':
+			o->specfile = optarg;
+			break;
+		case 'P':
+			o->dbdir = optarg;
+			break;
+		case 'x':
+			o->exclude = 1;
 			break;
 		case 'i':
 			p->ninodes = number("number of inodes", optarg);
@@ -140,7 +157,8 @@ parse(int argc, char **argv, struct options *o)
 		}
 	}
 	if (argc - optind != 1 || p->version == 0 ||
-	    (o->owner != NULL && o->dir == NULL))
+	    (o->dir == NULL && (o->owner != NULL || o->specfile != NULL)) ||
+	    (o->specfile == NULL && (o->dbdir != NULL || o->exclude)))
 		usage();
 	o->image = argv[optind];
 }
@@ -247,6 +265,13 @@ tree_shape(const struct options *o, uint32_t block_size, struct tree_fs *f)
 	const char *gid;
 
 	(void)memset(f, 0, sizeof(*f));
+	f->exclude = o->exclude;
+	if (o->specfile != NULL) {
+		if ((f->spec = malloc(sizeof(*f->spec))) == NULL)
+			err(1, NULL);
+		if (spec_read(o->specfile, o->dbdir, f->spec) == -1)
+			errx(1, "%s: nothing written", o->specfile);
+	}
 	f->version = o->params.version;
 	f->block_size = block_size;
 	f->log_zone_size = o->params.log_zone_size;
@@ -397,5 +422,9 @@ main(int argc, char **argv)
 		errx(1, "%s: %s", o.image, strerror(-r));
 	r = tree_copy(&fs, o.dir, &f);
 	mfs_close(&fs);
+	if (f.spec != NULL) {
+		spec_free(f.spec);
+		free(f.spec);
+	}
 	return r == 0 ? 0 : 1;
 }

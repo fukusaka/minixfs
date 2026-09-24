@@ -40,9 +40,9 @@ $(MKIMAGE): tests/mkimage.c
 $(PROG): src/minixfs.o $(LIBOBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $(PROG) src/minixfs.o $(LIBOBJS)
 
-$(NEWFS): src/newfs_minixfs.o src/tree.o $(LIBOBJS)
+$(NEWFS): src/newfs_minixfs.o src/tree.o src/spec.o $(LIBOBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $(NEWFS) src/newfs_minixfs.o src/tree.o \
-	    $(LIBOBJS)
+	    src/spec.o $(LIBOBJS)
 
 $(FSCK): src/fsck_minixfs.o $(LIBOBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $(FSCK) src/fsck_minixfs.o $(LIBOBJS)
@@ -59,8 +59,9 @@ src/mfs_format.o: src/mfs.h src/layout.h
 src/mfs_tune.o: src/mfs.h src/layout.h
 src/mfs_write.o: src/mfs.h src/layout.h
 src/minixfs.o: src/mfs.h
-src/newfs_minixfs.o: src/mfs.h src/tree.h
-src/tree.o: src/compat.h src/mfs.h src/tree.h
+src/newfs_minixfs.o: src/mfs.h src/spec.h src/tree.h
+src/tree.o: src/compat.h src/mfs.h src/spec.h src/tree.h
+src/spec.o: src/compat.h src/mfs.h src/spec.h
 src/fsck_minixfs.o: src/mfs.h
 src/tunefs_minixfs.o: src/mfs.h
 
@@ -84,8 +85,8 @@ check-sanitize: $(MKIMAGE)
 	    src/minixfs.c src/mfs.c src/mfs_format.c \
 	    src/mfs_tune.c src/mfs_write.c
 	$(CC) $(SANFLAGS) $(WARNFLAGS) -o build-san/$(NEWFS) \
-	    src/newfs_minixfs.c src/tree.c src/mfs.c src/mfs_format.c \
-	    src/mfs_tune.c src/mfs_write.c
+	    src/newfs_minixfs.c src/tree.c src/spec.c src/mfs.c \
+	    src/mfs_format.c src/mfs_tune.c src/mfs_write.c
 	$(CC) $(SANFLAGS) $(WARNFLAGS) -o build-san/$(FSCK) \
 	    src/fsck_minixfs.c src/mfs.c src/mfs_format.c \
 	    src/mfs_tune.c src/mfs_write.c
