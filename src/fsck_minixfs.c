@@ -1260,7 +1260,8 @@ static void
 warn_super(struct check *c)
 {
 	struct mfs *fs;
-	uint64_t first, itable, max, need, zones;
+	uint64_t first, itable, need;
+	uint32_t max;
 
 	fs = &c->fs;
 	need = map_blocks(c, (uint64_t)fs->ninodes + 1);
@@ -1280,14 +1281,9 @@ warn_super(struct check *c)
 		    "inode table leaves room from %" PRIu64,
 		    fs->firstdatazone, first);
 
-	/* MINIX reaches up to the double indirect zone. */
-	zones = fs->ndzones + fs->nindirs + (uint64_t)fs->nindirs * fs->nindirs;
-	max = MAX_SIZE;
-	if (((max - 1) >> fs->log_zone_size) / fs->block_size >= zones)
-		max = (zones * fs->block_size) << fs->log_zone_size;
-	if (fs->max_size != max)
+	if (fs->max_size != (max = mfs_minix_max_size(fs)))
 		warning(c, "the maximum file size is %" PRIu32 ", where MINIX "
-		    "works out %" PRIu64, fs->max_size, max);
+		    "works out %" PRIu32, fs->max_size, max);
 	if (fs->log_zone_size > 8)
 		warning(c, "a zone is %u blocks", 1U << fs->log_zone_size);
 }

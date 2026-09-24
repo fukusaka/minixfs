@@ -395,6 +395,13 @@ struct mfs_layout {
 uint32_t mfs_max_size(int, uint32_t);
 
 /*
+ * The s_max_size that MINIX works out for an open file system: what the
+ * zones reach up to the double indirect zone, which is all that MINIX
+ * uses, but no more than the largest signed 32-bit size.
+ */
+uint32_t mfs_minix_max_size(const struct mfs *);
+
+/*
  * Check the parameters and lay the file system out in *l.  Returns 0,
  * -EINVAL for parameters that do not fit the version, -ENOSPC if the
  * file system is too small to hold its root directory, or -EFBIG if it

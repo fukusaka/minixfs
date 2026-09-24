@@ -15,7 +15,8 @@ file systems, on Linux, FreeBSD, NetBSD and MINIX 3 itself:
 Read-only access to V1, V2 and V3 file systems in either byte order,
 through the `minixfs` command, read-only mounts through FUSE with
 `mount_minixfs`, empty file systems of any of them with
-`newfs_minixfs`, and consistency checks and repairs with `fsck_minixfs`.
+`newfs_minixfs`, consistency checks and repairs with `fsck_minixfs`,
+and changes of settings with `tunefs_minixfs`.
 
 | Magic  | Version | Names | Origin |
 |--------|---------|-------|--------|
@@ -143,6 +144,18 @@ V1 and V2 keep the mark where Linux does; MINIX leaves that word zero.
 V3 keeps it in the flags of MINIX 3, which mounts a file system that is
 not clean read-only; `newfs_minixfs` marks new file systems clean.
 
+    tunefs_minixfs [-N] [-c clean|dirty] [-e 0|1]
+        [-m minix|linux|bytes] [-T SIZE:HEADS:SIDE] image
+
+changes the settings of a file system; without options, or with `-N`,
+it prints them and writes nothing, and `-N` shows what the options
+would change.  `-c` marks the file system clean or dirty, where Linux
+and MINIX 3 keep the mark.  `-e` sets the bits of the maps past the
+last inode or zone to 0, as the mkfs of MINIX leaves them, or 1, as
+that of Linux.  `-m` sets the maximum file size in the super block to
+what MINIX works out, to what Linux and `newfs_minixfs` write, or to a
+number.  Each change is printed as the old and the new value.
+
 The other commands exit with 0 on success, 1 if anything failed; all
 exit with 2 for a usage error.
 
@@ -161,6 +174,7 @@ sanitizers, other shells and JUnit output.
     src/mount_minixfs.c     the FUSE file system
     src/newfs_minixfs.c     the newfs_minixfs command
     src/fsck_minixfs.c      the fsck_minixfs command
+    src/tunefs_minixfs.c    the tunefs_minixfs command
     src/mfs_format.c        library: laying out and writing a new
                             file system
     src/layout.h            the on-disk layout

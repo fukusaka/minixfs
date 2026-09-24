@@ -299,6 +299,18 @@ device_size(const struct mfs *fs)
 	    (rem < size ? rem : size));
 }
 
+uint32_t
+mfs_minix_max_size(const struct mfs *fs)
+{
+	uint64_t max, zones;
+
+	zones = fs->ndzones + fs->nindirs + (uint64_t)fs->nindirs * fs->nindirs;
+	max = INT32_MAX;
+	if (((max - 1) >> fs->log_zone_size) / fs->block_size >= zones)
+		max = (zones * fs->block_size) << fs->log_zone_size;
+	return (uint32_t)max;
+}
+
 int
 mfs_read_device(struct mfs *fs, void *buf, size_t len, off_t off)
 {

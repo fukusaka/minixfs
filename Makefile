@@ -13,6 +13,7 @@ LIBOBJS =	src/mfs.o src/mfs_format.o
 PROG =		minixfs
 NEWFS =		newfs_minixfs
 FSCK =		fsck_minixfs
+TUNEFS =	tunefs_minixfs
 MKIMAGE =	tests/mkimage
 
 # mount_minixfs needs a FUSE library, so it is built on request: "make
@@ -31,7 +32,7 @@ SANFLAGS =	-O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined \
 # that need it adjusted before AddressSanitizer can run (see README).
 SAN_POSTLINK =
 
-all: $(PROG) $(NEWFS) $(FSCK)
+all: $(PROG) $(NEWFS) $(FSCK) $(TUNEFS)
 
 $(MKIMAGE): tests/mkimage.c
 	$(CC) $(CFLAGS) $(WARNFLAGS) -o $(MKIMAGE) tests/mkimage.c
@@ -45,6 +46,10 @@ $(NEWFS): src/newfs_minixfs.o $(LIBOBJS)
 $(FSCK): src/fsck_minixfs.o $(LIBOBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $(FSCK) src/fsck_minixfs.o $(LIBOBJS)
 
+$(TUNEFS): src/tunefs_minixfs.o $(LIBOBJS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $(TUNEFS) src/tunefs_minixfs.o \
+	    $(LIBOBJS)
+
 .c.o:
 	$(CC) $(CFLAGS) $(WARNFLAGS) -c -o $@ $<
 
@@ -53,6 +58,7 @@ src/mfs_format.o: src/mfs.h src/layout.h
 src/minixfs.o: src/mfs.h
 src/newfs_minixfs.o: src/mfs.h
 src/fsck_minixfs.o: src/mfs.h
+src/tunefs_minixfs.o: src/mfs.h
 
 fuse: $(FUSEPROG)
 
@@ -62,9 +68,9 @@ $(FUSEPROG): src/mount_minixfs.c src/compat.h src/mfs.h $(LIBOBJS)
 	    -o $(FUSEPROG) src/mount_minixfs.c $(LIBOBJS) $(LDFLAGS) \
 	    $(FUSE_LIBS)
 
-check: $(PROG) $(NEWFS) $(FSCK) $(MKIMAGE)
+check: $(PROG) $(NEWFS) $(FSCK) $(TUNEFS) $(MKIMAGE)
 	MINIXFS=./$(PROG) NEWFS_MINIXFS=./$(NEWFS) FSCK_MINIXFS=./$(FSCK) \
-	    sh tests/run.sh
+	    TUNEFS_MINIXFS=./$(TUNEFS) sh tests/run.sh
 
 # Build with AddressSanitizer and UBSan in a separate directory, then run
 # the whole test suite against that binary.
@@ -76,16 +82,21 @@ check-sanitize: $(MKIMAGE)
 	    src/newfs_minixfs.c src/mfs.c src/mfs_format.c
 	$(CC) $(SANFLAGS) $(WARNFLAGS) -o build-san/$(FSCK) \
 	    src/fsck_minixfs.c src/mfs.c src/mfs_format.c
+	$(CC) $(SANFLAGS) $(WARNFLAGS) -o build-san/$(TUNEFS) \
+	    src/tunefs_minixfs.c src/mfs.c src/mfs_format.c
 	if [ -n "$(SAN_POSTLINK)" ]; then \
 	    $(SAN_POSTLINK) build-san/$(PROG); \
 	    $(SAN_POSTLINK) build-san/$(NEWFS); \
 	    $(SAN_POSTLINK) build-san/$(FSCK); \
+	    $(SAN_POSTLINK) build-san/$(TUNEFS); \
 	fi
 	MINIXFS=./build-san/$(PROG) NEWFS_MINIXFS=./build-san/$(NEWFS) \
-	    FSCK_MINIXFS=./build-san/$(FSCK) sh tests/run.sh
+	    FSCK_MINIXFS=./build-san/$(FSCK) \
+	    TUNEFS_MINIXFS=./build-san/$(TUNEFS) sh tests/run.sh
 
 clean:
-	rm -f $(PROG) $(NEWFS) $(FSCK) src/*.o $(MKIMAGE) $(FUSEPROG)
+	rm -f $(PROG) $(NEWFS) $(FSCK) $(TUNEFS) src/*.o $(MKIMAGE) \
+	    $(FUSEPROG)
 	rm -rf build-san
 
 .PHONY: all check check-sanitize clean fuse
