@@ -50,8 +50,9 @@ fail() {
 	nfail=$((nfail + 1))
 	echo "not ok $ntest - $1"
 	shift
+	# Every line of detail, even inside one argument, is a TAP comment.
 	for _fail_line in "$@"; do
-		echo "#   $_fail_line"
+		printf '%s\n' "$_fail_line" | sed 's/^/#   /'
 	done
 }
 

@@ -225,16 +225,18 @@ check_super(struct mfs *fs)
 	return 0;
 }
 
-int
-mfs_open(struct mfs *fs, const char *path)
+/* Open with the given open(2) flags; see mfs_open(). */
+static int
+open_fs(struct mfs *fs, const char *path, int flags)
 {
 	unsigned char sb[SUPER_SIZE];
 	struct stat st;
 	int r;
 
 	(void)memset(fs, 0, sizeof(*fs));
-	if ((fs->fd = open(path, O_RDONLY)) == -1)
+	if ((fs->fd = open(path, flags)) == -1)
 		return -errno;
+	fs->writable = (flags & O_ACCMODE) == O_RDWR;
 	if (fstat(fs->fd, &st) == -1) {
 		r = -errno;
 		goto fail;
@@ -261,6 +263,18 @@ mfs_open(struct mfs *fs, const char *path)
 fail:
 	mfs_close(fs);
 	return r;
+}
+
+int
+mfs_open(struct mfs *fs, const char *path)
+{
+	return open_fs(fs, path, O_RDONLY);
+}
+
+int
+mfs_open_rw(struct mfs *fs, const char *path)
+{
+	return open_fs(fs, path, O_RDWR);
 }
 
 void
@@ -491,6 +505,7 @@ mfs_readdir(struct mfs *fs, const struct mfs_inode *dp, mfs_dirent_fn fn,
 			de.ino = getn(fs, p, fs->dirent_ino);
 			if (de.ino == 0)
 				continue;
+			de.off = off + i;
 			(void)memcpy(de.name, p + fs->dirent_ino, fs->namelen);
 			de.name[fs->namelen] = '\0';
 			if ((r = fn(&de, arg)) != 0)
@@ -607,14 +622,17 @@ mfs_rdev(const struct mfs_inode *ip)
  * read.
  */
 static int
-walk_indirect(struct mfs *fs, uint32_t ind, int level, mfs_zone_fn fn,
-    void *arg)
+walk_indirect(struct mfs *fs, uint32_t ind, int level,
+    const struct mfs_zref *where, mfs_zone_fn fn, void *arg)
 {
+	struct mfs_zref ref;
 	unsigned char *buf;
 	uint32_t i, zone;
 	int r;
 
-	if ((r = fn(ind, level, arg)) != 0)
+	if ((r = fn(ind, level, where, arg)) == MFS_WALK_SKIP)
+		return 0;
+	if (r != 0)
 		return r;
 	if (check_zone(fs, ind) < 0)
 		return 0;
@@ -624,15 +642,17 @@ walk_indirect(struct mfs *fs, uint32_t ind, int level, mfs_zone_fn fn,
 		free(buf);
 		return r;
 	}
+	ref.block = ind << fs->log_zone_size;
 	for (i = 0; i < fs->nindirs && r == 0; i++) {
 		zone = getn(fs, buf + i * fs->zone_num_size,
 		    fs->zone_num_size);
 		if (zone == 0)
 			continue;
+		ref.index = i;
 		if (level == 1)
-			r = fn(zone, 0, arg);
+			r = fn(zone, 0, &ref, arg);
 		else
-			r = walk_indirect(fs, zone, level - 1, fn, arg);
+			r = walk_indirect(fs, zone, level - 1, &ref, fn, arg);
 	}
 	free(buf);
 	return r;
@@ -642,17 +662,24 @@ int
 mfs_walk_zones(struct mfs *fs, const struct mfs_inode *ip, mfs_zone_fn fn,
     void *arg)
 {
+	struct mfs_zref ref;
 	uint32_t i, level;
 	int r;
 
-	for (i = 0; i < fs->ndzones; i++)
-		if (ip->zone[i] != 0 && (r = fn(ip->zone[i], 0, arg)) != 0)
+	ref.block = 0;
+	for (i = 0; i < fs->ndzones; i++) {
+		ref.index = i;
+		if (ip->zone[i] != 0 &&
+		    (r = fn(ip->zone[i], 0, &ref, arg)) != 0 &&
+		    r != MFS_WALK_SKIP)
 			return r;
+	}
 	for (level = 1; level <= fs->nlevels; level++) {
 		i = fs->ndzones + level - 1;
 		if (ip->zone[i] == 0)
 			continue;
-		r = walk_indirect(fs, ip->zone[i], (int)level, fn, arg);
+		ref.index = i;
+		r = walk_indirect(fs, ip->zone[i], (int)level, &ref, fn, arg);
 		if (r != 0)
 			return r;
 	}
@@ -730,4 +757,150 @@ mfs_count_free(struct mfs *fs, uint32_t *inodes, uint32_t *zones)
 		return r;
 	return count_clear(fs, MFS_ZMAP, fs->nzones - fs->firstdatazone,
 	    zones);
+}
+
+int
+mfs_write_block(struct mfs *fs, uint32_t block, const void *buf)
+{
+	if (!fs->writable)
+		return -EROFS;
+	if (block >= fs->nblocks)
+		return -EIO;
+	return write_at(fs->fd, buf, fs->block_size,
+	    (off_t)block * fs->block_size);
+}
+
+/* Encode *ip as a V1 inode at p. */
+static void
+encode_v1(const struct mfs *fs, const struct mfs_inode *ip, unsigned char *p)
+{
+	int i;
+
+	put16(fs->order, p + I1_MODE, ip->mode);
+	put16(fs->order, p + I1_UID, ip->uid);
+	put32(fs->order, p + I1_FSIZE, ip->size);
+	put32(fs->order, p + I1_MTIME, ip->mtime);
+	p[I1_GID] = (unsigned char)ip->gid;
+	p[I1_NLINKS] = (unsigned char)ip->nlinks;
+	for (i = 0; i < I1_NZONES; i++)
+		put16(fs->order, p + I1_ZONE + 2 * i, ip->zone[i]);
+}
+
+/* Encode *ip as a V2 or V3 inode at p. */
+static void
+encode_v2(const struct mfs *fs, const struct mfs_inode *ip, unsigned char *p)
+{
+	int i;
+
+	put16(fs->order, p + I2_MODE, ip->mode);
+	put16(fs->order, p + I2_NLINKS, ip->nlinks);
+	put16(fs->order, p + I2_UID, ip->uid);
+	put16(fs->order, p + I2_GID, ip->gid);
+	put32(fs->order, p + I2_FSIZE, ip->size);
+	put32(fs->order, p + I2_ATIME, ip->atime);
+	put32(fs->order, p + I2_MTIME, ip->mtime);
+	put32(fs->order, p + I2_CTIME, ip->ctime);
+	for (i = 0; i < I2_NZONES; i++)
+		put32(fs->order, p + I2_ZONE + 4 * i, ip->zone[i]);
+}
+
+int
+mfs_put_inode(struct mfs *fs, const struct mfs_inode *ip)
+{
+	uint64_t off;
+	uint32_t block;
+	int r;
+
+	if (ip->num == 0 || ip->num > fs->ninodes)
+		return -EIO;
+	off = (uint64_t)(ip->num - 1) * fs->inode_size;
+	block = fs->inode_start + (uint32_t)(off / fs->block_size);
+	if ((r = mfs_read_block(fs, block, fs->ibuf)) < 0)
+		return r;
+	if (fs->version == 1)
+		encode_v1(fs, ip, fs->ibuf + off % fs->block_size);
+	else
+		encode_v2(fs, ip, fs->ibuf + off % fs->block_size);
+	return mfs_write_block(fs, block, fs->ibuf);
+}
+
+int
+mfs_set_entry(struct mfs *fs, const struct mfs_inode *dp, uint32_t off,
+    uint32_t ino)
+{
+	unsigned char *p;
+	uint32_t block;
+	int r;
+
+	if (off >= dp->size || off % fs->dirent_size != 0)
+		return -EINVAL;
+	if ((r = mfs_bmap(fs, dp, off / fs->block_size, &block)) < 0)
+		return r;
+	if (block == 0)
+		return -EIO;
+	if ((r = mfs_read_block(fs, block, fs->dbuf)) < 0)
+		return r;
+	p = fs->dbuf + off % fs->block_size;
+	if (fs->dirent_ino == 2)
+		put16(fs->order, p, ino);
+	else
+		put32(fs->order, p, ino);
+	return mfs_write_block(fs, block, fs->dbuf);
+}
+
+int
+mfs_clear_zref(struct mfs *fs, struct mfs_inode *ip,
+    const struct mfs_zref *ref)
+{
+	int r;
+
+	if (ref->block == 0) {
+		if (ref->index >= MFS_NR_ZONES)
+			return -EINVAL;
+		ip->zone[ref->index] = 0;
+		return 0;
+	}
+	if (ref->index >= fs->nindirs)
+		return -EINVAL;
+	if ((r = mfs_read_block(fs, ref->block, fs->dbuf)) < 0)
+		return r;
+	(void)memset(fs->dbuf + ref->index * fs->zone_num_size, 0,
+	    fs->zone_num_size);
+	return mfs_write_block(fs, ref->block, fs->dbuf);
+}
+
+void
+mfs_set_map_bit(const struct mfs *fs, unsigned char *map, uint32_t n, int v)
+{
+	uint32_t byte;
+
+	byte = n / 8;
+	if (fs->order == MFS_BIG_ENDIAN)
+		byte ^= fs->version == 3 ? 3 : 1;
+	if (v)
+		map[byte] |= (unsigned char)(1 << (n % 8));
+	else
+		map[byte] &= (unsigned char)~(1 << (n % 8));
+}
+
+int
+mfs_store_map(struct mfs *fs, enum mfs_map which, const unsigned char *map)
+{
+	uint32_t i, n, start;
+	int r;
+
+	if (which == MFS_IMAP) {
+		start = START_BLOCK;
+		n = fs->imap_blocks;
+	} else {
+		start = START_BLOCK + fs->imap_blocks;
+		n = fs->zmap_blocks;
+	}
+	for (i = 0; i < n; i++) {
+		r = mfs_write_block(fs, start + i,
+		    map + (size_t)i * fs->block_size);
+		if (r < 0)
+			return r;
+	}
+	return 0;
 }

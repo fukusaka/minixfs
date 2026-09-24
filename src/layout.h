@@ -2,7 +2,8 @@
  * SPDX-License-Identifier: BSD-2-Clause
  * Copyright (c) 2026 Shoichi Fukusaka
  *
- * layout.h - the on-disk layout of MINIX file systems, for the library.
+ * layout.h - the on-disk layout of MINIX file systems, and helpers that the
+ * two halves of the library share.
  *
  * On-disk layout (block numbers in units of the block size):
  *
@@ -35,6 +36,11 @@
 
 #ifndef LAYOUT_H
 #define LAYOUT_H
+
+#include <errno.h>
+#include <unistd.h>
+
+#include "mfs.h"
 
 #define SUPER_OFFSET	1024		/* byte offset of the super block */
 #define SUPER_SIZE	1024		/* bytes read for the super block */
@@ -90,5 +96,52 @@
 #define I2_CTIME	20		/* 32 */
 #define I2_ZONE		24		/* 10 x 32 */
 #define I2_NZONES	10
+
+/* Store a number in the byte order of an image. */
+static inline void
+put16(enum mfs_order order, unsigned char *p, uint32_t v)
+{
+	if (order == MFS_BIG_ENDIAN) {
+		p[0] = (unsigned char)(v >> 8);
+		p[1] = (unsigned char)v;
+	} else {
+		p[0] = (unsigned char)v;
+		p[1] = (unsigned char)(v >> 8);
+	}
+}
+
+static inline void
+put32(enum mfs_order order, unsigned char *p, uint32_t v)
+{
+	if (order == MFS_BIG_ENDIAN) {
+		put16(order, p, v >> 16);
+		put16(order, p + 2, v & 0xffff);
+	} else {
+		put16(order, p, v & 0xffff);
+		put16(order, p + 2, v >> 16);
+	}
+}
+
+/* Write exactly len bytes at off. */
+static inline int
+write_at(int fd, const void *buf, size_t len, off_t off)
+{
+	const unsigned char *p;
+	ssize_t n;
+
+	p = buf;
+	while (len > 0) {
+		n = pwrite(fd, p, len, off);
+		if (n == -1) {
+			if (errno == EINTR)
+				continue;
+			return -errno;
+		}
+		p += n;
+		len -= (size_t)n;
+		off += n;
+	}
+	return 0;
+}
 
 #endif /* LAYOUT_H */

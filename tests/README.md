@@ -57,11 +57,14 @@ top of `tests/mkimage.c`).  The scripts:
   counts, zones outside the data area or used twice, inodes that no
   directory names or with no valid type, bad directory sizes, "." that
   names another inode, and entries naming inodes past the last, free
-  inodes, names with "/" and directories listed twice.
+  inodes, names with "/" and directories listed twice; `-y` repairs
+  each of them so that a second check finds nothing, and leaves a
+  consistent image as it was.
 - `t_utillinux.sh` - where util-linux is installed: `fsck.minix` accepts
   the test images and those of `newfs_minixfs`, images from `mkfs.minix`
   are readable and pass `fsck_minixfs`, and `fsck_minixfs` and
-  `fsck.minix` find the same damage.  Skipped otherwise.
+  `fsck.minix` find the same damage, and `fsck.minix` accepts what
+  `fsck_minixfs -y` repaired.  Skipped otherwise.
 - `t_fuse.sh` - where `mount_minixfs` is built and mounting is allowed:
   the tree read through the kernel in four formats, with its names,
   contents, modes, owners, inode numbers and device numbers.  Skipped

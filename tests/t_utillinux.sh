@@ -9,7 +9,8 @@
 #    that the test images themselves are sound.  It reads little-endian
 #    file systems with 1024-byte blocks and one-block zones only.
 #  - Images made by mkfs.minix must be readable.
-#  - fsck_minixfs and fsck.minix must agree on damaged images.
+#  - fsck_minixfs and fsck.minix must agree on damaged images, and
+#    fsck.minix must accept what fsck_minixfs -y repaired.
 #
 # FSCK_MINIX and MKFS_MINIX name the tools (default: from PATH).
 
@@ -110,6 +111,10 @@ EOF
 			    test "$status" -ne 0
 			run "$FSCK_MINIXFS" "$T/img"
 			check_status "$fs: fsck_minixfs finds \"$damage\"" 1
+			run "$FSCK_MINIXFS" -y "$T/img"
+			run "$FSCK_MINIX" -f "$T/img"
+			what="fsck.minix accepts the repair of \"$damage\""
+			check_status "$fs: $what" 0
 		done
 	done
 }

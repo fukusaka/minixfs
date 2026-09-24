@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: BSD-2-Clause
 # Copyright (c) 2026 Shoichi Fukusaka
 #
-# fsck_minixfs: consistent file systems of every format pass, and each
-# kind of damage is found and reported.
+# fsck_minixfs: consistent file systems of every format pass; each kind
+# of damage is found and reported, and -y repairs it so that a second
+# check finds nothing.
 
 . ./tests/lib.sh
 
@@ -21,10 +22,21 @@ EOF
 }
 
 # fsck_damaged NAME PATTERN - run fsck_minixfs on $T/img and check that
-# it reports PATTERN.
+# it reports PATTERN; then repair a copy, $T/fixed, with -y and check
+# that it says so and that nothing is left.
 fsck_damaged() {
 	run "$FSCK_MINIXFS" "$T/img"
 	check_found "$v: $1" "$2"
+	cp "$T/img" "$T/fixed"
+	run "$FSCK_MINIXFS" -y "$T/fixed"
+	check_out_has "$v: -y repairs $1" "$2 (repaired)\$"
+	run "$FSCK_MINIXFS" "$T/fixed"
+	check_status "$v: nothing is left of $1" 0
+}
+
+# check_field NAME IMAGE INO FIELD VALUE - an inode field after a repair.
+check_field() {
+	check_true "$1" test "$(get_inode "$2" "$3" "$4")" -eq "$5"
 }
 
 # damage_maps: bit maps that disagree with the files.
@@ -59,29 +71,43 @@ damage_inodes() {
 	set_inode "$T/img" 4 nlinks 3
 	fsck_damaged "a wrong link count" \
 	    "inode 4: link count 3, but 1 entries"
+	check_field "$v: -y sets the link count" "$T/fixed" 4 nlinks 1
 
 	cp "$T/good" "$T/img"
 	set_inode "$T/img" 4 zone0 60000
 	fsck_damaged "a zone outside the data area" \
 	    "/f: zone 60000 is outside the data area"
+	check_field "$v: -y clears a zone outside the data area" "$T/fixed" \
+	    4 zone0 0
 
 	cp "$T/good" "$T/img"
 	set_inode "$T/img" 6 zone0 "$(get_inode "$T/good" 4 zone0)"
 	fsck_damaged "a zone that two files use" "used by another file too"
+	check_field "$v: -y clears the second use of a zone" "$T/fixed" \
+	    6 zone0 0
+	run "$MINIXFS" cat "$T/fixed" /f
+	check_out "$v: the first file keeps its zone" "$T/exp/f"
 
 	cp "$T/good" "$T/img"
 	set_inode "$T/img" 20 mode 33188		# 0100644
 	fsck_damaged "an inode in use that no directory names" \
 	    "inode 20 is in use (mode 100644) but no directory names it"
+	check_field "$v: -y frees an inode that no directory names" \
+	    "$T/fixed" 20 mode 0
 
 	cp "$T/good" "$T/img"
 	set_inode "$T/img" 6 mode 62884			# 0172644
 	fsck_damaged "an inode with no valid type" "/g: .* no valid type"
+	check_field "$v: -y frees an inode with no valid type" "$T/fixed" \
+	    6 mode 0
 
+	size=$(get_inode "$T/good" 2 size)
 	cp "$T/good" "$T/img"
-	set_inode "$T/img" 2 size 33
-	fsck_damaged "a directory size that is not whole entries" \
-	    "/d: directory size 33 is not a whole number of entries"
+	set_inode "$T/img" 2 size $((size + 1))
+	msg="/d: directory size $((size + 1)) is not a whole number of entries"
+	fsck_damaged "a directory size that is not whole entries" "$msg"
+	check_field "$v: -y cuts a directory to whole entries" "$T/fixed" \
+	    2 size "$size"
 
 	# Only V1 limits the size of a file to less than 4 GiB.
 	if [ "$version" -eq 1 ]; then
@@ -89,6 +115,8 @@ damage_inodes() {
 		set_inode "$T/img" 6 size 2147483647
 		fsck_damaged "a size the zones cannot reach" \
 		    "/g: size 2147483647 is more than the zones reach"
+		check_field "$v: -y cuts a size to what the zones reach" \
+		    "$T/fixed" 6 size 268966912
 	fi
 }
 
@@ -107,14 +135,24 @@ damage_dirs() {
 	fsck_damaged "\".\" naming another inode" \
 	    "/d: \".\" names inode 5, not 2"
 
+	# A "." that is not there cannot be put back.
+	cp "$T/good" "$T/img"
+	poke "$T/img" $(((zone << lz) * bs + width / 8)) 170	# "x"
+	run "$FSCK_MINIXFS" -y "$T/img"
+	check_found "$v: -y leaves a missing \".\"" \
+	    "/d: \".\" is not entry 1 (not repaired)"
+
 	for raw in "bad 999:names inode 999, past the last" \
 	    "free 30:names inode 30, which is free" \
 	    "a/b 4:bad name \"a/b\"" \
-	    "up 2:directory inode 2 is listed in more than one"; do
+	    "up 2:directory inode 2 is listed in more than one directory"; do
 		spec_small "$fs order=$order" >"$T/spec"
 		echo "raw /d/e ${raw%%:*}" >>"$T/spec"
 		mkimage "$T/spec" "$T/img"
 		fsck_damaged "an entry \"${raw%%:*}\"" "${raw#*:}"
+		run "$MINIXFS" ls "$T/fixed" /d/e
+		: >"$T/none"
+		check_out "$v: -y removes the entry \"${raw%%:*}\"" "$T/none"
 	done
 }
 
@@ -163,9 +201,15 @@ for order in le be; do
 	version=${fs#version=}
 	version=${version%% *}
 	spec_small "$fs order=$order" >"$T/spec"
-	mkimage "$T/spec" "$T/good"
+	rm -rf "$T/exp"
+	mkimage "$T/spec" "$T/good" "$T/exp"
 	run "$FSCK_MINIXFS" "$T/good"
 	check_status "$v: the image to damage is consistent" 0
+	cp "$T/good" "$T/img"
+	run "$FSCK_MINIXFS" -y "$T/img"
+	check_status "$v: -y passes a consistent image" 0
+	check_same_file "$v: -y leaves a consistent image as it was" \
+	    "$T/good" "$T/img"
 	damage_maps
 	damage_inodes
 	damage_dirs

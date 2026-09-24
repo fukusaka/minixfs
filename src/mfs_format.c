@@ -28,52 +28,6 @@
 #define ROOT_MODE	0040755
 #define MAX_16		0xffff
 
-static void
-put16(enum mfs_order order, unsigned char *p, uint32_t v)
-{
-	if (order == MFS_BIG_ENDIAN) {
-		p[0] = (unsigned char)(v >> 8);
-		p[1] = (unsigned char)v;
-	} else {
-		p[0] = (unsigned char)v;
-		p[1] = (unsigned char)(v >> 8);
-	}
-}
-
-static void
-put32(enum mfs_order order, unsigned char *p, uint32_t v)
-{
-	if (order == MFS_BIG_ENDIAN) {
-		put16(order, p, v >> 16);
-		put16(order, p + 2, v & 0xffff);
-	} else {
-		put16(order, p, v & 0xffff);
-		put16(order, p + 2, v >> 16);
-	}
-}
-
-/* Write exactly len bytes at off. */
-static int
-write_at(int fd, const void *buf, size_t len, off_t off)
-{
-	const unsigned char *p;
-	ssize_t n;
-
-	p = buf;
-	while (len > 0) {
-		n = pwrite(fd, p, len, off);
-		if (n == -1) {
-			if (errno == EINTR)
-				continue;
-			return -errno;
-		}
-		p += n;
-		len -= (size_t)n;
-		off += n;
-	}
-	return 0;
-}
-
 /* Block size and name length, from the parameters and the version. */
 static int
 plan_sizes(const struct mfs_params *p, struct mfs_layout *l)

@@ -15,7 +15,7 @@ file systems, on Linux, FreeBSD, NetBSD and MINIX 3 itself:
 Read-only access to V1, V2 and V3 file systems in either byte order,
 through the `minixfs` command, read-only mounts through FUSE with
 `mount_minixfs`, empty file systems of any of them with
-`newfs_minixfs`, and consistency checks with `fsck_minixfs`.
+`newfs_minixfs`, and consistency checks and repairs with `fsck_minixfs`.
 
 | Magic  | Version | Names | Origin |
 |--------|---------|-------|--------|
@@ -86,14 +86,19 @@ that must come out the same each time; `-N` prints the layout and writes
 nothing.  The first 1024 bytes, where a boot block may be, are left
 alone.
 
-    fsck_minixfs image
+    fsck_minixfs [-y] image
 
-checks a file system without changing it: directory entries (inode
-numbers, names, "." and ".."), inodes (types, sizes, zone numbers,
-zones used twice), link counts, inodes that no directory names, and both
-bit maps.  It prints one line per problem and a summary, and exits with
-0 if the file system is consistent, 1 if it found problems and 3 if the
-image cannot be checked at all.
+checks a file system: directory entries (inode numbers, names, "." and
+".."), inodes (types, sizes, zone numbers, zones used twice), link
+counts, inodes that no directory names, and both bit maps.  It prints
+one line per problem and a summary.  Without `-y` the image is only
+read.  With `-y` each problem is repaired where it can be: bad entries
+are removed, "." and ".." are pointed where they belong, bad zone
+numbers and the second use of a zone are cleared, sizes are cut, link
+counts are set, inodes that no directory names are freed, and the bit
+maps are made to match; the image is then checked again.  It exits with
+0 if the file system is consistent (after the repairs, with `-y`), 1 if
+problems remain and 3 if the image cannot be checked at all.
 
 The other commands exit with 0 on success, 1 if anything failed; all
 exit with 2 for a usage error.

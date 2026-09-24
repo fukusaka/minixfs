@@ -54,6 +54,7 @@ struct mfs {
 	unsigned char	*dbuf;		/* one block, for file data */
 	enum mfs_order	order;
 	int		fd;
+	int		writable;	/* opened by mfs_open_rw() */
 	int		version;	/* 1, 2 or 3 */
 
 	/* From the super block. */
@@ -97,6 +98,7 @@ struct mfs_inode {
 /* A directory entry that is in use. */
 struct mfs_dirent {
 	uint32_t	ino;
+	uint32_t	off;			/* offset in the directory */
 	char		name[MFS_MAX_NAME + 1];	/* NUL-terminated */
 };
 
@@ -112,6 +114,9 @@ typedef int (*mfs_dirent_fn)(const struct mfs_dirent *, void *);
  * errno value.  On success the caller releases fs with mfs_close().
  */
 int	mfs_open(struct mfs *, const char *);
+
+/* As mfs_open(), for reading and writing. */
+int	mfs_open_rw(struct mfs *, const char *);
 
 /* Release what mfs_open() acquired. */
 void	mfs_close(struct mfs *);
@@ -187,11 +192,24 @@ uint32_t mfs_rdev(const struct mfs_inode *);
 int	mfs_get_inode(struct mfs *, uint32_t, struct mfs_inode *);
 
 /*
- * Called by mfs_walk_zones() for each zone number in use, with level 0
- * for a data zone and 1, 2 or 3 for an indirect zone of that level.  A
- * non-zero return value stops the walk and becomes its return value.
+ * Where a zone number is kept: slot index of the inode if block is 0,
+ * entry index of the indirect block number block otherwise.
  */
-typedef int (*mfs_zone_fn)(uint32_t, int, void *);
+struct mfs_zref {
+	uint32_t	block;
+	uint32_t	index;
+};
+
+/*
+ * Called by mfs_walk_zones() for each zone number in use, with level 0
+ * for a data zone and 1, 2 or 3 for an indirect zone of that level, and
+ * where the number is kept.  For an indirect zone, MFS_WALK_SKIP skips
+ * the zones it lists.  Any other non-zero return value stops the walk and
+ * becomes its return value.
+ */
+typedef int (*mfs_zone_fn)(uint32_t, int, const struct mfs_zref *, void *);
+
+#define MFS_WALK_SKIP	1
 
 /*
  * Call fn for each zone of the file *ip: the direct zones, then each
@@ -225,6 +243,42 @@ int	mfs_map_bit(const struct mfs *, const unsigned char *, uint32_t);
  * negative errno value.
  */
 int	mfs_count_free(struct mfs *, uint32_t *, uint32_t *);
+
+/*
+ * Changing file systems.  These need a file system opened with
+ * mfs_open_rw(); otherwise they return -EROFS.
+ */
+
+/*
+ * Write buf, block_size bytes, to block number block.  Returns 0, -EIO
+ * for a block outside the file system, or another negative errno value.
+ */
+int	mfs_write_block(struct mfs *, uint32_t, const void *);
+
+/* Write *ip back to inode number ip->num.  Returns 0 or -errno. */
+int	mfs_put_inode(struct mfs *, const struct mfs_inode *);
+
+/*
+ * Set the inode number of the directory entry at byte offset off of the
+ * directory *dp; 0 removes the entry.  Returns 0 or a negative errno
+ * value.
+ */
+int	mfs_set_entry(struct mfs *, const struct mfs_inode *, uint32_t,
+	    uint32_t);
+
+/*
+ * Clear the zone number that ref points to.  A slot of the inode is
+ * cleared in *ip only, for the caller to write back with mfs_put_inode();
+ * an entry of an indirect block is written at once.  Returns 0 or -errno.
+ */
+int	mfs_clear_zref(struct mfs *, struct mfs_inode *,
+	    const struct mfs_zref *);
+
+/* Set bit n of a map from mfs_load_map() to v (0 or 1). */
+void	mfs_set_map_bit(const struct mfs *, unsigned char *, uint32_t, int);
+
+/* Write a map from mfs_load_map() back.  Returns 0 or -errno. */
+int	mfs_store_map(struct mfs *, enum mfs_map, const unsigned char *);
 
 /*
  * Making file systems (mfs_format.c).
