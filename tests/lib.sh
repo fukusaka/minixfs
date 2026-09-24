@@ -17,6 +17,9 @@
 : "${NEWFS_MINIXFS:=./newfs_minixfs}"
 : "${FSCK_MINIXFS:=./fsck_minixfs}"
 : "${TUNEFS_MINIXFS:=./tunefs_minixfs}"
+: "${DUMP_MINIXFS:=./dump_minixfs}"
+: "${RESTORE_MINIXFS:=./restore_minixfs}"
+: "${MKDUMP:=./tests/mkdump}"
 
 # The sanitizers are told to exit with this status, so that a sanitizer
 # report can be told apart from an ordinary failure (status 1).

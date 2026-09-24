@@ -1,8 +1,11 @@
 *.o
 /build-san/
+/dump_minixfs
 /fsck_minixfs
 /minixfs
 /mount_minixfs
 /newfs_minixfs
+/restore_minixfs
+/tests/mkdump
 /tests/mkimage
 /tunefs_minixfs

@@ -1,0 +1,142 @@
+.\" SPDX-License-Identifier: BSD-2-Clause
+.\" Copyright (c) 2026 Shoichi Fukusaka
+.\"
+.\" 節の名前は mandoc が見分ける英語のままにする。日本語の文は途中で
+.\" 改行すると空白が入るので、1 文を 1 行に書く。
+.Dd September 25, 2026
+.Dt RESTORE_MINIXFS 8
+.Os
+.\" 日本語では両端をそろえると空白が大きく開くので、groff には左だけ
+.\" そろえさせる（mandoc は両端をそろえない）。
+.ds AD l
+.Sh NAME
+.Nm restore_minixfs
+.Nd dump を MINIX ファイルシステムに戻す
+.Sh SYNOPSIS
+.Nm
+.Fl t
+.Op Fl c
+.Fl f Ar file
+.Nm
+.Fl r
+.Op Fl cNv
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl o Ar uid : Ns Ar gid
+.Op Fl s Ar symtable
+.Fl f Ar file
+.Ar image
+.Sh DESCRIPTION
+.Nm
+は、\:BSD の
+.Xr dump 8
+の形式の dump を読みます。
+.Xr dump_minixfs 8
+のもの、\:
+.Nx
+と
+.Fx
+の UFS1 と UFS2 のもの、\:Linux の dump の ext2・ext3・ext4 のもの、\:4.2BSD と 4.3BSD の\:そのファイルシステムと\:それより古いもののものを、\:どちらのバイト順でも読みます。
+.Fl r
+を付けると、\:どの版でも
+.Ar image
+の MINIX ファイルシステムに書き込みます。
+形式は
+.Xr minixfs 5
+を参照してください。
+.Pp
+オプションは次のとおりです。
+.Bl -tag -width Ds
+.It Fl t
+.Xr restore 8
+と同じく、\:dump の中のファイルの名前を、\:dump での inode 番号に続けて一覧します。
+最初に、\:dump の日時、\:レベル、\:ラベルを示します。
+.It Fl r
+dump を
+.Ar image
+のルートディレクトリに戻します。
+全体の dump を空のファイルシステムに、\:その後で\:高いレベルの dump を\:作った順に戻します。
+dump の各ディレクトリは、\:dump のとおりの\:中身になります。
+なくなった名前は消し、\:新しい名前は作り、\:最後の名前がなくなったファイルは解放します。
+ファイルとディレクトリのモード、\:所有者、\:時刻は dump のとおりにします。
+.It Fl c
+.Xr restore 8
+の
+.Fl c
+と同じく、\:ディレクトリを 16 バイトの項目の V7 の形として読みます。
+4.2BSD より古いファイルシステムの dump のディレクトリは、\:常にそう読みます。
+.It Fl f Ar file
+dump です。
+.Ql -
+は標準入力です。
+.It Fl M Ar size : Ns Ar heads : Ns Ar side
+ディスクの片面のトラックだけに\:ファイルシステムが\:あるイメージに\:、\:
+.Xr minixfs 1
+が読むのと同じように書きます。
+.It Fl N
+すべてを確かめるだけで、\:何も書きません。
+.It Fl o Ar uid : Ns Ar gid
+すべてのファイルの所有者を
+.Ar uid ,
+グループを
+.Ar gid
+にします。
+どちらも数値です。
+.It Fl s Ar symtable
+.Fl r
+が、\:dump の各 inode を\:イメージのどの inode にしたかと、\:戻した dump の日時を、\:次の高いレベルの dump のために\:記録するファイルです。
+既定は、\:
+.Xr restore 8
+と同じく
+.Pa restoresymtable
+です。
+.It Fl v
+ディレクトリとファイルを、\:戻すごとに示します。
+.El
+.Pp
+dump は、\:ほかのファイルより前に\:ディレクトリを持ちます。
+.Fl r
+は、\:ディレクトリを読んだところで、\:名前をファイルシステムの名前の長さと、\:要る inode の数を空きの数と比べ、\:誤りがあれば何も書きません。
+標準入力ではなくファイルからなら、\:先にほかのファイルも読み通して、\:所有者、\:デバイス番号、\:大きさも確かめます。
+標準入力からでは、\:収まらないファイルは\:来たときに名前ごと除き、\:残りを入れます。
+デバイス番号は、\:メジャー番号 \(mu 256 + マイナー番号として扱い、\:65536 未満でなければなりません。
+.Pp
+高いレベルの dump は、\:最後に戻した dump に続くものでなければなりません。
+その dump の\:前の dump の日時が、\:
+.Ar symtable
+の日時と一致する必要があります。
+途中で終わる dump は、\:書いたところまでを\:整った状態にしますが、\:新しい
+.Ar symtable
+は残しません。
+.Pp
+ファイルシステムには clean の印があり、\:Minix-vmd の flex ディレクトリでないことが必要です。
+.Pp
+拡張属性、\:ファイルフラグ、\:ソケットは、\:MINIX ファイルシステムに置く場所がないので、\:警告を出して除きます。
+ファイルシステムの一部の dump のように、\:dump が持たないファイルの名前も除きます。
+.Sh EXIT STATUS
+.Nm
+は、\:成功すれば 0、\:何かに失敗すれば 1、\:使い方の誤りなら 2 で終了します。
+.Sh EXAMPLES
+全体の dump と、\:その後に取ったレベル 1 の dump を戻します。
+.Bd -literal -offset indent
+# newfs_minixfs -V 3 -s 65536 usr.img
+# restore_minixfs -r -f /backup/usr.0 usr.img
+# restore_minixfs -r -f /backup/usr.1 usr.img
+# rm restoresymtable
+.Ed
+.Pp
+Linux の ext2 ファイルシステムの dump を、\:root の所有で\:V2 ファイルシステムに入れます。
+.Bd -literal -offset indent
+# restore_minixfs -r -o 0:0 -f home.dump home.img
+.Ed
+.Sh SEE ALSO
+.Xr minixfs 1 ,
+.Xr minixfs 5 ,
+.Xr dump 8 ,
+.Xr dump_minixfs 8 ,
+.Xr fsck_minixfs 8 ,
+.Xr newfs_minixfs 8 ,
+.Xr restore 8
+.Sh AUTHORS
+.An Shoichi Fukusaka
+.Sh BUGS
+Linux の圧縮した dump と、\:複数のボリュームに\:わたる dump は\:読みません。

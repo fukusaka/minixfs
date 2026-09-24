@@ -1,0 +1,144 @@
+.\" SPDX-License-Identifier: BSD-2-Clause
+.\" Copyright (c) 2026 Shoichi Fukusaka
+.Dd September 25, 2026
+.Dt DUMP_MINIXFS 8
+.Os
+.Sh NAME
+.Nm dump_minixfs
+.Nd dump a MINIX file system in the format of BSD dump
+.Sh SYNOPSIS
+.Nm
+.Op Fl 0123456789u
+.Op Fl D Ar dumpdates
+.Op Fl L Ar label
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl T Ar date
+.Fl f Ar file
+.Ar image
+.Op Ar path
+.Sh DESCRIPTION
+.Nm
+writes the MINIX file system in
+.Ar image
+to
+.Ar file
+as the
+.Nx
+.Xr dump 8
+writes a UFS1 file system, so that the
+.Xr restore 8
+of
+.Nx
+and
+.Xr restore_minixfs 8
+read it.
+It reads any version of the file system, in either byte order, and that
+of Minix-vmd; see
+.Xr minixfs 5 .
+It never writes to the image.
+.Pp
+The dump is in the byte order of the image.
+Inode
+.Em n
+of the image is inode
+.Em n
++ 1 in the dump, since
+.Xr restore 8
+takes 2 for the root.
+Directories go in as those of 4.4BSD, whatever the entries of the image,
+and the last record of each file even when it lies in a hole, as the
+last block of a file on UFS always exists.
+.Pp
+A dump of level 0 holds the whole file system.
+One of level
+.Em n
+holds what changed since the last dump of a lower level, as the
+dumpdates file tells: the files whose mtime or ctime is not before its
+date, the directories that hold them, and the directories that have
+directories in them, as BSD dump does.
+.Pp
+The options are:
+.Bl -tag -width Ds
+.It Fl 0 No .. Fl 9
+The level; 0 by default.
+.It Fl u
+When the dump is done, note it in the dumpdates file under the name of
+.Ar image
+as it was given, in place of the note of the same level.
+.It Fl D Ar dumpdates
+The dumpdates file, with a line for each image and level: the name, the
+level and the date as
+.Xr ctime 3
+prints it.
+The default is
+.Pa /etc/dumpdates .
+.It Fl L Ar label
+The label of the dump, 16 characters at most;
+.Dq none
+by default.
+.It Fl M Ar size : Ns Ar heads : Ns Ar side
+Read an image that holds the file system in the tracks of one side of a
+disk only, as
+.Xr minixfs 1
+does.
+.It Fl T Ar date
+Dump what changed since
+.Ar date ,
+given as
+.Xr ctime 3
+prints it, instead of since the date in the dumpdates file.
+.It Fl f Ar file
+Where the dump goes;
+.Ql -
+is standard output, which must not be a terminal.
+.El
+.Pp
+With
+.Ar path ,
+only the directory
+.Ar path
+and what is below it go in, with the directories above it, at level 0
+and without
+.Fl u ,
+as
+.Xr dump 8
+does for a subdirectory.
+.Pp
+A file system that is not marked clean is dumped with a warning.
+.Sh EXIT STATUS
+.Nm
+exits with 0 on success, 1 if anything failed, and 2 for a usage error.
+.Sh EXAMPLES
+A full dump, noted, and a later one of what changed since:
+.Bd -literal -offset indent
+# dump_minixfs -0u -f /backup/usr.0 usr.img
+# dump_minixfs -1u -f /backup/usr.1 usr.img
+.Ed
+.Pp
+Move a file system onto a new one of another version, hard links and
+all:
+.Bd -literal -offset indent
+$ newfs_minixfs -V 3 -s 65536 new.img
+$ dump_minixfs -f - old.img | restore_minixfs -r -f - new.img
+.Ed
+.Sh SEE ALSO
+.Xr minixfs 1 ,
+.Xr minixfs 5 ,
+.Xr dump 8 ,
+.Xr fsck_minixfs 8 ,
+.Xr restore 8 ,
+.Xr restore_minixfs 8
+.Sh AUTHORS
+.An Shoichi Fukusaka
+.Sh CAVEATS
+V1 keeps no ctime, so a change of mode, owner or name alone does not put
+a file in a dump of a higher level.
+.Pp
+The restore of Linux does not read the dump: it takes the date that
+.Nx
+keeps in the header for a record count of its own, as it does with
+the dumps that
+.Nx
+makes of UFS1.
+.Pp
+A dump goes on one file; it is never split over volumes.

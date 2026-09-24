@@ -117,6 +117,28 @@ top of `tests/mkimage.c`).  The scripts:
   `fsck -y` on them, the clean flag set and cleared alone, `tunefs -B`
   and `-l` refused, and `-s` working.  `t_read.sh` reads the test tree
   as Minix-vmd V1 and V2 as well.
+- `t_restore.sh` - `restore_minixfs` restores dumps of the test tree
+  that `tests/mkdump` writes in the formats of 4.4BSD, 4.3BSD and file
+  systems before 4.2BSD (directories of V7), UFS2, and Linux dump with
+  runs in c_addr, in either byte order, as the tree mkimage makes of the
+  same spec, which `fsck_minixfs` passes; `-t` lists every name, and
+  the extended attributes of UFS2 and Linux are counted as left out.  A
+  dump from standard input restores; a full dump into a file system
+  that is not empty, a compressed dump, a file that is no dump, names
+  too long, a group too large for V1 (unless `-o`), a device number
+  that does not fit, a file system not marked clean and flex
+  directories are refused, with nothing written; a dump cut short
+  leaves the file system in order and no table; `-N` writes nothing;
+  sockets are left out.
+- `t_dump.sh` - `dump_minixfs` of the test tree in V1, V2 with 30
+  characters, V3 with blocks of 4096 bytes, zones of two blocks and
+  Minix-vmd, in either byte order, restores as the image itself, in the
+  byte order of the image; a subtree dumps with the directories above
+  it; `-L` and `-T` show in `restore_minixfs -t`; and dumps of levels
+  0, 1 and 2, noted with `-u` in a dumpdates file, hold what changed
+  and restore one after the other as the second image, with files
+  removed, added, changed, renamed and turned from a directory into a
+  file, while a dump restored twice or out of order is refused.
 - `t_fuse.sh` - where `mount_minixfs` is built and mounting is allowed:
   the tree read through the kernel in four formats, with its names,
   contents, modes, owners, inode numbers and device numbers.  Skipped
@@ -130,5 +152,6 @@ top of `tests/mkimage.c`).  The scripts:
                     layout of each version, changing fields of images
     run.sh          runs every t_*.sh; tap2junit.awk turns TAP into JUnit
     mkimage.c       the independent image writer
+    mkdump.c        the independent writer of dumps of BSD and Linux
     tree.spec       the tree that t_read.sh and t_fuse.sh read
     tree.names      the names in that tree

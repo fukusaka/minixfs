@@ -20,6 +20,7 @@
  *	fifo PATH MODE UID GID MTIME
  *	hard PATH EXISTING
  *	raw  DIR NAME INO
+ *	unused COUNT
  *
  * The fs line comes first.  namelen applies to V1 and V2; V3 names are
  * always 60 characters.  block is the block size of V3 (default 1024); V1
@@ -38,7 +39,9 @@
  * MODE is octal permission bits.  File contents are a pattern made from
  * SEED; bytes inside a hole are zero, and zones that lie wholly inside a
  * hole are not allocated.  "raw" adds a directory entry with any name and
- * inode number, to make damaged images.  In V2 and V3 inodes, atime is
+ * inode number, to make damaged images.  "unused" leaves the next COUNT
+ * inode numbers free, so that two specs can give the same files the same
+ * numbers when one of them lacks some.  In V2 and V3 inodes, atime is
  * MTIME + 1 and ctime MTIME + 2, so that a reader that mixes them up is
  * caught.
  *
@@ -719,6 +722,12 @@ parse_line(struct parser *ps, char *line)
 	}
 	if (ps->img->data == NULL)
 		syntax(ps, "the fs line must come first", cmd);
+	if (strcmp(cmd, "unused") == 0) {
+		ps->img->next_ino += number(ps, need(ps, &p, "count"), 10);
+		if (ps->img->next_ino >= ps->img->ninodes)
+			errx(1, "line %d: out of inodes", ps->lineno);
+		return;
+	}
 	path = need(ps, &p, "path");
 	if (strcmp(cmd, "dir") == 0) {
 		n = new_node(ps, path, T_DIR);
@@ -986,6 +995,22 @@ write_super(const struct image *img)
 	}
 }
 
+/* Set the bit of each inode of dir and below in the inode map. */
+static void
+mark_inodes(const struct image *img, unsigned char *map,
+    const struct node *dir)
+{
+	const struct node *c;
+
+	set_bit(img, map, dir->ino);
+	for (c = dir->child; c != NULL; c = c->next) {
+		if (c->type == T_DIR)
+			mark_inodes(img, map, c);
+		else if (c->type != T_HARD && c->type != T_RAW)
+			set_bit(img, map, c->ino);
+	}
+}
+
 /* Bit 0 of each map is never used; bits past the end are set. */
 static void
 write_maps(const struct image *img)
@@ -996,8 +1021,9 @@ write_maps(const struct image *img)
 	bits = img->bsize * 8;
 	map = img->data + (size_t)START_BLOCK * img->bsize;
 	for (bit = 0; bit < img->imap_blocks * bits; bit++)
-		if (bit <= img->next_ino || bit > img->ninodes)
+		if (bit == 0 || bit > img->ninodes)
 			set_bit(img, map, bit);
+	mark_inodes(img, map, &img->root);
 	map += (size_t)img->imap_blocks * img->bsize;
 	for (bit = 0; bit < img->zmap_blocks * bits; bit++)
 		if (bit == 0 || (bit > img->skip &&

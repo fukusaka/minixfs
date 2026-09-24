@@ -1,0 +1,144 @@
+.\" SPDX-License-Identifier: BSD-2-Clause
+.\" Copyright (c) 2026 Shoichi Fukusaka
+.\"
+.\" 節の名前は mandoc が見分ける英語のままにする。日本語の文は途中で
+.\" 改行すると空白が入るので、1 文を 1 行に書く。
+.Dd September 25, 2026
+.Dt DUMP_MINIXFS 8
+.Os
+.\" 日本語では両端をそろえると空白が大きく開くので、groff には左だけ
+.\" そろえさせる（mandoc は両端をそろえない）。
+.ds AD l
+.Sh NAME
+.Nm dump_minixfs
+.Nd MINIX ファイルシステムを BSD の dump の形式で書き出す
+.Sh SYNOPSIS
+.Nm
+.Op Fl 0123456789u
+.Op Fl D Ar dumpdates
+.Op Fl L Ar label
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl T Ar date
+.Fl f Ar file
+.Ar image
+.Op Ar path
+.Sh DESCRIPTION
+.Nm
+は、\:
+.Ar image
+の MINIX ファイルシステムを、\:
+.Nx
+の
+.Xr dump 8
+が UFS1 を書くのと同じ形式で\:
+.Ar file
+に書きます。
+.Nx
+の
+.Xr restore 8
+と
+.Xr restore_minixfs 8
+で読めます。
+どの版のファイルシステムも、\:どちらのバイト順でも、\:Minix-vmd のものも読みます。
+形式は
+.Xr minixfs 5
+を参照してください。
+イメージに書き込むことはありません。
+.Pp
+dump はイメージのバイト順で書きます。
+.Xr restore 8
+はルートを 2 とするので、\:イメージの inode
+.Em n
+は dump では inode
+.Em n
++ 1 になります。
+ディレクトリは、\:イメージの項目の形に\:かかわらず\:4.4BSD の形で書きます。
+UFS ではファイルの最後のブロックが必ずあるので、\:各ファイルの最後のレコードは、\:穴の中でも書きます。
+.Pp
+レベル 0 の dump はファイルシステム全体を持ちます。
+レベル
+.Em n
+の dump は、\:dumpdates ファイルにある\:それより低いレベルの\:最後の dump の後に\:変わったものを持ちます。
+BSD の dump と同じく、\:mtime か ctime がその日時より前でないファイル、\:それを持つディレクトリ、\:下にディレクトリを持つディレクトリです。
+.Pp
+オプションは次のとおりです。
+.Bl -tag -width Ds
+.It Fl 0 No .. Fl 9
+レベルで、\:既定は 0 です。
+.It Fl u
+dump が済んだら、\:与えたとおりの
+.Ar image
+の名前で、\:同じレベルの記録に代えて\:dumpdates ファイルに記録します。
+.It Fl D Ar dumpdates
+dumpdates ファイルです。
+イメージとレベルごとに、\:名前、\:レベル、\:
+.Xr ctime 3
+の表示と同じ形の日時の行を持ちます。
+既定は
+.Pa /etc/dumpdates
+です。
+.It Fl L Ar label
+dump のラベルで、\:16 文字までです。
+既定は
+.Dq none
+です。
+.It Fl M Ar size : Ns Ar heads : Ns Ar side
+ディスクの片面のトラックだけに\:ファイルシステムが\:あるイメージを\:、\:
+.Xr minixfs 1
+と同じように読みます。
+.It Fl T Ar date
+dumpdates ファイルの日時ではなく、\:
+.Xr ctime 3
+の表示と同じ形で与えた
+.Ar date
+の後に変わったものを書きます。
+.It Fl f Ar file
+dump の書き先です。
+.Ql -
+は標準出力で、\:端末であってはいけません。
+.El
+.Pp
+.Ar path
+を与えると、\:ディレクトリ
+.Ar path
+とその下のすべてを、\:その上のディレクトリとともに書きます。
+.Xr dump 8
+がサブディレクトリに対して\:するのと同じく、\:レベル 0 で、\:
+.Fl u
+なしです。
+.Pp
+clean の印のないファイルシステムは、\:警告を出して書き出します。
+.Sh EXIT STATUS
+.Nm
+は、\:成功すれば 0、\:何かに失敗すれば 1、\:使い方の誤りなら 2 で終了します。
+.Sh EXAMPLES
+全体の dump を記録付きで取り、\:後でその後に変わったものの dump を取ります。
+.Bd -literal -offset indent
+# dump_minixfs -0u -f /backup/usr.0 usr.img
+# dump_minixfs -1u -f /backup/usr.1 usr.img
+.Ed
+.Pp
+ハードリンクも含めて、\:ファイルシステムを\:別の版の新しいものに移します。
+.Bd -literal -offset indent
+$ newfs_minixfs -V 3 -s 65536 new.img
+$ dump_minixfs -f - old.img | restore_minixfs -r -f - new.img
+.Ed
+.Sh SEE ALSO
+.Xr minixfs 1 ,
+.Xr minixfs 5 ,
+.Xr dump 8 ,
+.Xr fsck_minixfs 8 ,
+.Xr restore 8 ,
+.Xr restore_minixfs 8
+.Sh AUTHORS
+.An Shoichi Fukusaka
+.Sh CAVEATS
+V1 には ctime がないので、\:モード、\:所有者、\:名前だけの変更では、\:ファイルは\:高いレベルの dump に入りません。
+.Pp
+Linux の restore はこの dump を読みません。
+.Nx
+がヘッダに持つ日時を\:自分のレコード数として\:受け取るためで、\:
+.Nx
+が UFS1 について作る dump も同じです。
+.Pp
+dump は 1 つのファイルに書き、\:複数のボリュームには分けません。

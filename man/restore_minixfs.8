@@ -1,0 +1,150 @@
+.\" SPDX-License-Identifier: BSD-2-Clause
+.\" Copyright (c) 2026 Shoichi Fukusaka
+.Dd September 25, 2026
+.Dt RESTORE_MINIXFS 8
+.Os
+.Sh NAME
+.Nm restore_minixfs
+.Nd restore a dump into a MINIX file system
+.Sh SYNOPSIS
+.Nm
+.Fl t
+.Op Fl c
+.Fl f Ar file
+.Nm
+.Fl r
+.Op Fl cNv
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl o Ar uid : Ns Ar gid
+.Op Fl s Ar symtable
+.Fl f Ar file
+.Ar image
+.Sh DESCRIPTION
+.Nm
+reads a dump in the format of BSD
+.Xr dump 8 :
+those of
+.Xr dump_minixfs 8 ,
+those of
+.Nx
+and
+.Fx
+of UFS1 and UFS2, those of the dump of Linux of ext2, ext3 and ext4, and
+those of 4.2BSD and 4.3BSD of their file system and of the older one,
+in either byte order.
+With
+.Fl r
+it writes the dump into the MINIX file system in
+.Ar image ,
+of any version; see
+.Xr minixfs 5 .
+.Pp
+The options are:
+.Bl -tag -width Ds
+.It Fl t
+List the names of the files in the dump, each after its inode number in
+the dump, as
+.Xr restore 8
+does.
+The dates, the level and the label of the dump come first.
+.It Fl r
+Restore the dump into the root directory of
+.Ar image :
+a full dump into an empty file system, then each dump of a higher level
+in the order they were made.
+Each directory of the dump comes to hold what the dump says it holds:
+names that are gone are removed and new ones made, a file whose last
+name went away is freed, and files and directories take their modes,
+owners and times from the dump.
+.It Fl c
+Read the directories as those of V7, of 16-byte entries, as
+.Xr restore 8
+does with
+.Fl c .
+Those of a dump of a file system older than 4.2BSD are always read so.
+.It Fl f Ar file
+The dump;
+.Ql -
+is standard input.
+.It Fl M Ar size : Ns Ar heads : Ns Ar side
+Write to an image that holds the file system in the tracks of one side
+of a disk only, as
+.Xr minixfs 1
+reads it.
+.It Fl N
+Check everything, and write nothing.
+.It Fl o Ar uid : Ns Ar gid
+Make every file owned by
+.Ar uid
+and
+.Ar gid ,
+numbers both.
+.It Fl s Ar symtable
+The file where
+.Fl r
+keeps which inode of the image each inode of the dump went to, for the
+next dump of a higher level, and the date of the dump it restored.
+The default is
+.Pa restoresymtable ,
+as that of
+.Xr restore 8 .
+.It Fl v
+Name each directory and file as it is restored.
+.El
+.Pp
+A dump holds its directories before its other files.
+Having read them,
+.Fl r
+checks the names against the length the file system takes, and the
+number of inodes needed against those free, and writes nothing if
+anything is wrong.
+From a file, rather than standard input, it also reads through the other
+files first and checks their owners, device numbers and sizes;
+from standard input, a file that does not fit is left out when it comes,
+with its names, and the rest goes in.
+Device numbers are taken as major \(mu 256 + minor, and have to be below
+65536.
+.Pp
+A dump of a higher level has to follow the dump restored last: its date
+of the dump before it has to be the date in
+.Ar symtable .
+A dump that ends too soon leaves what was written in order, but no new
+.Ar symtable .
+.Pp
+The file system has to be marked clean, and not to have the flex
+directories of Minix-vmd.
+.Pp
+Extended attributes, file flags and sockets have no place in a MINIX
+file system, and are left out with a warning.
+So are the names of files that the dump does not hold, as in a dump of
+a part of a file system.
+.Sh EXIT STATUS
+.Nm
+exits with 0 on success, 1 if anything failed, and 2 for a usage error.
+.Sh EXAMPLES
+Restore a full dump and one of level 1 made after it:
+.Bd -literal -offset indent
+# newfs_minixfs -V 3 -s 65536 usr.img
+# restore_minixfs -r -f /backup/usr.0 usr.img
+# restore_minixfs -r -f /backup/usr.1 usr.img
+# rm restoresymtable
+.Ed
+.Pp
+Put a dump of an ext2 file system of Linux into a V2 file system, owned
+by root:
+.Bd -literal -offset indent
+# restore_minixfs -r -o 0:0 -f home.dump home.img
+.Ed
+.Sh SEE ALSO
+.Xr minixfs 1 ,
+.Xr minixfs 5 ,
+.Xr dump 8 ,
+.Xr dump_minixfs 8 ,
+.Xr fsck_minixfs 8 ,
+.Xr newfs_minixfs 8 ,
+.Xr restore 8
+.Sh AUTHORS
+.An Shoichi Fukusaka
+.Sh BUGS
+Compressed dumps of Linux and dumps on more than one volume are not
+read.

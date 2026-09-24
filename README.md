@@ -16,7 +16,9 @@ Read-only access to V1, V2 and V3 file systems in either byte order,
 through the `minixfs` command, read-only mounts through FUSE with
 `mount_minixfs`, empty file systems of any of them with
 `newfs_minixfs`, consistency checks and repairs with `fsck_minixfs`,
-and changes of settings with `tunefs_minixfs`.
+changes of settings with `tunefs_minixfs`, and dumps in the format of
+BSD dump with `dump_minixfs`, which `restore_minixfs` restores, as it
+does the dumps of NetBSD, FreeBSD and Linux.
 
 | Magic  | Version | Names | Origin |
 |--------|---------|-------|--------|
@@ -222,14 +224,46 @@ that it finds consistent, which also serves for V1 and V2 file systems
 made by MINIX, where the mark is never set.  None of this works on a
 mounted file system: neither MINIX nor Linux can grow one.
 
+    dump_minixfs [-0123456789u] [-D dumpdates] [-L label]
+        [-M SIZE:HEADS:SIDE] [-T date] -f file image [path]
+
+writes the file system as NetBSD dump writes one of UFS1, in the byte
+order of the image, so that the restore of NetBSD reads it; inode n
+becomes inode n + 1, as restore takes 2 for the root.  A dump of level
+n holds what changed since the last dump of a lower level that the
+dumpdates file notes (`-u`, `-D`), or since the date of `-T`; with a
+path, only that directory and what is below it go in, at level 0.  The
+restore of Linux does not read it, as it does not read the dumps NetBSD
+makes of UFS1: it takes their 64-bit date for a count of its own.
+
+    restore_minixfs -t [-c] -f file
+    restore_minixfs -r [-cNv] [-M SIZE:HEADS:SIDE] [-o uid:gid]
+        [-s symtable] -f file image
+
+reads dumps of BSD dump: those of `dump_minixfs`, of NetBSD and FreeBSD
+for UFS1 and UFS2, of Linux dump for ext2, 3 and 4 (also the runs that
+it writes into the headers since 0.4b49), and of 4.2BSD and 4.3BSD,
+with directories of 4.4BSD, 4.2BSD or V7, in either byte order.  `-t`
+lists the names; `-r` restores a full dump into an empty file system,
+then each incremental one on top, keeping in `-s` (`restoresymtable`
+by default) which inode each inode of the dumps became.  Each directory
+of the dump comes to hold what the dump says it holds, and files whose
+last name went away are freed.  The names, and the number of inodes,
+are checked before anything is written; from a file rather than a
+pipe, so are owners, device numbers and sizes.  `-o` gives every file
+one owner, for owners that do not fit.  Extended attributes, file
+flags and sockets are left out with a warning; compressed dumps of
+Linux and dumps on more than one volume are not read.
+
 The other commands exit with 0 on success, 1 if anything failed; all
 exit with 2 for a usage error.
 
 ## Manuals
 
 The manuals are in `man/`, in English, and in `man/ja/`, in Japanese:
-minixfs(1), mount_minixfs(8), newfs_minixfs(8), fsck_minixfs(8) and
-tunefs_minixfs(8) for the commands, and minixfs(5) for the formats of
+minixfs(1), mount_minixfs(8), newfs_minixfs(8), fsck_minixfs(8),
+tunefs_minixfs(8), dump_minixfs(8) and restore_minixfs(8) for the
+commands, and minixfs(5) for the formats of
 the file systems.  `make install` puts them below `MANDIR`, with the
 commands below `PREFIX`, and `make lint-man` checks them.
 
@@ -249,13 +283,18 @@ sanitizers, other shells and JUnit output.
     src/newfs_minixfs.c     the newfs_minixfs command
     src/fsck_minixfs.c      the fsck_minixfs command
     src/tunefs_minixfs.c    the tunefs_minixfs command
+    src/dump_minixfs.c      the dump_minixfs command
+    src/restore_minixfs.c   the restore_minixfs command
+    src/dumpfmt.h, src/dumpfmt.c
+                            the dump format of BSD: headers, maps,
+                            runs of c_addr, directory entries
     src/tree.h, src/tree.c  newfs_minixfs -d: copying a directory tree
     src/spec.h, src/spec.c  newfs_minixfs -F: reading an mtree spec
     src/mfs_format.c        library: laying out and writing a new
                             file system
     src/mfs_tune.c          library: changing a file system in place
-    src/mfs_write.c         library: taking inodes and zones, writing
-                            files and directory entries
+    src/mfs_write.c         library: taking and freeing inodes and
+                            zones, writing files and directory entries
     src/layout.h            the on-disk layout
     src/compat.h            the differences between systems
     tests/                  the test suite; see tests/README.md
