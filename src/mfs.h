@@ -167,6 +167,9 @@ void	mfs_close(struct mfs *);
  */
 int	mfs_read_device(struct mfs *, void *, size_t, off_t);
 
+/* As mfs_read_device(), for writing.  Returns 0 or -errno. */
+int	mfs_write_device(struct mfs *, const void *, size_t, off_t);
+
 /*
  * Read block number block of the file system into buf, which holds
  * block_size bytes.  Returns 0, or -EIO for a block outside the file
@@ -354,6 +357,21 @@ void	mfs_set_map_bit(const struct mfs *, unsigned char *, uint32_t, int);
 
 /* Write a map from mfs_load_map() back.  Returns 0 or -errno. */
 int	mfs_store_map(struct mfs *, enum mfs_map, const unsigned char *);
+
+/*
+ * Changing file systems in place (mfs_tune.c).  These need a file system
+ * opened with mfs_open_rw() that fsck_minixfs passes; they read what they
+ * need before they write, but a change cut short leaves the file system
+ * half changed.
+ */
+
+/*
+ * Store every number of the file system in byte order order: the super
+ * block, the words of the bit maps, the inodes, the indirect zones and
+ * the inode numbers of directory entries.  Returns 0, or a negative errno
+ * value, after which nothing has been written if it came from reading.
+ */
+int	mfs_convert_order(struct mfs *, enum mfs_order);
 
 /*
  * Making file systems (mfs_format.c).

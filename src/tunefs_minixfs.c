@@ -4,12 +4,14 @@
  *
  * tunefs_minixfs - change the settings of a MINIX file system.
  *
- *	tunefs_minixfs [-N] [-c clean|dirty] [-e 0|1]
+ *	tunefs_minixfs [-N] [-B le|be] [-c clean|dirty] [-e 0|1]
  *	    [-m minix|linux|bytes] [-T SIZE:HEADS:SIDE] image
  *
  * Without options, or with -N, the settings are printed and nothing is
  * written; -N shows what the other options would change.
  *
+ *	-B	store every number in the other byte order: little-endian,
+ *		as on the PC, or big-endian, as on the 68000 machines
  *	-c	mark the file system clean or dirty: in V1 and V2 in the
  *		state word that Linux keeps, in V3 in the flags of MINIX 3,
  *		which mounts a file system that is not clean read-only
@@ -19,8 +21,11 @@
  *		out, what Linux and newfs_minixfs write, or a number
  *	-T	an image that holds one side of a disk, as for minixfs(1)
  *
- * Each change is printed as the old and the new value.  Exit status: 0
- * on success, 1 if anything failed, 2 for a usage error.
+ * Each change is printed as the old and the new value.  The byte order
+ * is changed first.  Changes that rewrite more than the super block and
+ * the maps work on a file system that fsck_minixfs passes, and one cut
+ * short leaves it half changed: keep a copy.  Exit status: 0 on success,
+ * 1 if anything failed, 2 for a usage error.
  */
 
 #include <err.h>
@@ -40,6 +45,7 @@ struct options {
 	struct mfs_tracks tracks;	/* -T */
 	const char	*image;
 	const char	*max;		/* -m, or NULL */
+	int		order;		/* -B: an mfs_order, or -1 as is */
 	int		clean;		/* -c: 1 clean, 0 dirty, -1 as is */
 	int		end;		/* -e: 0 or 1, or -1 as is */
 	int		dry_run;	/* -N */
@@ -49,7 +55,7 @@ static void
 usage(void)
 {
 	(void)fprintf(stderr,
-	    "usage: tunefs_minixfs [-N] [-c clean|dirty] [-e 0|1]\n"
+	    "usage: tunefs_minixfs [-N] [-B le|be] [-c clean|dirty] [-e 0|1]\n"
 	    "           [-m minix|linux|bytes] [-T SIZE:HEADS:SIDE] image\n");
 	exit(2);
 }
@@ -62,8 +68,17 @@ parse(int argc, char **argv, struct options *o)
 	(void)memset(o, 0, sizeof(*o));
 	o->clean = -1;
 	o->end = -1;
-	while ((ch = getopt(argc, argv, "c:e:m:NT:")) != -1) {
+	o->order = -1;
+	while ((ch = getopt(argc, argv, "B:c:e:m:NT:")) != -1) {
 		switch (ch) {
+		case 'B':
+			if (strcmp(optarg, "le") == 0)
+				o->order = MFS_LITTLE_ENDIAN;
+			else if (strcmp(optarg, "be") == 0)
+				o->order = MFS_BIG_ENDIAN;
+			else
+				usage();
+			break;
 		case 'c':
 			if (strcmp(optarg, "clean") == 0)
 				o->clean = 1;
@@ -103,7 +118,8 @@ parse(int argc, char **argv, struct options *o)
 static int
 changes(const struct options *o)
 {
-	return o->clean != -1 || o->end != -1 || o->max != NULL;
+	return o->order != -1 || o->clean != -1 || o->end != -1 ||
+	    o->max != NULL;
 }
 
 /* The maximum file size that -m asks for. */
@@ -195,6 +211,12 @@ end_value(const struct mfs *fs, const struct map_end *m, int n)
 }
 
 static const char *
+order_name(int order)
+{
+	return order == MFS_BIG_ENDIAN ? "big-endian" : "little-endian";
+}
+
+static const char *
 clean_value(const struct mfs *fs, uint16_t state)
 {
 	struct mfs t;
@@ -224,6 +246,12 @@ main(int argc, char **argv)
 		errx(1, "%s: %s", o.image, strerror(-r));
 	}
 	status = 0;
+	if (o.order != -1) {
+		(void)printf("byte order: %s -> %s\n", order_name(fs.order),
+		    order_name(o.order));
+		if (write && (r = mfs_convert_order(&fs, o.order)) < 0)
+			errx(1, "%s: byte order: %s", o.image, strerror(-r));
+	}
 	for (i = 0; i < 2; i++) {
 		if ((r = load_end(&fs, i == 0 ? MFS_IMAP : MFS_ZMAP,
 		    &maps[i])) < 0)
@@ -231,6 +259,7 @@ main(int argc, char **argv)
 	}
 
 	if (!changes(&o)) {
+		(void)printf("byte order: %s\n", order_name(fs.order));
 		(void)printf("state: %s\n", clean_value(&fs, fs.state));
 		(void)printf("max file size: %" PRIu32 " (MINIX works out %"
 		    PRIu32 ")\n", fs.max_size, mfs_minix_max_size(&fs));

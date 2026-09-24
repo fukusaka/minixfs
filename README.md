@@ -144,17 +144,24 @@ V1 and V2 keep the mark where Linux does; MINIX leaves that word zero.
 V3 keeps it in the flags of MINIX 3, which mounts a file system that is
 not clean read-only; `newfs_minixfs` marks new file systems clean.
 
-    tunefs_minixfs [-N] [-c clean|dirty] [-e 0|1]
+    tunefs_minixfs [-N] [-B le|be] [-c clean|dirty] [-e 0|1]
         [-m minix|linux|bytes] [-T SIZE:HEADS:SIDE] image
 
 changes the settings of a file system; without options, or with `-N`,
 it prints them and writes nothing, and `-N` shows what the options
-would change.  `-c` marks the file system clean or dirty, where Linux
+would change.  `-B` stores every number of the file system in the
+other byte order, little-endian as on the PC or big-endian as on the
+Atari ST and the Amiga: the super block, the words of the maps, the
+inodes, the indirect zones and the inode numbers in directories.  `-c`
+marks the file system clean or dirty, where Linux
 and MINIX 3 keep the mark.  `-e` sets the bits of the maps past the
 last inode or zone to 0, as the mkfs of MINIX leaves them, or 1, as
 that of Linux.  `-m` sets the maximum file size in the super block to
 what MINIX works out, to what Linux and `newfs_minixfs` write, or to a
 number.  Each change is printed as the old and the new value.
+Changes that rewrite more than the super block and the maps expect a
+file system that `fsck_minixfs` passes, and one cut short leaves it half
+changed, so keep a copy.
 
 The other commands exit with 0 on success, 1 if anything failed; all
 exit with 2 for a usage error.
@@ -177,6 +184,7 @@ sanitizers, other shells and JUnit output.
     src/tunefs_minixfs.c    the tunefs_minixfs command
     src/mfs_format.c        library: laying out and writing a new
                             file system
+    src/mfs_tune.c          library: changing a file system in place
     src/layout.h            the on-disk layout
     src/compat.h            the differences between systems
     tests/                  the test suite; see tests/README.md

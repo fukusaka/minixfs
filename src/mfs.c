@@ -318,6 +318,14 @@ mfs_read_device(struct mfs *fs, void *buf, size_t len, off_t off)
 }
 
 int
+mfs_write_device(struct mfs *fs, const void *buf, size_t len, off_t off)
+{
+	if (!fs->writable)
+		return -EROFS;
+	return dev_write(fs, buf, len, off);
+}
+
+int
 mfs_parse_tracks(const char *s, struct mfs_tracks *t)
 {
 	unsigned long v[3];

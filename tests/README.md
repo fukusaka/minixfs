@@ -74,7 +74,9 @@ top of `tests/mkimage.c`).  The scripts:
 - `t_tunefs.sh` - `tunefs_minixfs` prints the settings, `-N` writes
   nothing, and `-c`, `-m` and `-e` each leave a file system that
   `fsck_minixfs` passes and that has what was asked for, in several
-  versions and byte orders; bad values are usage errors.
+  versions and byte orders; `-B` turns the test tree of every format
+  and zone size into the image mkimage makes in the other byte order,
+  and back; bad values are usage errors.
 - `t_utillinux.sh` - where util-linux is installed: `fsck.minix` accepts
   the test images and those of `newfs_minixfs`, images from `mkfs.minix`
   are readable and pass `fsck_minixfs`, and `fsck_minixfs` and

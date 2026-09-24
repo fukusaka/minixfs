@@ -9,7 +9,7 @@ WARNFLAGS =	-std=c99 -D_XOPEN_SOURCE=700 -Wall -Wextra -Wshadow \
 		-Wstrict-prototypes -Wmissing-prototypes -Wpointer-arith \
 		-Wcast-qual -Wwrite-strings
 
-LIBOBJS =	src/mfs.o src/mfs_format.o
+LIBOBJS =	src/mfs.o src/mfs_format.o src/mfs_tune.o
 PROG =		minixfs
 NEWFS =		newfs_minixfs
 FSCK =		fsck_minixfs
@@ -55,6 +55,7 @@ $(TUNEFS): src/tunefs_minixfs.o $(LIBOBJS)
 
 src/mfs.o: src/mfs.h src/layout.h
 src/mfs_format.o: src/mfs.h src/layout.h
+src/mfs_tune.o: src/mfs.h src/layout.h
 src/minixfs.o: src/mfs.h
 src/newfs_minixfs.o: src/mfs.h
 src/fsck_minixfs.o: src/mfs.h
@@ -77,13 +78,17 @@ check: $(PROG) $(NEWFS) $(FSCK) $(TUNEFS) $(MKIMAGE)
 check-sanitize: $(MKIMAGE)
 	rm -rf build-san && mkdir build-san
 	$(CC) $(SANFLAGS) $(WARNFLAGS) -o build-san/$(PROG) \
-	    src/minixfs.c src/mfs.c src/mfs_format.c
+	    src/minixfs.c src/mfs.c src/mfs_format.c \
+	    src/mfs_tune.c
 	$(CC) $(SANFLAGS) $(WARNFLAGS) -o build-san/$(NEWFS) \
-	    src/newfs_minixfs.c src/mfs.c src/mfs_format.c
+	    src/newfs_minixfs.c src/mfs.c src/mfs_format.c \
+	    src/mfs_tune.c
 	$(CC) $(SANFLAGS) $(WARNFLAGS) -o build-san/$(FSCK) \
-	    src/fsck_minixfs.c src/mfs.c src/mfs_format.c
+	    src/fsck_minixfs.c src/mfs.c src/mfs_format.c \
+	    src/mfs_tune.c
 	$(CC) $(SANFLAGS) $(WARNFLAGS) -o build-san/$(TUNEFS) \
-	    src/tunefs_minixfs.c src/mfs.c src/mfs_format.c
+	    src/tunefs_minixfs.c src/mfs.c src/mfs_format.c \
+	    src/mfs_tune.c
 	if [ -n "$(SAN_POSTLINK)" ]; then \
 	    $(SAN_POSTLINK) build-san/$(PROG); \
 	    $(SAN_POSTLINK) build-san/$(NEWFS); \
