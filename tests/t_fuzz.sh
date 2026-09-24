@@ -1,4 +1,7 @@
 #!/bin/sh
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Shoichi Fukusaka
+#
 # Damage good images at random and make sure that every command still
 # ends in an orderly way: exit status 0 or 1, no crash, no sanitizer
 # report, and nothing written outside the extraction directory.

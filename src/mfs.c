@@ -1,4 +1,7 @@
 /*
+ * SPDX-License-Identifier: BSD-2-Clause
+ * Copyright (c) 2026 Shoichi Fukusaka
+ *
  * mfs.c - read access to MINIX file system images.
  *
  * On-disk layout of a V1 file system (1024-byte blocks):

@@ -1,4 +1,7 @@
 #!/bin/sh
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Shoichi Fukusaka
+#
 # Trees whose paths are longer than PATH_MAX.
 
 . ./tests/lib.sh

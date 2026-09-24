@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Shoichi Fukusaka
+#
 # tap2junit.awk - turn the TAP output of one test script into a JUnit
 # <testsuite> element.
 #

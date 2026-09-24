@@ -1,4 +1,7 @@
 #!/bin/sh
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Shoichi Fukusaka
+#
 # Read the tree of tests/tree.spec from V1 images, little- and big-endian,
 # with 14- and 30-character names, and with one- and two-block zones.
 

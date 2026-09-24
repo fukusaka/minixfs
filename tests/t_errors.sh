@@ -1,4 +1,7 @@
 #!/bin/sh
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Shoichi Fukusaka
+#
 # Images that are not MINIX file systems, file systems of versions that
 # cannot be read yet, and damaged V1 file systems.  Every case must end in
 # an error message and exit status 1, never in a crash.

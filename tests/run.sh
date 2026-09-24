@@ -1,4 +1,7 @@
 #!/bin/sh
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Shoichi Fukusaka
+#
 # run.sh - run every test script and report the ones that failed.
 # Run it from the top of the source tree, usually through "make check".
 #

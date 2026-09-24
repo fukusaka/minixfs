@@ -1,4 +1,7 @@
 /*
+ * SPDX-License-Identifier: BSD-2-Clause
+ * Copyright (c) 2026 Shoichi Fukusaka
+ *
  * minixfs - inspect and extract MINIX file system images.
  *
  *	minixfs info IMAGE

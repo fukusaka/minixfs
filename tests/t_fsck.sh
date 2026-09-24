@@ -1,4 +1,7 @@
 #!/bin/sh
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Shoichi Fukusaka
+#
 # Cross-checks with the MINIX tools of util-linux, where they exist.  They
 # are optional: without them the checks are skipped.
 #

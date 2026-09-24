@@ -1,4 +1,7 @@
 /*
+ * SPDX-License-Identifier: BSD-2-Clause
+ * Copyright (c) 2026 Shoichi Fukusaka
+ *
  * mkimage - build MINIX V1 file system images for the test suite.
  *
  *	mkimage [-e EXPECTDIR] SPEC IMAGE

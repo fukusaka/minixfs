@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Shoichi Fukusaka
 # Makefile for minixfs.  It is written for both GNU make and BSD make, so
 # it keeps to suffix rules and plain variables.
 

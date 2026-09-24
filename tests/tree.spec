@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Shoichi Fukusaka
 # The tree used by t_read.sh.  @FS@ (the name length), @ORDER@, @BLOCKS@
 # and @LOGZONE@ are filled in by the test.  File sizes sit on either side
 # of the block, direct-zone and indirect-zone boundaries of a file system

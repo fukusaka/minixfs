@@ -107,3 +107,7 @@ other MINIX file system implementations.
 ## Contributing
 
 See `STYLE.md` for the coding rules.
+
+## License
+
+BSD 2-Clause.  See `LICENSE`.

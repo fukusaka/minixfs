@@ -75,7 +75,8 @@ NetBSD.  The points that matter most, and the choices KNF leaves open:
 
 ### Comments
 
-- Every file starts with a paragraph on what the file is for.
+- Every file starts with the SPDX identifier, the copyright line and a
+  paragraph on what the file is for.
 - Comments say why, or give the rule the code follows (with the source of
   the on-disk format where it matters).  They do not repeat the code.
 - Multi-line comments are sentences, in KNF block form.

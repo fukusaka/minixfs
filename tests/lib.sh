@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Shoichi Fukusaka
+#
 # lib.sh - helpers shared by the test scripts.
 #
 # A test script sources this file, keeps its files under $T and ends with

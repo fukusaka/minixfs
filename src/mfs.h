@@ -1,4 +1,7 @@
 /*
+ * SPDX-License-Identifier: BSD-2-Clause
+ * Copyright (c) 2026 Shoichi Fukusaka
+ *
  * mfs.h - read access to MINIX file system images.
  *
  * The library opens an image file, recognises the file system version and
