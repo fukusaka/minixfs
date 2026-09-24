@@ -1,0 +1,205 @@
+.\" SPDX-License-Identifier: BSD-2-Clause
+.\" Copyright (c) 2026 Shoichi Fukusaka
+.\"
+.\" 節の名前は mandoc が見分ける英語のままにする。日本語の文は途中で
+.\" 改行すると空白が入るので、1 文を 1 行に書く。
+.Dd September 25, 2026
+.Dt NEWFS_MINIXFS 8
+.Os
+.\" 日本語では両端をそろえると空白が大きく開くので、groff には左だけ
+.\" そろえさせる（mandoc は両端をそろえない）。
+.ds AD l
+.Sh NAME
+.Nm newfs_minixfs
+.Nd MINIX ファイルシステムを空で、またはディレクトリから作る
+.Sh SYNOPSIS
+.Nm
+.Fl V Ar version
+.Op Fl N
+.Op Fl B Cm le | be
+.Op Fl b Ar block-size
+.Oo
+.Fl d Ar directory
+.Op Fl F Ar specfile Op Fl P Ar dbdir Op Fl x
+.Op Fl o Ar uid : Ns Ar gid
+.Oc
+.Op Fl i Ar inodes
+.Op Fl l Ar name-length
+.Op Fl s Ar blocks
+.Op Fl t Ar time
+.Op Fl z Ar log-zone-size
+.Ar image
+.Sh DESCRIPTION
+.Nm
+は、\:ファイルまたはデバイス
+.Ar image
+に、\:版 1・2・3 の MINIX ファイルシステムを作ります。
+形式は
+.Xr minixfs 5
+を参照してください。
+中身は空のルートディレクトリか、\:
+.Fl d
+を付ければディレクトリの写しです。
+.Ar image
+の先頭 1024 バイトはブートブロックの場所なので、\:手を付けません。
+ファイルシステムには clean の印を付けます。
+.Pp
+大きさは
+.Fl s
+で決めます。
+このときイメージファイルを作るか、\:その大きさに切り詰めます。
+.Fl s
+がなければ、\:既存のファイルの大きさを使います。
+.Fl d
+を付けてどちらもなければ、\:木がちょうど収まる大きさで作ります。
+.Pp
+オプションは次のとおりです。
+.Bl -tag -width Ds
+.It Fl V Ar version
+ファイルシステムの版で、\:1・2・3 のどれかです。
+必ず指定します。
+.It Fl N
+配置を表示するだけで、\:何も書きません。
+.Fl d
+を付ければ、\:木に必要なものも表示します。
+.It Fl B Cm le | be
+バイト順です。
+PC と同じリトルエンディアン（既定）か、\:Atari ST・Amiga・Macintosh と同じビッグエンディアンです。
+.It Fl b Ar block-size
+V3 のブロックサイズで、\:1024 の倍数で 32768 までです。
+既定は、\:MINIX 3 がマウントできる最小の 4096 です。
+V1 と V2 のブロックは常に 1024 バイトです。
+.It Fl d Ar directory
+.Ar directory
+をファイルシステムに写します。
+ファイル、\:ディレクトリ、\:シンボリックリンク、\:デバイス、\:FIFO を、\:モード・所有者・時刻とともに、\:名前の順に入れます。
+名前の順にするので、\:同じ木からは同じイメージができます。
+ハードリンクはリンクのまま、\:すべてゼロのブロックは穴のままにします。
+シンボリックリンクのモードは、\:MINIX と Linux と同じく 0777 にします。
+ルートディレクトリは、\:
+.Ar directory
+自身のモード・\:所有者・\:時刻を\:受け継ぎます。
+ソケットは警告を出して除きます。
+木にあるデバイスは特権なしで写せます。
+root が要るのは、\:木の中にデバイスを作るときだけです。
+.Pp
+書き込む前にすべてを確かめます。
+ファイルシステムに入らない長さの名前、\:大きすぎる所有者・\:グループ・\:デバイス番号・\:リンク数、\:容量です。
+容量は穴もデータとして数えます。
+問題はすべて表示し、\:何も書きません。
+.Fl i
+がなければ、\:木に足りるだけの inode を用意します。
+.It Fl F Ar specfile
+.Xr mtree 8
+の指定ファイル
+.Ar specfile
+を、\:
+.Nx
+の
+.Xr makefs 8
+の
+.Fl F
+と同じように読みます。
+階層形式と、\:ビルドが書く METALOG のようなフルパス形式の両方を読めます。
+項目は、\:指す対象の型・\:モード・\:所有者・\:グループ・\:時刻・\:リンク先・\:デバイス番号を\:定め、\:
+.Ar directory
+のファイルの値を上書きします。
+.Ar directory
+にないものは、\:項目のとおりに作ります。
+このとき項目には、\:少なくとも型・\:モード・\:所有者・\:グループが\:要り、\:リンクならリンク先、\:デバイスならデバイス番号も要ります。
+通常ファイルは空で作ります。
+.Cm optional
+の付いた項目は、\:
+.Ar directory
+になければ除きます。
+型が
+.Ar directory
+のファイルと食い違えば誤りです。
+使うキーワードは
+.Cm type , mode
+（8 進）、\:
+.Cm uid , uname , gid , gname , time , link , device ,
+.Cm optional
+です。
+チェックサム、\:
+.Cm size , flags , tags
+などは読み飛ばします。
+.Cm /set ,
+.Cm /unset ,
+行の継続、\:
+.Xr vis 3
+のエスケープを解釈します。
+パターンを含む名前は扱いません。
+.It Fl P Ar dbdir
+.Fl F
+のユーザー名を、\:システムのものではなく、\:ディレクトリ
+.Ar dbdir
+の
+.Pa master.passwd
+か
+.Pa passwd
+で引きます。
+グループ名は同じディレクトリの
+.Pa group
+で引きます。
+.It Fl x
+.Fl F
+の指定ファイルにあるものだけを写します。
+.It Fl o Ar uid : Ns Ar gid
+木のすべてのファイルに、\:所有者
+.Ar uid
+とグループ
+.Ar gid
+を与えます。
+どちらも数値です。
+V1 の inode はグループを 1 バイトで持つので、\:255 を超えるグループのある木を V1 にするにはこれが要ります。
+.It Fl i Ar inodes
+inode の数です。
+inode 表のブロックが埋まるまで切り上げます。
+既定はおよそ 3 ブロックに 1 つで、\:
+.Fl d
+の木がそれより多く要ればその数にします。
+.It Fl l Ar name-length
+V1 と V2 の名前の長さです。
+MINIX と同じ 14（既定）か、\:Linux の拡張の 30 で、\:30 のほうは専用のマジック番号を持ちます。
+V3 の名前は常に 60 文字です。
+.It Fl s Ar blocks
+ブロック単位の大きさです。
+.It Fl t Ar time
+ルートディレクトリの時刻で、\:紀元からの秒数です。
+毎回同じイメージを\:作りたいときに\:使います。
+.It Fl z Ar log-zone-size
+zone を 2 の
+.Ar log-zone-size
+乗ブロックにします。
+既定は 0、\:つまり 1 ブロックです。
+.El
+.Sh EXIT STATUS
+.Nm
+は、\:成功すれば 0、\:ファイルシステムを作れなければ 1、\:使い方の誤りなら 2 で終了します。
+.Sh EXAMPLES
+360K の V1 フロッピーと、\:64 メガバイトの V3 イメージを作ります。
+.Bd -literal -offset indent
+$ newfs_minixfs -V 1 -s 360 floppy.img
+$ newfs_minixfs -V 3 -s 16384 disk.img
+.Ed
+.Pp
+ディレクトリから、\:ちょうど収まる大きさの、\:root 所有のイメージを作ります。
+.Bd -literal -offset indent
+$ newfs_minixfs -V 2 -d tree -o 0:0 tree.img
+.Ed
+.Pp
+MINIX のビルドから、\:METALOG の所有者・\:モード・\:デバイスを\:付けて\:イメージを\:作ります。
+.Bd -literal -offset indent
+$ newfs_minixfs -V 3 -d destdir -F destdir/METALOG \e
+    -P destdir/etc -x usr.img
+.Ed
+.Sh SEE ALSO
+.Xr minixfs 1 ,
+.Xr minixfs 5 ,
+.Xr fsck_minixfs 8 ,
+.Xr makefs 8 ,
+.Xr mtree 8 ,
+.Xr tunefs_minixfs 8
+.Sh AUTHORS
+.An Shoichi Fukusaka

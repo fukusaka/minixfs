@@ -1,0 +1,202 @@
+.\" SPDX-License-Identifier: BSD-2-Clause
+.\" Copyright (c) 2026 Shoichi Fukusaka
+.Dd September 25, 2026
+.Dt NEWFS_MINIXFS 8
+.Os
+.Sh NAME
+.Nm newfs_minixfs
+.Nd make a MINIX file system, empty or from a directory
+.Sh SYNOPSIS
+.Nm
+.Fl V Ar version
+.Op Fl N
+.Op Fl B Cm le | be
+.Op Fl b Ar block-size
+.Oo
+.Fl d Ar directory
+.Op Fl F Ar specfile Op Fl P Ar dbdir Op Fl x
+.Op Fl o Ar uid : Ns Ar gid
+.Oc
+.Op Fl i Ar inodes
+.Op Fl l Ar name-length
+.Op Fl s Ar blocks
+.Op Fl t Ar time
+.Op Fl z Ar log-zone-size
+.Ar image
+.Sh DESCRIPTION
+.Nm
+makes a MINIX file system of version 1, 2 or 3 in the file or device
+.Ar image ;
+see
+.Xr minixfs 5 .
+It holds an empty root directory or, with
+.Fl d ,
+a copy of a directory.
+The first 1024 bytes of
+.Ar image ,
+where a boot block may be, are left alone.
+The file system is marked clean.
+.Pp
+The size comes from
+.Fl s ,
+which also makes the image file or cuts it to that size, or else from
+the size of an existing file.
+With
+.Fl d
+and neither, the image is made just large enough for the tree.
+.Pp
+The options are:
+.Bl -tag -width Ds
+.It Fl V Ar version
+The version of the file system: 1, 2 or 3.
+It has to be given.
+.It Fl N
+Print the layout, and with
+.Fl d
+what the tree needs, and write nothing.
+.It Fl B Cm le | be
+The byte order: little-endian, as on the PC and the default, or
+big-endian, as on the Atari ST, the Amiga and the Macintosh.
+.It Fl b Ar block-size
+The block size of V3, a multiple of 1024 up to 32768; 4096 by default,
+the smallest that MINIX 3 mounts.
+V1 and V2 always have blocks of 1024 bytes.
+.It Fl d Ar directory
+Copy
+.Ar directory
+into the file system: its files, directories, symbolic links, devices
+and pipes, with their modes, owners and times, in the order of their
+names, so that the same tree makes the same image.
+Hard links stay links, blocks of zeros stay holes, and symbolic links
+get the mode 0777, as MINIX and Linux give them.
+The root directory takes the mode, owner and times of
+.Ar directory
+itself.
+Sockets are left out with a warning.
+Devices in the tree are copied without privileges; only making them in
+the tree takes root.
+.Pp
+Everything is checked before anything is written: names too long for
+the file system, owners, groups and device numbers too large, a link
+count too large, and room, counting holes as data.
+What is wrong is listed, and nothing is written.
+Without
+.Fl i ,
+the file system gets inodes enough for the tree.
+.It Fl F Ar specfile
+Read the
+.Xr mtree 8
+specification
+.Ar specfile
+as the
+.Fl F
+option of
+.Xr makefs 8
+of
+.Nx
+does, in the hierarchical form and in the form with full paths of the
+METALOG that a build writes.
+An entry sets the type, mode, owner, group, time, link target and device
+number of what it names, overriding the file in
+.Ar directory .
+What
+.Ar directory
+does not have is made as the entry says, which then has to give at
+least the type, mode, owner and group, and the link or device of a link
+or a device; a regular file is made empty.
+An entry marked
+.Cm optional
+that
+.Ar directory
+does not have is left out.
+A type that differs from that of the file in
+.Ar directory
+is an error.
+The keywords
+.Cm type , mode
+(in octal),
+.Cm uid , uname , gid , gname , time , link , device
+and
+.Cm optional
+are used; checksums,
+.Cm size , flags , tags
+and the like are ignored.
+.Cm /set ,
+.Cm /unset ,
+continued lines and the escapes of
+.Xr vis 3
+are understood; names with patterns are not.
+.It Fl P Ar dbdir
+Look up the user names of
+.Fl F
+in
+.Pa master.passwd
+or
+.Pa passwd ,
+and the group names in
+.Pa group ,
+of the directory
+.Ar dbdir ,
+rather than in those of the system.
+.It Fl x
+Copy only what the specification of
+.Fl F
+names.
+.It Fl o Ar uid : Ns Ar gid
+Give every file of the tree the owner
+.Ar uid
+and the group
+.Ar gid ,
+numbers both.
+A V1 inode keeps its group in one byte, so a tree with groups above 255
+needs this in V1.
+.It Fl i Ar inodes
+The number of inodes, rounded up to fill the blocks of the inode table;
+by default one for about every three blocks, or more if the tree of
+.Fl d
+needs them.
+.It Fl l Ar name-length
+The length of names in V1 and V2: 14, as in MINIX and the default, or
+30, the extension of Linux, which has magic numbers of its own.
+V3 names are always 60 characters.
+.It Fl s Ar blocks
+The size in blocks.
+.It Fl t Ar time
+The time of the root directory, in seconds since the Epoch, for images
+that must come out the same each time.
+.It Fl z Ar log-zone-size
+A zone of 2 to the power of
+.Ar log-zone-size
+blocks; 0, one block, by default.
+.El
+.Sh EXIT STATUS
+.Nm
+exits with 0 on success, 1 if the file system cannot be made, and 2 for
+a usage error.
+.Sh EXAMPLES
+A V1 floppy of 360K and a V3 image of 64 megabytes:
+.Bd -literal -offset indent
+$ newfs_minixfs -V 1 -s 360 floppy.img
+$ newfs_minixfs -V 3 -s 16384 disk.img
+.Ed
+.Pp
+An image of a directory, just large enough, owned by root:
+.Bd -literal -offset indent
+$ newfs_minixfs -V 2 -d tree -o 0:0 tree.img
+.Ed
+.Pp
+An image of a MINIX build, with the owners, modes and devices of its
+METALOG:
+.Bd -literal -offset indent
+$ newfs_minixfs -V 3 -d destdir -F destdir/METALOG \e
+    -P destdir/etc -x usr.img
+.Ed
+.Sh SEE ALSO
+.Xr minixfs 1 ,
+.Xr minixfs 5 ,
+.Xr fsck_minixfs 8 ,
+.Xr makefs 8 ,
+.Xr mtree 8 ,
+.Xr tunefs_minixfs 8
+.Sh AUTHORS
+.An Shoichi Fukusaka

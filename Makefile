@@ -26,6 +26,19 @@ FUSE_VERSION =	31
 FUSE_CFLAGS !=	(pkg-config --cflags fuse3) 2>/dev/null || true
 FUSE_LIBS !=	(pkg-config --libs fuse3) 2>/dev/null || true
 
+# Where "make install" puts the commands and the manuals, English in
+# MANDIR and Japanese in MANDIR/ja, below DESTDIR.
+PREFIX ?=	/usr/local
+BINDIR ?=	$(PREFIX)/bin
+SBINDIR ?=	$(PREFIX)/sbin
+MANDIR ?=	$(PREFIX)/man
+INSTALL ?=	install
+MANS =		man/minixfs.1 man/minixfs.5 man/fsck_minixfs.8 \
+		man/mount_minixfs.8 man/newfs_minixfs.8 man/tunefs_minixfs.8
+MANS_JA =	man/ja/minixfs.1 man/ja/minixfs.5 man/ja/fsck_minixfs.8 \
+		man/ja/mount_minixfs.8 man/ja/newfs_minixfs.8 \
+		man/ja/tunefs_minixfs.8
+
 SANFLAGS =	-O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined \
 		-fno-sanitize-recover=all
 # A command run on the sanitizer binary after it is linked, for systems
@@ -103,9 +116,35 @@ check-sanitize: $(MKIMAGE)
 	    FSCK_MINIXFS=./build-san/$(FSCK) \
 	    TUNEFS_MINIXFS=./build-san/$(TUNEFS) sh tests/run.sh
 
+# mount_minixfs goes in too if "make fuse" built it.
+install: all
+	$(INSTALL) -d $(DESTDIR)$(BINDIR) $(DESTDIR)$(SBINDIR)
+	$(INSTALL) -m 555 $(PROG) $(DESTDIR)$(BINDIR)
+	$(INSTALL) -m 555 $(NEWFS) $(FSCK) $(TUNEFS) $(DESTDIR)$(SBINDIR)
+	if [ -f $(FUSEPROG) ]; then \
+	    $(INSTALL) -m 555 $(FUSEPROG) $(DESTDIR)$(SBINDIR); \
+	fi
+	for f in $(MANS) $(MANS_JA); do \
+	    case $$f in \
+	    man/ja/*) d=$(DESTDIR)$(MANDIR)/ja/man$${f##*.} ;; \
+	    *) d=$(DESTDIR)$(MANDIR)/man$${f##*.} ;; \
+	    esac; \
+	    $(INSTALL) -d $$d && $(INSTALL) -m 444 $$f $$d || exit 1; \
+	done
+
+# Check the manuals: with mandoc where there is one, else with groff.
+lint-man:
+	if command -v mandoc >/dev/null 2>&1; then \
+	    mandoc -Tlint -Wwarning $(MANS) $(MANS_JA); \
+	else \
+	    for f in $(MANS) $(MANS_JA); do \
+		preconv $$f | groff -mdoc -Tutf8 -ww -z || exit 1; \
+	    done; \
+	fi
+
 clean:
 	rm -f $(PROG) $(NEWFS) $(FSCK) $(TUNEFS) src/*.o $(MKIMAGE) \
 	    $(FUSEPROG)
 	rm -rf build-san
 
-.PHONY: all check check-sanitize clean fuse
+.PHONY: all check check-sanitize clean fuse install lint-man

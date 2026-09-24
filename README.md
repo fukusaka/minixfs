@@ -224,6 +224,14 @@ mounted file system: neither MINIX nor Linux can grow one.
 The other commands exit with 0 on success, 1 if anything failed; all
 exit with 2 for a usage error.
 
+## Manuals
+
+The manuals are in `man/`, in English, and in `man/ja/`, in Japanese:
+minixfs(1), mount_minixfs(8), newfs_minixfs(8), fsck_minixfs(8) and
+tunefs_minixfs(8) for the commands, and minixfs(5) for the formats of
+the file systems.  `make install` puts them below `MANDIR`, with the
+commands below `PREFIX`, and `make lint-man` checks them.
+
 ## Tests
 
     make check

@@ -1,0 +1,137 @@
+.\" SPDX-License-Identifier: BSD-2-Clause
+.\" Copyright (c) 2026 Shoichi Fukusaka
+.Dd September 25, 2026
+.Dt TUNEFS_MINIXFS 8
+.Os
+.Sh NAME
+.Nm tunefs_minixfs
+.Nd change the settings of a MINIX file system
+.Sh SYNOPSIS
+.Nm
+.Op Fl fN
+.Op Fl B Cm le | be
+.Op Fl c Cm clean | dirty
+.Op Fl e Cm 0 | 1
+.Op Fl l Cm 14 | 30
+.Op Fl m Cm minix | linux | Ar bytes
+.Op Fl s Ar blocks
+.Op Fl T Ar size : Ns Ar heads : Ns Ar side
+.Ar image
+.Sh DESCRIPTION
+.Nm
+changes the settings of the MINIX file system in
+.Ar image ;
+see
+.Xr minixfs 5 .
+Without options it prints them: the byte order, the name length, the
+size in blocks, whether the file system is marked clean, the maximum
+file size with the one MINIX works out, and the bits of the maps past
+the last inode or zone.
+Each change is printed as the old and the new value.
+The byte order is changed first, then the name length, then the size.
+.Pp
+The options are:
+.Bl -tag -width Ds
+.It Fl N
+Print what the other options would change, and write nothing.
+.It Fl B Cm le | be
+Store every number of the file system in the other byte order,
+little-endian as on the PC or big-endian as on the Atari ST and the
+Amiga: the super block, the words of the bit maps, the inodes, the
+indirect zones and the inode numbers of directory entries.
+Everything is read before anything is written.
+.It Fl l Cm 14 | 30
+Give a V1 or V2 file system names of 14 characters, as in MINIX, or 30,
+the extension of Linux: the magic number changes, and every directory is
+written anew with entries of the new size.
+Every directory is read, every name checked and the zones counted before
+anything is written; names too long for 14 characters are all listed,
+and then nothing changes, as when the larger directories would not fit.
+.It Fl s Ar blocks
+Grow or shrink the file system, and the image file with it, to
+.Ar blocks
+blocks, cut down to whole zones.
+To grow, the zone map takes more blocks if it has no room for the new
+zones, and the inode table and every data zone in use then move up, with
+every zone number changed to match.
+To shrink, the zones in use past the new end move to free zones before
+it, with the zone numbers that name them, and the zone map keeps its
+blocks, which
+.Nm fsck_minixfs Fl w
+notes.
+What is in use has to fit, or nothing changes.
+.It Fl f
+Change a file system that is not marked clean with
+.Fl B ,
+.Fl l
+and
+.Fl s
+all the same; see
+.Sx CAVEATS .
+.It Fl c Cm clean | dirty
+Mark the file system clean or dirty: in V1 and V2 in the state word
+that Linux keeps, in V3 in the flags of MINIX 3, which mounts a file
+system that is not clean read-only, and in Minix-vmd in its flags.
+.It Fl e Cm 0 | 1
+Set the bits of each map past the last inode or zone to 0, as the mkfs
+of MINIX leaves them, or 1, as that of Linux sets them.
+.It Fl m Cm minix | linux | Ar bytes
+Set the maximum file size in the super block to what MINIX works out
+from the zones that the double indirect zone reaches, to what Linux and
+.Xr newfs_minixfs 8
+write, or to
+.Ar bytes ,
+from 1 to 2147483647.
+.It Fl T Ar size : Ns Ar heads : Ns Ar side
+Change an image that holds the file system in the tracks of one side of
+a disk only, as for
+.Xr minixfs 1 .
+Its size cannot change.
+.El
+.Sh EXIT STATUS
+.Nm
+exits with 0 on success, 1 if anything failed, and 2 for a usage error.
+.Sh EXAMPLES
+Turn a disk of the Atari ST into one for the PC, with the names of
+Linux:
+.Bd -literal -offset indent
+$ tunefs_minixfs -B le -l 30 atari.img
+.Ed
+.Pp
+Double the size of an image:
+.Bd -literal -offset indent
+$ tunefs_minixfs -s 2880 floppy.img
+.Ed
+.Sh SEE ALSO
+.Xr minixfs 1 ,
+.Xr minixfs 5 ,
+.Xr fsck_minixfs 8 ,
+.Xr newfs_minixfs 8
+.Sh AUTHORS
+.An Shoichi Fukusaka
+.Sh CAVEATS
+The changes of
+.Fl B ,
+.Fl l
+and
+.Fl s
+rewrite more than the super block and the maps.
+They expect a file system that
+.Xr fsck_minixfs 8
+passes and that is not mounted, and one cut short leaves it half
+changed: keep a copy.
+Linux and MINIX 3 take the clean mark away while they have a file
+system mounted for writing, and would write their own idea of it back
+over the change, so these refuse a file system that is not marked clean
+unless
+.Fl f
+is given.
+.Nm fsck_minixfs Fl y
+marks a file system clean that it finds consistent, which also serves
+for V1 and V2 file systems made by MINIX, where the mark is never set.
+Neither MINIX nor Linux can change the size of a mounted file system.
+.Pp
+.Fl B
+and
+.Fl l
+do not apply to Minix-vmd.

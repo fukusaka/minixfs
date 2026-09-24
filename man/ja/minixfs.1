@@ -1,0 +1,178 @@
+.\" SPDX-License-Identifier: BSD-2-Clause
+.\" Copyright (c) 2026 Shoichi Fukusaka
+.\"
+.\" 節の名前は mandoc が見分ける英語のままにする。日本語の文は途中で
+.\" 改行すると空白が入るので、1 文を 1 行に書く。
+.Dd September 25, 2026
+.Dt MINIXFS 1
+.Os
+.\" 日本語では両端をそろえると空白が大きく開くので、groff には左だけ
+.\" そろえさせる（mandoc は両端をそろえない）。
+.ds AD l
+.Sh NAME
+.Nm minixfs
+.Nd MINIX ファイルシステムのイメージを調べ、中身を取り出す
+.Sh SYNOPSIS
+.Nm
+.Op Fl T Ar size : Ns Ar heads : Ns Ar side
+.Cm info
+.Ar image
+.Nm
+.Op Fl T Ar size : Ns Ar heads : Ns Ar side
+.Cm ls
+.Op Fl lR
+.Ar image
+.Op Ar path
+.Nm
+.Op Fl T Ar size : Ns Ar heads : Ns Ar side
+.Cm cat
+.Ar image
+.Ar path
+.Nm
+.Op Fl T Ar size : Ns Ar heads : Ns Ar side
+.Cm extract
+.Op Fl dv
+.Ar image
+.Ar dest
+.Op Ar path
+.Nm
+.Op Fl T Ar size : Ns Ar heads : Ns Ar side
+.Cm tar
+.Ar image
+.Op Ar path
+.Sh DESCRIPTION
+.Nm
+は、\:V1・V2・V3 のどの版の MINIX ファイルシステムのイメージも、\:どちらのバイト順でも読みます。
+Minix-vmd のものも読みます。
+形式は
+.Xr minixfs 5
+を参照してください。
+イメージに書き込むことはありません。
+イメージの中のパスは、\:
+.Ql /
+で始まっていてもいなくても、\:ルートディレクトリから数えます。
+.Pp
+コマンドは次のとおりです。
+.Bl -tag -width Ds
+.It Cm info
+superblock を表示します。
+版、\:バイト順、\:マジック番号、\:名前の長さ、\:ブロックサイズ、\:inode と zone の数、\:ビットマップの大きさ、\:最初のデータ zone、\:zone の大きさ、\:最大ファイルサイズ、\:clean の印の有無、\:Minix-vmd なら亜種の名前です。
+続いて、\:イメージとファイルシステムの大きさと、\:イメージのうち 0xe5 か 0xa5 だけのセクタがどれだけあるかを、\:その連なりの最も多い長さとともに\:表示します。
+これらの値はフォーマットが残すもので、\:ほかには誰も書きません。
+書かれた面より多くの面で\:読み取ったディスクは\:、\:1 トラックずつの連なりが\:イメージの半分を\:占める形で\:現れます。
+途中で切れた写しや、\:ディスクより小さいファイルシステムも現れます。
+どれもそれ自体は誤りではありません。
+最後に、\:ビットマップが数える空き inode と空き zone を表示します。
+.It Cm ls Oo Fl lR Oc Ar image Op Ar path
+ディレクトリ
+.Ar path
+を一覧します（省略時はルート）。
+.Ar path
+がファイルならそのファイルを示します。
+.Fl l
+を付けると、\:各項目のモード、\:リンク数、\:所有者、\:グループ、\:大きさ（デバイスならメジャー番号とマイナー番号）、\:UTC の更新時刻を、\:シンボリックリンクならその先も表示します。
+.Fl R
+を付けると、\:サブディレクトリも一覧します。
+.It Cm cat Ar image Ar path
+通常ファイル
+.Ar path
+を標準出力に写します。
+.It Cm extract Oo Fl dv Oc Ar image Ar dest Op Ar path
+ディレクトリ
+.Ar path
+とその下のすべてを、\:ディレクトリ
+.Ar dest
+に写します（
+.Ar path
+の省略時はルート）。
+.Ar dest
+がなければ作ります。
+ファイル、\:ディレクトリ、\:シンボリックリンク、\:FIFO を、\:set-user-ID・set-group-ID・sticky ビットを\:除いたアクセス許可と時刻を\:付けて\:作ります。
+所有者は設定しません。
+デバイスは
+.Fl d
+を付けたときだけ作ります。
+これには root が要ります。
+作らなかったデバイスと、\:写せないソケットは、\:最後に警告として数を示します。
+.Fl v
+を付けると、\:写したものと同じく 1 件ずつ名前を示します。
+.Pp
+.Cm extract
+は
+.Ar dest
+の外には書きません。
+名前が空の項目、\:
+.Ql \&.
+や
+.Ql \&..
+の項目、\:
+.Ql /
+を含む項目は拒み、\:自身を含むディレクトリも拒みます。
+.It Cm tar Ar image Op Ar path
+ディレクトリ
+.Ar path
+を、\:POSIX ustar 形式のアーカイブとして\:標準出力に\:書きます（省略時は\:ルート）。
+標準出力が端末であってはいけません。
+.Cm extract
+と違い、\:デバイスとその番号、\:FIFO、\:所有者、\:ハードリンクを保ちます。
+.Xr tar 1
+は特権なしでこれを一覧でき、\:root で実行すればデバイスも作ります。
+ustar に収まらない長い名前やリンク先は、\:pax の拡張ヘッダに入れます。
+ソケットは入れられないので、\:除いたものとして数えます。
+.El
+.Sh OPTIONS
+.Bl -tag -width Ds
+.It Fl T Ar size : Ns Ar heads : Ns Ar side
+ディスクの片面の\:トラックだけに\:ファイルシステムが\:ある\:イメージを\:読みます。
+トラックは
+.Ar size
+バイトで、\:1 シリンダに
+.Ar heads
+個あり、\:そのうち面
+.Ar side
+（0 から数える）に\:ファイルシステムが\:あります。
+片面 360K のディスクを両面 720K として読んだもの、\:たとえば Atari MINIX 1.5 のディスクの一部は
+.Fl T Ar 4608:2:0
+です。
+イメージのトラックは 1 つおきに空です。
+こうしたイメージでも superblock は正しい位置にあるので、\:
+.Cm info
+は正しく見えますが、\:残りは壊れているように読めます。
+.Cm info
+の埋め草の数え上げでは、\:イメージの半分が 4608 バイトの連なりとして現れます。
+.El
+.Sh EXIT STATUS
+.Nm
+は、\:成功すれば 0、\:何かに失敗すれば 1、\:使い方の誤りなら 2 で終了します。
+各コマンドは、\:出会った問題をすべて報告し、\:続けられるところまで続けます。
+.Sh EXAMPLES
+イメージを一覧し、\:ファイルを 1 つ取り出します。
+.Bd -literal -offset indent
+$ minixfs ls -l root.img /etc
+$ minixfs cat root.img /etc/passwd > passwd
+.Ed
+.Pp
+デバイスとハードリンクも含めて、\:木全体を新しいイメージに移します。
+.Bd -literal -offset indent
+# mkdir tree && minixfs tar old.img | tar -xpf - -C tree
+# newfs_minixfs -V 3 -d tree new.img
+.Ed
+.Pp
+両面として読み取った Atari のディスクを読みます。
+.Bd -literal -offset indent
+$ minixfs -T 4608:2:0 extract disk02 out
+.Ed
+.Sh SEE ALSO
+.Xr tar 1 ,
+.Xr minixfs 5 ,
+.Xr fsck_minixfs 8 ,
+.Xr mount_minixfs 8 ,
+.Xr newfs_minixfs 8 ,
+.Xr tunefs_minixfs 8
+.Sh AUTHORS
+.An Shoichi Fukusaka
+.Sh BUGS
+.Cm extract
+は、\:リンクが 2 つ以上あるファイルの名前を、\:それぞれ別のファイルとして写します。
+.Cm tar
+はリンクとして保ちます。

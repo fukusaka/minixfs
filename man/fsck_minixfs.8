@@ -1,0 +1,144 @@
+.\" SPDX-License-Identifier: BSD-2-Clause
+.\" Copyright (c) 2026 Shoichi Fukusaka
+.Dd September 25, 2026
+.Dt FSCK_MINIXFS 8
+.Os
+.Sh NAME
+.Nm fsck_minixfs
+.Nd check and repair a MINIX file system
+.Sh SYNOPSIS
+.Nm
+.Op Fl lwy
+.Op Fl e Cm 0 | 1
+.Op Fl T Ar size : Ns Ar heads : Ns Ar side
+.Ar image
+.Sh DESCRIPTION
+.Nm
+checks the MINIX file system in
+.Ar image ,
+of any version and byte order, or of Minix-vmd; see
+.Xr minixfs 5 .
+It checks:
+.Bl -bullet
+.It
+the super block: a maximum file size that makes sense, an image that
+holds the whole file system, and the errors that Linux records in the
+state word of V1 and V2;
+.It
+directory entries: inode numbers in range, entries that name a free
+inode or one of no valid type, names that are empty or hold
+.Ql / ,
+.Ql \&.
+and
+.Ql \&..
+first and naming the directory and its parent, and directories that
+more than one directory lists;
+.It
+inodes: a size that the zones reach, directories a whole number of
+entries long, zone numbers inside the data area, zones that two files
+share, device files with zone numbers besides the device number, and
+symbolic links that are empty, longer than Linux writes or cut short by
+a NUL byte;
+.It
+link counts against the entries that name each inode, inodes in use
+that no directory names, both bit maps, and bit 0 of each map, which is
+never used but must be set.
+.El
+.Pp
+The walk goes breadth first and reads each directory once, so that
+neither depth nor loops of directories can stop it.
+Each problem is printed on a line of its own, then a summary of the
+inodes and zones in use and the problems found.
+A file system that is not marked clean is noted, but is not a problem in
+itself: in V1 and V2, MINIX leaves zero the word in which Linux keeps the
+mark.
+.Pp
+Without
+.Fl y ,
+the image is only read.
+.Pp
+The options are:
+.Bl -tag -width Ds
+.It Fl y
+Repair each problem where it can be: bad entries are removed,
+.Ql \&.
+and
+.Ql \&..
+are pointed where they belong or put back, moving an entry that holds
+their place and giving the directory a zone if it has none; zone numbers
+outside the data area and the second use of a zone are cleared; sizes
+are cut to what the zones reach, to whole entries and to the text of a
+symbolic link; link counts are set; inodes that no directory names are
+freed; the bit maps are made to match; and the super block gets a
+sensible maximum file size.
+A root that is not a directory and an image shorter than the file
+system are left.
+Each problem is followed by
+.Ql (repaired)
+or
+.Ql (not repaired) .
+The image is then checked again and marked clean if nothing is left \(em
+in V1 and V2 as Linux marks it, in V3 with the clean flag of MINIX 3,
+which otherwise mounts the file system read-only \(em or marked as
+having errors if problems remain.
+.It Fl l
+With
+.Fl y ,
+link inodes that no directory names into
+.Pa /lost+found
+as
+.Ql #
+and their inode number, trees below directories and all, rather than
+freeing them;
+.Pa /lost+found
+is made if it is not there.
+MINIX and Linux have no
+.Pa /lost+found ,
+and their fsck frees such inodes, which is why this is not the default.
+.It Fl e Cm 0 | 1
+Check that the bits of each map past the last inode or zone are 0 or 1,
+and with
+.Fl y
+set them so.
+The mkfs of MINIX leaves them clear and that of Linux sets them, so
+neither is wrong unless this says which to expect.
+.It Fl w
+Note, as warnings that are not problems, what the fsck of MINIX 3 warns
+about: map blocks beyond what the maps need, a first data zone later
+than the inode table allows, a maximum file size other than the one
+MINIX works out, and zones of more than 256 blocks.
+.It Fl T Ar size : Ns Ar heads : Ns Ar side
+Check, and repair in place, an image that holds the file system in the
+tracks of one side of a disk only, as for
+.Xr minixfs 1 ;
+the other side is left alone.
+.El
+.Sh EXIT STATUS
+.Nm
+exits with 0 if the file system is consistent, after the repairs with
+.Fl y ;
+1 if problems remain; 2 for a usage error; and 3 if the image cannot be
+checked at all.
+.Sh EXAMPLES
+.Bd -literal -offset indent
+$ fsck_minixfs root.img
+$ fsck_minixfs -y -l usr.img
+.Ed
+.Sh SEE ALSO
+.Xr minixfs 1 ,
+.Xr minixfs 5 ,
+.Xr newfs_minixfs 8 ,
+.Xr tunefs_minixfs 8
+.Sh AUTHORS
+.An Shoichi Fukusaka
+.Sh BUGS
+The size of the image is taken from the size of its file, so a device,
+whose file has none, reads as an image shorter than the file system.
+.Pp
+The flex directories of Minix-vmd are checked, but
+.Ql \&.
+and
+.Ql \&..
+are not put back there, nor is
+.Pa /lost+found
+made in them.

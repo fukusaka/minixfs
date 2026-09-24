@@ -1,0 +1,203 @@
+.\" SPDX-License-Identifier: BSD-2-Clause
+.\" Copyright (c) 2026 Shoichi Fukusaka
+.Dd September 25, 2026
+.Dt MINIXFS 5
+.Os
+.Sh NAME
+.Nm minixfs
+.Nd format of MINIX file systems
+.Sh DESCRIPTION
+MINIX has had three versions of its file system, V1, V2 and V3.
+Linux added forms of V1 and V2 with longer names and a state word, and
+Minix-vmd a form of V1 and V2 with a super block and directories of its
+own.
+The tools of this package read all of them in either byte order;
+.Xr minixfs 1
+and
+.Xr mount_minixfs 8
+read,
+.Xr newfs_minixfs 8 ,
+.Xr fsck_minixfs 8
+and
+.Xr tunefs_minixfs 8
+also write.
+.Ss Layout
+A file system is a sequence of blocks, of 1024 bytes in V1 and V2 and of
+the size its super block gives in V3:
+.Bl -column "block 2 + imap blocks" "Contents" -offset indent
+.It Sy Block Ta Sy Contents
+.It 0 Ta boot block
+.It 1 Ta super block, at byte 1024 in every version
+.It 2 Ta inode bit map, imap blocks
+.It 2 + imap blocks Ta zone bit map, zmap blocks
+.It after the maps Ta inode table
+.It first data zone Ta data zones, to the end
+.El
+.Pp
+Data is kept in zones of 2 to the power of the zone size blocks.
+Zones are numbered from the start of the file system, and the numbers
+of the zones before the first data zone are never used in files.
+.Ss Super block
+All numbers are stored in the byte order of the machine that made the
+file system: little-endian on the PC, big-endian on the 68000 machines
+(Atari ST, Amiga, Macintosh).
+The magic number tells the version, the name length and the byte order:
+.Bl -column "0x138f" "Version" "Names" -offset indent
+.It Sy Magic Ta Sy Version Ta Sy Names Ta Sy Origin
+.It 0x137f Ta V1 Ta 14 Ta MINIX
+.It 0x138f Ta V1 Ta 30 Ta Linux
+.It 0x2468 Ta V2 Ta 14 Ta MINIX
+.It 0x2478 Ta V2 Ta 30 Ta Linux
+.It 0x4d5a Ta V3 Ta 60 Ta MINIX 3
+.El
+.Pp
+The super block of V1 and V2 holds, at these byte offsets:
+.Bl -column "Offset" "Bytes" -offset indent
+.It Sy Offset Ta Sy Bytes Ta Sy Field
+.It 0 Ta 2 Ta inodes
+.It 2 Ta 2 Ta zones (V1)
+.It 4 Ta 2 Ta inode map blocks
+.It 6 Ta 2 Ta zone map blocks
+.It 8 Ta 2 Ta first data zone
+.It 10 Ta 2 Ta log2 of blocks in a zone
+.It 12 Ta 4 Ta maximum file size
+.It 16 Ta 2 Ta magic number
+.It 18 Ta 2 Ta zero in MINIX; state in Linux: 1 cleanly unmounted, 2 errors found
+.It 20 Ta 4 Ta zones (V2)
+.El
+.Pp
+The super block of V3 holds:
+.Bl -column "Offset" "Bytes" -offset indent
+.It Sy Offset Ta Sy Bytes Ta Sy Field
+.It 0 Ta 4 Ta inodes
+.It 6 Ta 2 Ta inode map blocks
+.It 8 Ta 2 Ta zone map blocks
+.It 10 Ta 2 Ta first data zone, or 0 if it does not fit; it then follows the inode table
+.It 12 Ta 2 Ta log2 of blocks in a zone
+.It 14 Ta 2 Ta flags: 0x0001 clean; the bits of 0xff00 must be known to mount
+.It 16 Ta 4 Ta maximum file size
+.It 20 Ta 4 Ta zones
+.It 24 Ta 2 Ta magic number
+.It 28 Ta 2 Ta block size
+.El
+.Pp
+MINIX 3 mounts a file system that is not marked clean read-only.
+The maximum file size limits files; MINIX works it out from what the
+double indirect zone reaches, while Linux writes 2147483647 in V2 and V3.
+.Ss Bit maps
+Bit
+.Em i
+of the inode map is set when inode
+.Em i
+is in use; bit
+.Em i
+of the zone map when zone first data zone +
+.Em i
+\- 1 is.
+Bit 0 of both is never used and is always set.
+The maps are arrays of words of 16 bits in V1 and V2 and of 32 bits in
+V3, in the byte order of the file system, bit 0 of a word being its
+lowest.
+The bits past the last inode or zone are left clear by the mkfs of MINIX
+and set by that of Linux.
+.Ss Inodes
+Inode 1 is the root directory; inode 0 does not exist.
+A V1 inode is 32 bytes:
+.Bl -column "Offset" "Bytes" -offset indent
+.It Sy Offset Ta Sy Bytes Ta Sy Field
+.It 0 Ta 2 Ta mode: type and permission bits
+.It 2 Ta 2 Ta owner
+.It 4 Ta 4 Ta size
+.It 8 Ta 4 Ta modification time
+.It 12 Ta 1 Ta group
+.It 13 Ta 1 Ta link count
+.It 14 Ta 9 \(mu 2 Ta zones: 7 direct, single and double indirect
+.El
+.Pp
+A V2 and V3 inode is 64 bytes:
+.Bl -column "Offset" "Bytes" -offset indent
+.It Sy Offset Ta Sy Bytes Ta Sy Field
+.It 0 Ta 2 Ta mode
+.It 2 Ta 2 Ta link count
+.It 4 Ta 2 Ta owner
+.It 6 Ta 2 Ta group
+.It 8 Ta 4 Ta size
+.It 12 Ta 4 Ta access time
+.It 16 Ta 4 Ta modification time
+.It 20 Ta 4 Ta status change time
+.It 24 Ta 10 \(mu 4 Ta zones: 7 direct, single, double and triple indirect
+.El
+.Pp
+Times are seconds since the Epoch.
+The types in the mode are those of
+.Xr stat 2 :
+0100000 regular file, 0040000 directory, 0120000 symbolic link, 0020000
+character device, 0060000 block device, 0010000 pipe, 0140000 socket.
+A free inode has the mode 0.
+.Pp
+Zone 0 in a zone slot is a hole, which reads as zeros.
+An indirect zone lists zone numbers of 16 bits in V1 and 32 bits in V2
+and V3, in its first block.
+MINIX never uses the triple indirect zone; Linux does.
+A device keeps its device number, major times 256 plus minor, in its
+first zone slot.
+A symbolic link keeps its target in its data, without a NUL.
+.Ss Directories
+A directory is a file of entries, the first two being
+.Ql \&.
+and
+.Ql \&.. ,
+which names the directory itself in the root.
+An entry is an inode number followed by a name, which fills its field or
+ends with a NUL:
+.Bl -column "V1, V2 (Linux)" "Entry" -offset indent
+.It Sy Version Ta Sy Entry
+.It V1, V2 Ta 2 + 14 bytes
+.It V1, V2 (Linux) Ta 2 + 30 bytes
+.It V3 Ta 4 + 60 bytes
+.El
+.Pp
+An entry of inode 0 is free.
+.Ss Minix-vmd
+Minix-vmd, the MINIX derivative of Philip Homburg and Kees Bot, writes V1
+and V2 with the magic numbers of MINIX and a super block of its own:
+byte 10 holds the zone size alone, byte 11 flags (0x01 flex directories,
+0x02 clean), and bytes 18 and 19 the values 0x7f and 0x13, by which it is
+known.
+.Pp
+With the flex flag, its directories are made of slots of 8 bytes.
+An entry takes one slot holding the inode number in 2 bytes, the number
+of slots that follow in 1 byte and the first 5 bytes of the name, and the
+following slots for the rest of the name, which ends with a NUL.
+A name of
+.Em n
+characters takes (
+.Em n
++ 3) / 8 more slots, and names have up to 60 characters.
+An entry does not cross a block.
+A slot of inode 0 is free; removing an entry frees each of its slots,
+setting its inode number and count to 0, and an entry is added where
+enough free slots follow one another.
+.Ss Images of one side of a disk
+A disk written on one side and read as double-sided, as some of the
+Atari ST, holds the file system in every other track of the image.
+The option
+.Fl T Ar size : Ns Ar heads : Ns Ar side
+of the tools reads such an image; see
+.Xr minixfs 1 .
+.Sh SEE ALSO
+.Xr minixfs 1 ,
+.Xr fsck_minixfs 8 ,
+.Xr mount_minixfs 8 ,
+.Xr newfs_minixfs 8 ,
+.Xr tunefs_minixfs 8
+.Rs
+.%A Andrew S. Tanenbaum
+.%A Albert S. Woodhull
+.%B Operating Systems: Design and Implementation
+.%O second and third editions
+.Re
+.Sh HISTORY
+V1 is the file system of the first versions of MINIX.
+V2 added 32-bit zone numbers and the times of access and status change,
+and V3, of MINIX 3, blocks of other sizes and 60-character names.

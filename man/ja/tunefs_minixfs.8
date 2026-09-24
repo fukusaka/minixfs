@@ -1,0 +1,134 @@
+.\" SPDX-License-Identifier: BSD-2-Clause
+.\" Copyright (c) 2026 Shoichi Fukusaka
+.\"
+.\" 節の名前は mandoc が見分ける英語のままにする。日本語の文は途中で
+.\" 改行すると空白が入るので、1 文を 1 行に書く。
+.Dd September 25, 2026
+.Dt TUNEFS_MINIXFS 8
+.Os
+.\" 日本語では両端をそろえると空白が大きく開くので、groff には左だけ
+.\" そろえさせる（mandoc は両端をそろえない）。
+.ds AD l
+.Sh NAME
+.Nm tunefs_minixfs
+.Nd MINIX ファイルシステムの設定を変える
+.Sh SYNOPSIS
+.Nm
+.Op Fl fN
+.Op Fl B Cm le | be
+.Op Fl c Cm clean | dirty
+.Op Fl e Cm 0 | 1
+.Op Fl l Cm 14 | 30
+.Op Fl m Cm minix | linux | Ar bytes
+.Op Fl s Ar blocks
+.Op Fl T Ar size : Ns Ar heads : Ns Ar side
+.Ar image
+.Sh DESCRIPTION
+.Nm
+は、\:
+.Ar image
+の MINIX ファイルシステムの設定を変えます。
+形式は
+.Xr minixfs 5
+を参照してください。
+オプションがなければ設定を表示します。
+表示するのは、\:バイト順、\:名前の長さ、\:ブロック単位の大きさ、\:clean の印の有無、\:最大ファイルサイズと MINIX が計算する値、\:マップの最後の inode や zone より後ろのビットです。
+変更は、\:古い値と新しい値を並べて示します。
+バイト順を最初に変え、\:次に名前の長さ、\:最後に大きさを変えます。
+.Pp
+オプションは次のとおりです。
+.Bl -tag -width Ds
+.It Fl N
+ほかのオプションで\:何が\:変わるかを\:示すだけで\:、\:何も書きません。
+.It Fl B Cm le | be
+ファイルシステムのすべての数値を、\:PC と同じリトルエンディアンか、\:Atari ST・Amiga と同じビッグエンディアンで書き直します。
+対象は superblock、\:ビットマップの語、\:inode、\:間接 zone、\:ディレクトリ項目の inode 番号です。
+書き込む前にすべてを読みます。
+.It Fl l Cm 14 | 30
+V1 か V2 のファイルシステムの名前を、\:MINIX と同じ 14 文字か、\:Linux の拡張の 30 文字にします。
+マジック番号が変わり、\:すべて\:のディレクトリを\:新しい大きさの項目で\:書き直します。
+書き込む前に、\:すべてのディレクトリを読み、\:すべての名前を確かめ、\:zone を数えます。
+14 文字に収まらない名前はすべて示し、\:そのときは何も変えません。
+大きくなるディレクトリが\:収まらないときも何も変えません。
+.It Fl s Ar blocks
+ファイルシステムとイメージファイルを、\:
+.Ar blocks
+ブロック（zone の整数倍に切り下げ）に広げるか縮めます。
+広げるとき、\:zone マップに新しい zone の分の余地がなければブロックを足します。
+そのときは inode 表と使用中のデータ zone をすべて後ろへ移し、\:zone 番号をすべて合わせて書き換えます。
+縮めるとき、\:新しい末尾より後ろにある使用中の zone をその前の空き zone へ移し、\:それを指す zone 番号を書き換えます。
+zone マップのブロック数は変えないので、\:
+.Nm fsck_minixfs Fl w
+がそれを示します。
+使用中のものが収まらなければ、\:何も変えません。
+.It Fl f
+clean の印がないファイルシステムでも、\:
+.Fl B ,
+.Fl l ,
+.Fl s
+で変更します。
+.Sx CAVEATS
+を参照してください。
+.It Fl c Cm clean | dirty
+ファイルシステムに clean か dirty の印を付けます。
+V1 と V2 では Linux の状態語に、\:V3 では MINIX 3 のフラグに、\:Minix-vmd ではそのフラグに付けます。
+MINIX 3 は clean で\:ないファイルシステムを\:読み出し専用で\:マウントします。
+.It Fl e Cm 0 | 1
+各マップの、\:最後の inode や zone より後ろのビットを、\:MINIX の mkfs と同じ 0 か、\:Linux の mkfs と同じ 1 にします。
+.It Fl m Cm minix | linux | Ar bytes
+superblock の最大ファイルサイズを変えます。
+.Cm minix
+は二重間接 zone の届く範囲から MINIX が計算する値、\:
+.Cm linux
+は Linux と
+.Xr newfs_minixfs 8
+が書く値、\:
+.Ar bytes
+は 1 から 2147483647 までの数値です。
+.It Fl T Ar size : Ns Ar heads : Ns Ar side
+ディスクの片面のトラックだけに\:ファイルシステムが\:あるイメージを\:、\:
+.Xr minixfs 1
+と同じように変更します。
+大きさは変えられません。
+.El
+.Sh EXIT STATUS
+.Nm
+は、\:成功すれば 0、\:何かに失敗すれば 1、\:使い方の誤りなら 2 で終了します。
+.Sh EXAMPLES
+Atari ST のディスクを、\:Linux の名前の長さで PC 用にします。
+.Bd -literal -offset indent
+$ tunefs_minixfs -B le -l 30 atari.img
+.Ed
+.Pp
+イメージの大きさを倍にします。
+.Bd -literal -offset indent
+$ tunefs_minixfs -s 2880 floppy.img
+.Ed
+.Sh SEE ALSO
+.Xr minixfs 1 ,
+.Xr minixfs 5 ,
+.Xr fsck_minixfs 8 ,
+.Xr newfs_minixfs 8
+.Sh AUTHORS
+.An Shoichi Fukusaka
+.Sh CAVEATS
+.Fl B ,
+.Fl l ,
+.Fl s
+は、\:superblock とマップより多くを書き換えます。
+.Xr fsck_minixfs 8
+が通り、\:マウントして\:いないファイルシステムを\:前提とします。
+途中で止まると中途半端な状態になるので、\:写しを取っておいてください。
+Linux と MINIX 3 は、\:書き込みでマウントしている間は clean の印を外し、\:アンマウント時に\:自分の持つ内容で\:上書きします。
+そのためこれらのオプションは、\:
+.Fl f
+がなければ clean の印のないファイルシステムを拒みます。
+.Nm fsck_minixfs Fl y
+は、\:矛盾のないファイルシステムに clean の印を付けます。
+印の欄を使わない MINIX で作った V1 と V2 のファイルシステムも、\:これで印が付きます。
+MINIX も Linux も、\:マウント中のファイルシステムの大きさは\:変えられません。
+.Pp
+.Fl B
+と
+.Fl l
+は Minix-vmd には使えません。

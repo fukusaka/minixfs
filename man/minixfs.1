@@ -1,0 +1,173 @@
+.\" SPDX-License-Identifier: BSD-2-Clause
+.\" Copyright (c) 2026 Shoichi Fukusaka
+.Dd September 25, 2026
+.Dt MINIXFS 1
+.Os
+.Sh NAME
+.Nm minixfs
+.Nd inspect and extract MINIX file system images
+.Sh SYNOPSIS
+.Nm
+.Op Fl T Ar size : Ns Ar heads : Ns Ar side
+.Cm info
+.Ar image
+.Nm
+.Op Fl T Ar size : Ns Ar heads : Ns Ar side
+.Cm ls
+.Op Fl lR
+.Ar image
+.Op Ar path
+.Nm
+.Op Fl T Ar size : Ns Ar heads : Ns Ar side
+.Cm cat
+.Ar image
+.Ar path
+.Nm
+.Op Fl T Ar size : Ns Ar heads : Ns Ar side
+.Cm extract
+.Op Fl dv
+.Ar image
+.Ar dest
+.Op Ar path
+.Nm
+.Op Fl T Ar size : Ns Ar heads : Ns Ar side
+.Cm tar
+.Ar image
+.Op Ar path
+.Sh DESCRIPTION
+.Nm
+reads a MINIX file system image of any version, V1, V2 or V3, in either
+byte order, and of Minix-vmd; see
+.Xr minixfs 5 .
+It never writes to the image.
+Paths inside the image are taken from its root directory whether or not
+they start with
+.Ql / .
+.Pp
+The commands are:
+.Bl -tag -width Ds
+.It Cm info
+Print the super block: version, byte order, magic number, name length,
+block size, the numbers of inodes and zones, the sizes of the bit maps,
+the first data zone, the zone size, the maximum file size, whether the
+file system is marked clean, and for Minix-vmd the variant.
+Then the size of the image against that of the file system, and how
+much of the image is sectors of nothing but 0xe5 or 0xa5, which formats
+leave and nothing else writes, with the commonest length of such runs.
+A disk read with more sides than it was written on shows as runs of one
+track making up half of the image; a copy cut short, or a file system
+smaller than its disk, shows too.
+None of this is an error in itself.
+Last come the free inodes and zones that the bit maps count.
+.It Cm ls Oo Fl lR Oc Ar image Op Ar path
+List the directory
+.Ar path ,
+the root by default, or the file that
+.Ar path
+names.
+With
+.Fl l ,
+each entry shows its mode, link count, owner, group, size (or major and
+minor numbers for devices) and modification time in UTC, and a symbolic
+link its target.
+.Fl R
+lists subdirectories as well.
+.It Cm cat Ar image Ar path
+Copy the regular file
+.Ar path
+to standard output.
+.It Cm extract Oo Fl dv Oc Ar image Ar dest Op Ar path
+Copy the directory
+.Ar path ,
+the root by default, and all below it into the directory
+.Ar dest ,
+which is made if it does not exist.
+Files, directories, symbolic links and pipes are made with their
+permission bits, without the set-user-ID, set-group-ID and sticky bits,
+and their times; owners are not set.
+Devices are made only with
+.Fl d ,
+which takes root.
+Devices left out and sockets, which cannot be copied, are counted in a
+warning at the end, and with
+.Fl v
+named one by one as all that is copied is.
+.Pp
+.Cm extract
+never writes outside
+.Ar dest :
+entries whose names are empty,
+.Ql \&. ,
+.Ql \&..
+or contain
+.Ql /
+are refused, and so are directories that contain themselves.
+.It Cm tar Ar image Op Ar path
+Write the directory
+.Ar path ,
+the root by default, to standard output as a POSIX ustar archive, which
+must not be a terminal.
+Unlike
+.Cm extract ,
+it keeps devices with their numbers, pipes, owners and hard links, which
+.Xr tar 1
+lists without privileges and makes when run as root.
+Names and link targets longer than ustar holds go into pax extended
+headers.
+Sockets cannot be stored and are counted as left out.
+.El
+.Sh OPTIONS
+.Bl -tag -width Ds
+.It Fl T Ar size : Ns Ar heads : Ns Ar side
+Read an image that holds the file system in the tracks of one side of a
+disk only: tracks of
+.Ar size
+bytes,
+.Ar heads
+of them to a cylinder, of which side
+.Ar side ,
+from 0, holds the file system.
+A single-sided 360K disk read as a double-sided 720K one, as are some
+Atari MINIX 1.5 disks, is
+.Fl T Ar 4608:2:0 :
+every other track of the image is empty.
+The super block of such an image is still in place, so
+.Cm info
+looks right while the rest reads as damage; its fill count shows half of
+the image as runs of 4608 bytes.
+.El
+.Sh EXIT STATUS
+.Nm
+exits with 0 on success, 1 if anything failed, and 2 for a usage error.
+Each command reports every problem it meets and goes on where it can.
+.Sh EXAMPLES
+List an image and copy one file out of it:
+.Bd -literal -offset indent
+$ minixfs ls -l root.img /etc
+$ minixfs cat root.img /etc/passwd > passwd
+.Ed
+.Pp
+Move the whole tree, devices and hard links included, onto a new image:
+.Bd -literal -offset indent
+# mkdir tree && minixfs tar old.img | tar -xpf - -C tree
+# newfs_minixfs -V 3 -d tree new.img
+.Ed
+.Pp
+Read an Atari disk that was read as double-sided:
+.Bd -literal -offset indent
+$ minixfs -T 4608:2:0 extract disk02 out
+.Ed
+.Sh SEE ALSO
+.Xr tar 1 ,
+.Xr minixfs 5 ,
+.Xr fsck_minixfs 8 ,
+.Xr mount_minixfs 8 ,
+.Xr newfs_minixfs 8 ,
+.Xr tunefs_minixfs 8
+.Sh AUTHORS
+.An Shoichi Fukusaka
+.Sh BUGS
+.Cm extract
+copies each name of a file with more than one link as a file of its own;
+.Cm tar
+keeps them as links.

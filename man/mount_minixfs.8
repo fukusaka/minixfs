@@ -1,0 +1,81 @@
+.\" SPDX-License-Identifier: BSD-2-Clause
+.\" Copyright (c) 2026 Shoichi Fukusaka
+.Dd September 25, 2026
+.Dt MOUNT_MINIXFS 8
+.Os
+.Sh NAME
+.Nm mount_minixfs
+.Nd mount a MINIX file system image with FUSE
+.Sh SYNOPSIS
+.Nm
+.Op Fl T Ar size : Ns Ar heads : Ns Ar side
+.Op Ar FUSE options
+.Ar image
+.Ar mountpoint
+.Sh DESCRIPTION
+.Nm
+mounts the MINIX file system in
+.Ar image
+on
+.Ar mountpoint
+through the high-level FUSE interface, which libfuse on Linux and
+.Fx
+and librefuse on
+.Nx
+and MINIX 3 provide.
+Every version, V1, V2 and V3, in either byte order, and the file systems
+of Minix-vmd are read; see
+.Xr minixfs 5 .
+.Pp
+The mount is read-only and single-threaded: the options
+.Fl s
+and
+.Fl o Ar ro
+are always given to FUSE.
+Inode numbers, modes, link counts, owners, times and device numbers are
+those of the image.
+The image is opened before FUSE takes over, so a relative path works.
+Other options, such as
+.Fl f
+to stay in the foreground or
+.Fl o Ar allow_other ,
+are passed on to FUSE.
+.Pp
+The options are:
+.Bl -tag -width Ds
+.It Fl T Ar size : Ns Ar heads : Ns Ar side
+Read an image that holds the file system in the tracks of one side of a
+disk only, as for
+.Xr minixfs 1 .
+.El
+.Pp
+The file system is unmounted with
+.Ql fusermount3 -u Ar mountpoint
+on Linux, or with
+.Xr umount 8
+on the BSDs.
+.Sh EXIT STATUS
+.Nm
+exits with 0 when the file system has been unmounted, 1 if the image
+cannot be opened or FUSE fails, and 2 for a usage error.
+.Sh EXAMPLES
+.Bd -literal -offset indent
+$ mount_minixfs usr.img /mnt
+$ ls -l /mnt
+$ fusermount3 -u /mnt
+.Ed
+.Sh SEE ALSO
+.Xr minixfs 1 ,
+.Xr minixfs 5 ,
+.Xr fsck_minixfs 8
+.Sh AUTHORS
+.An Shoichi Fukusaka
+.Sh BUGS
+The file system cannot be written.
+.Pp
+On
+.Nx
+10.1, looking up
+.Ql \&..
+in a directory right below the root makes librefuse free the node of the
+root, after which lookups fail, so the mount is of little use there.

@@ -1,0 +1,88 @@
+.\" SPDX-License-Identifier: BSD-2-Clause
+.\" Copyright (c) 2026 Shoichi Fukusaka
+.\"
+.\" 節の名前は mandoc が見分ける英語のままにする。日本語の文は途中で
+.\" 改行すると空白が入るので、1 文を 1 行に書く。
+.Dd September 25, 2026
+.Dt MOUNT_MINIXFS 8
+.Os
+.\" 日本語では両端をそろえると空白が大きく開くので、groff には左だけ
+.\" そろえさせる（mandoc は両端をそろえない）。
+.ds AD l
+.Sh NAME
+.Nm mount_minixfs
+.Nd MINIX ファイルシステムのイメージを FUSE でマウントする
+.Sh SYNOPSIS
+.Nm
+.Op Fl T Ar size : Ns Ar heads : Ns Ar side
+.Op Ar FUSE options
+.Ar image
+.Ar mountpoint
+.Sh DESCRIPTION
+.Nm
+は、\:
+.Ar image
+の MINIX ファイルシステムを、\:FUSE の高水準インターフェースを通して
+.Ar mountpoint
+にマウントします。
+このインターフェースは、\:Linux と
+.Fx
+では libfuse が、\:
+.Nx
+と MINIX 3 では librefuse が提供します。
+V1・V2・V3 のどの版も、\:どちらのバイト順でも、\:Minix-vmd のものも読みます。
+形式は
+.Xr minixfs 5
+を参照してください。
+.Pp
+マウントは読み出し専用で、\:単一スレッドです。
+FUSE には常に
+.Fl s
+と
+.Fl o Ar ro
+を渡します。
+inode 番号、\:モード、\:リンク数、\:所有者、\:時刻、\:デバイス番号はイメージのとおりです。
+イメージは FUSE が動き出す前に開くので、\:相対パスでも構いません。
+ほかのオプションは FUSE に渡します。
+たとえば、\:前面で動かし続ける
+.Fl f
+や、\:
+.Fl o Ar allow_other
+です。
+.Pp
+オプションは次のとおりです。
+.Bl -tag -width Ds
+.It Fl T Ar size : Ns Ar heads : Ns Ar side
+ディスクの片面のトラックだけに\:ファイルシステムが\:あるイメージを\:読みます。
+.Xr minixfs 1
+と同じです。
+.El
+.Pp
+アンマウントは、\:Linux では
+.Ql fusermount3 -u Ar mountpoint
+で、\:BSD では
+.Xr umount 8
+で行います。
+.Sh EXIT STATUS
+.Nm
+は、\:ファイルシステムがアンマウントされれば 0、\:イメージを開けないか FUSE が失敗すれば 1、\:使い方の誤りなら 2 で終了します。
+.Sh EXAMPLES
+.Bd -literal -offset indent
+$ mount_minixfs usr.img /mnt
+$ ls -l /mnt
+$ fusermount3 -u /mnt
+.Ed
+.Sh SEE ALSO
+.Xr minixfs 1 ,
+.Xr minixfs 5 ,
+.Xr fsck_minixfs 8
+.Sh AUTHORS
+.An Shoichi Fukusaka
+.Sh BUGS
+ファイルシステムに\:書き込むことは\:で\:きません。
+.Pp
+.Nx
+10.1 では、\:ルートのすぐ下のディレクトリで
+.Ql \&..
+を引くと、\:librefuse がルートの節を解放してしまいます。
+それ以後の lookup は失敗するので、\:そこではほとんど使えません。
