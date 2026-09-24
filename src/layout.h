@@ -60,6 +60,27 @@
 #define SB12_MAXSIZE	12		/* 32 */
 #define SB12_MAGIC	16		/* 16 */
 #define SB12_STATE	18		/* 16, Linux: MFS_STATE_* */
+
+/*
+ * Minix-vmd keeps s_log_zone_size in one byte and flags in the next, and
+ * marks its super blocks with two bytes where Linux keeps the state.
+ */
+#define SBVMD_LOGZONE	10		/* 8 */
+#define SBVMD_FLAGS	11		/* 8, MFS_VMD_* */
+#define SBVMD_MAGIC	18		/* the bytes 0x7f, 0x13 */
+#define SBVMD_MAGIC0	0x7f
+#define SBVMD_MAGIC1	0x13
+
+/*
+ * A flex directory of Minix-vmd is made of slots of 8 bytes.  An entry
+ * takes a slot of inode number, count of extra slots and the first 5
+ * bytes of the name, then the extra slots with the rest of it, the name
+ * ending with a NUL.
+ */
+#define FLEX_SLOT	8
+#define FLEX_EXTENT	2		/* offset of the count of extra slots */
+#define FLEX_NAME	3		/* offset of the name */
+#define FLEX_MAX_EXTENT	7		/* 60 characters and a NUL */
 #define SB12_ZONES	20		/* 32, V2 only */
 
 /* V3 super block. */

@@ -237,6 +237,9 @@ mfs_convert_order(struct mfs *fs, enum mfs_order order)
 		return -EROFS;
 	if (fs->order == order)
 		return 0;
+	/* The super block and flex directories of Minix-vmd differ. */
+	if (fs->vmd)
+		return -ENOTSUP;
 	cv.fs = fs;
 	cv.indirect = calloc((size_t)fs->nzones / 8 + 1, 1);
 	cv.dirblock = calloc((size_t)fs->nblocks / 8 + 1, 1);
@@ -557,6 +560,8 @@ mfs_change_namelen(struct mfs *fs, uint32_t namelen)
 		return -EROFS;
 	if (fs->version == 3 || (namelen != 14 && namelen != 30))
 		return -EINVAL;
+	if (fs->vmd)
+		return -ENOTSUP;
 	if (fs->namelen == namelen)
 		return 0;
 	(void)memset(&rs, 0, sizeof(rs));

@@ -12,7 +12,8 @@
  * written; -N shows what the other options would change.
  *
  *	-B	store every number in the other byte order: little-endian,
- *		as on the PC, or big-endian, as on the 68000 machines
+ *		as on the PC, or big-endian, as on the 68000 machines; not
+ *		for Minix-vmd
  *	-c	mark the file system clean or dirty: in V1 and V2 in the
  *		state word that Linux keeps, in V3 in the flags of MINIX 3,
  *		which mounts a file system that is not clean read-only
@@ -20,9 +21,10 @@
  *		and -s all the same
  *	-e	set the bits of each map past the last inode or zone to 0,
  *		as the mkfs of MINIX leaves them, or 1, as that of Linux
- *	-l	names of 14 or 30 characters, in V1 and V2: every
- *		directory is written anew with entries of the new size.
- *		Names too long for 14 are listed, and nothing is changed.
+ *	-l	names of 14 or 30 characters, in V1 and V2 but not
+ *		Minix-vmd: every directory is written anew with entries
+ *		of the new size.  Names too long for 14 are listed, and
+ *		nothing is changed.
  *	-m	the maximum file size in the super block: what MINIX works
  *		out, what Linux and newfs_minixfs write, or a number
  *	-s	grow or shrink the file system and the image file to so
@@ -199,6 +201,9 @@ clean_state(const struct mfs *fs, int clean)
 	uint16_t s;
 
 	s = fs->state;
+	if (fs->vmd)
+		return clean ? s | MFS_VMD_CLEAN :
+		    s & (uint16_t)~MFS_VMD_CLEAN;
 	if (fs->version == 3)
 		return clean ? s | MFS_FLAG_CLEAN :
 		    s & (uint16_t)~MFS_FLAG_CLEAN;
@@ -423,6 +428,12 @@ main(int argc, char **argv)
 		errx(1, "%s: %s", o.image, strerror(-r));
 	}
 	status = 0;
+	if (fs.vmd && o.order != -1)
+		errx(1, "%s: -B does not know the super block and flex "
+		    "directories of Minix-vmd", o.image);
+	if (fs.vmd && o.namelen != 0)
+		errx(1, "%s: -l does not apply to Minix-vmd, whose flex "
+		    "directories take names of up to 60 characters", o.image);
 	/* What rewrites more than the super block wants it unmounted. */
 	if (write && !o.force && !mfs_is_clean(&fs) &&
 	    (o.order != -1 || o.namelen != 0 || o.nblocks != 0))

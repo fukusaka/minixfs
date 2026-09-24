@@ -111,6 +111,12 @@ top of `tests/mkimage.c`).  The scripts:
   leaves the other side alone; bad `-T` values are usage errors.  `info`
   gives the sizes and the runs of 0xe5 of the spread image, and none
   with `-T`.
+- `t_vmd.sh` - Minix-vmd, as `tests/mkimage` writes it with `vmd`: the
+  variant and its zone size and clean flag, names of every length up to
+  60 in flex directories, entries that start a new block, `fsck` and
+  `fsck -y` on them, the clean flag set and cleared alone, `tunefs -B`
+  and `-l` refused, and `-s` working.  `t_read.sh` reads the test tree
+  as Minix-vmd V1 and V2 as well.
 - `t_fuse.sh` - where `mount_minixfs` is built and mounting is allowed:
   the tree read through the kernel in four formats, with its names,
   contents, modes, owners, inode numbers and device numbers.  Skipped

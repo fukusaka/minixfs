@@ -40,6 +40,8 @@
 #define MFS_STATE_ERROR	0x0002		/* V1, V2: errors were found */
 #define MFS_FLAG_CLEAN	0x0001		/* V3: cleanly unmounted */
 #define MFS_FLAG_MANDATORY 0xff00	/* V3: features one must know */
+#define MFS_VMD_FLEX	0x01		/* Minix-vmd: flex directories */
+#define MFS_VMD_CLEAN	0x02		/* Minix-vmd: cleanly unmounted */
 
 /* File types in the mode word; the values are those of MINIX. */
 #define MFS_S_IFMT	0170000
@@ -96,11 +98,16 @@ struct mfs {
 	uint32_t	max_size;
 	uint32_t	block_size;	/* V1 and V2: always 1024 */
 	uint16_t	magic;
-	uint16_t	state;		/* V1, V2: MFS_STATE_*; V3: flags */
+	uint16_t	state;		/* V1, V2: MFS_STATE_*; V3: flags;
+					   Minix-vmd: MFS_VMD_* */
+	int		vmd;		/* the super block of Minix-vmd */
+	int		flex;		/* flex directories of Minix-vmd */
 
 	/* Derived from the super block. */
-	uint32_t	namelen;	/* bytes of a name in an entry */
-	uint32_t	dirent_size;	/* bytes of a directory entry */
+	uint32_t	namelen;	/* bytes of a name in an entry; flex:
+					   the longest name */
+	uint32_t	dirent_size;	/* bytes of a directory entry; flex:
+					   of a slot */
 	uint32_t	dirent_ino;	/* bytes of the inode number in it */
 	uint32_t	inode_size;	/* bytes of an on-disk inode */
 	uint32_t	zone_num_size;	/* bytes of a zone number */
@@ -330,7 +337,8 @@ int	mfs_put_inode(struct mfs *, const struct mfs_inode *);
 /*
  * Set the inode number of the directory entry at byte offset off of the
  * directory *dp; 0 removes the entry.  Returns 0 or a negative errno
- * value.
+ * value.  This works on the flex directories of Minix-vmd too, where
+ * mfs_put_entry() and mfs_add_entry() give -ENOTSUP.
  */
 int	mfs_set_entry(struct mfs *, const struct mfs_inode *, uint32_t,
 	    uint32_t);
@@ -409,8 +417,9 @@ int	mfs_sync(struct mfs *);
 /*
  * Store every number of the file system in byte order order: the super
  * block, the words of the bit maps, the inodes, the indirect zones and
- * the inode numbers of directory entries.  Returns 0, or a negative errno
- * value, after which nothing has been written if it came from reading.
+ * the inode numbers of directory entries.  Returns 0, -ENOTSUP for
+ * Minix-vmd, or a negative errno value, after which nothing has been
+ * written if it came from reading.
  */
 int	mfs_convert_order(struct mfs *, enum mfs_order);
 
@@ -418,7 +427,8 @@ int	mfs_convert_order(struct mfs *, enum mfs_order);
  * Give a V1 or V2 file system names of namelen (14 or 30) characters:
  * the magic number changes, and every directory is written anew with
  * entries of the new size, in zones that may differ from the old ones.
- * Returns 0; -EINVAL for V3 or another length; -ENAMETOOLONG if a name
+ * Returns 0; -EINVAL for V3 or another length; -ENOTSUP for Minix-vmd;
+ * -ENAMETOOLONG if a name
  * is longer than namelen; -ENOSPC if the directories would not fit;
  * -EFBIG if a directory would outgrow its double indirect zone; or
  * another negative errno value.  Only the last can follow a write.

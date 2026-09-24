@@ -29,6 +29,16 @@ and changes of settings with `tunefs_minixfs`.
 V2 and V3 inodes have a triple indirect zone, which Linux uses and MINIX
 does not; it is read as well.
 
+Minix-vmd, the MINIX derivative of Philip Homburg and Kees Bot, writes
+V1 and V2 file systems with the magic numbers of MINIX but a super block
+of its own: the zone size in one byte and flags in the next (flex
+directories, clean), and the bytes 0x7f, 0x13 where Linux keeps its
+state, by which it is known.  Its flex directories hold entries of
+8-byte slots with names of up to 60 characters.  Both are read, `info`
+names the variant, and the clean flag is its own; what writes directory
+entries of a fixed size (putting back "." or "..", `/lost+found`,
+`tunefs_minixfs -B` and `-l`) refuses it.
+
 The byte order is taken from the magic number.  Images made on a PC are
 little-endian; those made on 68000 machines (Atari ST, Amiga, Macintosh)
 are big-endian, and the Linux kernel on a PC cannot read them.

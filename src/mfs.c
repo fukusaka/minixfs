@@ -133,6 +133,13 @@ read_super(struct mfs *fs, const unsigned char *sb)
 			fs->nzones = get32(fs, sb + SB12_ZONES);
 		fs->block_size = STATIC_BLOCK;
 		fs->state = get16(fs, sb + SB12_STATE);
+		if (sb[SBVMD_MAGIC] == SBVMD_MAGIC0 &&
+		    sb[SBVMD_MAGIC + 1] == SBVMD_MAGIC1) {
+			fs->vmd = 1;
+			fs->log_zone_size = sb[SBVMD_LOGZONE];
+			fs->state = sb[SBVMD_FLAGS];
+			fs->flex = (fs->state & MFS_VMD_FLEX) != 0;
+		}
 	}
 
 	switch (fs->magic) {
@@ -150,6 +157,10 @@ read_super(struct mfs *fs, const unsigned char *sb)
 	}
 	fs->dirent_ino = fs->version == 3 ? 4 : 2;
 	fs->dirent_size = fs->dirent_ino + fs->namelen;
+	if (fs->flex) {
+		fs->namelen = FLEX_SLOT * (FLEX_MAX_EXTENT + 1) - FLEX_NAME - 1;
+		fs->dirent_size = FLEX_SLOT;
+	}
 	fs->inode_size = fs->version == 1 ? I1_SIZE : I2_SIZE;
 	fs->zone_num_size = fs->version == 1 ? 2 : 4;
 	fs->ndzones = NR_DZONES;
@@ -614,6 +625,27 @@ mfs_pread(struct mfs *fs, const struct mfs_inode *ip, void *buf,
 	return (ssize_t)done;
 }
 
+/*
+ * The name of the flex entry at p, of which room bytes are left in the
+ * block, into name; returns the bytes the entry takes.  A count of extra
+ * slots that runs past the block or the longest name is cut down to it.
+ */
+static uint32_t
+flex_name(const unsigned char *p, uint32_t room, char *name)
+{
+	uint32_t ext, len;
+
+	ext = p[FLEX_EXTENT];
+	if (ext > FLEX_MAX_EXTENT)
+		ext = FLEX_MAX_EXTENT;
+	if ((ext + 1) * FLEX_SLOT > room)
+		ext = room / FLEX_SLOT - 1;
+	len = (ext + 1) * FLEX_SLOT - FLEX_NAME;
+	(void)memcpy(name, p + FLEX_NAME, len);
+	name[len - 1] = '\0';
+	return (ext + 1) * FLEX_SLOT;
+}
+
 int
 mfs_readdir(struct mfs *fs, const struct mfs_inode *dp, mfs_dirent_fn fn,
     void *arg)
@@ -621,7 +653,7 @@ mfs_readdir(struct mfs *fs, const struct mfs_inode *dp, mfs_dirent_fn fn,
 	struct mfs_dirent de;
 	unsigned char *buf, *p;
 	ssize_t n;
-	uint32_t i, off;
+	uint32_t i, len, off;
 	int r;
 
 	if (!mfs_is_dir(dp))
@@ -635,15 +667,20 @@ mfs_readdir(struct mfs *fs, const struct mfs_inode *dp, mfs_dirent_fn fn,
 			r = (int)n;
 			break;
 		}
-		for (i = 0; i + fs->dirent_size <= (size_t)n;
-		    i += fs->dirent_size) {
+		for (i = 0; i + fs->dirent_size <= (size_t)n; i += len) {
 			p = buf + i;
+			len = fs->dirent_size;
+			if (fs->flex)
+				len = flex_name(p, (uint32_t)n - i, de.name);
 			de.ino = getn(fs, p, fs->dirent_ino);
 			if (de.ino == 0)
 				continue;
 			de.off = off + i;
-			(void)memcpy(de.name, p + fs->dirent_ino, fs->namelen);
-			de.name[fs->namelen] = '\0';
+			if (!fs->flex) {
+				(void)memcpy(de.name, p + fs->dirent_ino,
+				    fs->namelen);
+				de.name[fs->namelen] = '\0';
+			}
 			if ((r = fn(&de, arg)) != 0)
 				break;
 		}
@@ -901,6 +938,8 @@ mfs_count_free(struct mfs *fs, uint32_t *inodes, uint32_t *zones)
 int
 mfs_is_clean(const struct mfs *fs)
 {
+	if (fs->vmd)
+		return (fs->state & MFS_VMD_CLEAN) != 0;
 	if (fs->version == 3)
 		return (fs->state & MFS_FLAG_CLEAN) != 0;
 	return (fs->state & (MFS_STATE_VALID | MFS_STATE_ERROR)) ==
@@ -920,6 +959,9 @@ mfs_put_super(struct mfs *fs)
 	if (fs->version == 3) {
 		put32(fs->order, sb + SB3_MAXSIZE, fs->max_size);
 		put16(fs->order, sb + SB3_FLAGS, fs->state);
+	} else if (fs->vmd) {
+		put32(fs->order, sb + SB12_MAXSIZE, fs->max_size);
+		sb[SBVMD_FLAGS] = (unsigned char)fs->state;
 	} else {
 		put32(fs->order, sb + SB12_MAXSIZE, fs->max_size);
 		put16(fs->order, sb + SB12_STATE, fs->state);
@@ -930,7 +972,13 @@ mfs_put_super(struct mfs *fs)
 int
 mfs_mark_clean(struct mfs *fs, int clean)
 {
-	if (fs->version == 3) {
+	if (fs->vmd) {
+		/* Minix-vmd has no mark for errors: not clean says it. */
+		if (clean)
+			fs->state |= MFS_VMD_CLEAN;
+		else
+			fs->state &= (uint16_t)~MFS_VMD_CLEAN;
+	} else if (fs->version == 3) {
 		if (clean)
 			fs->state |= MFS_FLAG_CLEAN;
 		else
@@ -1062,6 +1110,9 @@ mfs_put_entry(struct mfs *fs, const struct mfs_inode *dp, uint32_t off,
 	size_t len;
 	int r;
 
+	/* Entries of flex directories are not all the same size. */
+	if (fs->flex)
+		return -ENOTSUP;
 	if ((len = strlen(name)) > fs->namelen)
 		return -ENAMETOOLONG;
 	if ((r = entry_block(fs, dp, off, &block)) < 0)

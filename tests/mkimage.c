@@ -12,7 +12,7 @@
  * blanks and '#' starts a comment:
  *
  *	fs   [version=1|2|3] order=le|be [namelen=14|30] [block=N]
- *	     blocks=N inodes=N [logzone=N] [spare=N] [gap=N] [skip=N]
+ *	     blocks=N inodes=N [logzone=N] [spare=N] [gap=N] [skip=N] [vmd]
  *	dir  PATH MODE UID GID MTIME
  *	file PATH MODE UID GID MTIME SIZE SEED [HOLESTART:HOLELEN ...]
  *	link PATH TARGET UID GID MTIME
@@ -27,6 +27,13 @@
  * each bit map N more blocks than it needs, and gap leaves N zones between
  * the inode table and the first data zone, as other mkfs may.  skip
  * leaves the first N data zones free, so that the files lie further in.
+ * vmd makes a V1 or V2 file system as Minix-vmd does: its super block
+ * keeps the zone size in a byte, flags (flex directories, clean) in the
+ * next and 0x7f, 0x13 at byte 18, and its flex directories hold entries
+ * of 8-byte slots, with names of up to 60 characters.  An entry takes a
+ * slot for the inode number, the count of extra slots and 5 bytes of the
+ * name, and the extra slots for the rest, the name ending with a NUL; an
+ * entry that would cross a block starts the next one instead.
  *
  * MODE is octal permission bits.  File contents are a pattern made from
  * SEED; bytes inside a hole are zero, and zones that lie wholly inside a
@@ -131,6 +138,8 @@ struct image {
 	struct node	root;
 	unsigned char	*data;
 	int		big_endian;
+	int		vmd;		/* Minix-vmd, flex directories */
+	uint32_t	maxname;	/* longest name */
 	int		version;
 	uint32_t	bsize;		/* block size */
 	uint32_t	dino;		/* bytes of a directory inode number */
@@ -465,7 +474,7 @@ new_node(struct parser *ps, char *path, enum type type)
 		syntax(ps, "already exists:", path);
 	if ((slash = strrchr(path, '/')) == NULL)
 		syntax(ps, "path must be absolute:", path);
-	if (strlen(slash + 1) > img->namelen || slash[1] == '\0')
+	if (strlen(slash + 1) > img->maxname || slash[1] == '\0')
 		syntax(ps, "bad name length:", path);
 	*slash = '\0';
 	dir = find(img, path);
@@ -528,6 +537,8 @@ fs_option(struct parser *ps, char *s)
 		img->gap = number(ps, s + 4, 10);
 	else if (strncmp(s, "skip=", 5) == 0)
 		img->skip = number(ps, s + 5, 10);
+	else if (strcmp(s, "vmd") == 0)
+		img->vmd = 1;
 	else
 		syntax(ps, "unknown fs option", s);
 }
@@ -550,9 +561,14 @@ check_version(const struct parser *ps, struct image *img)
 			img->namelen = 14;
 		if (img->namelen != 14 && img->namelen != 30)
 			syntax(ps, "namelen must be 14 or 30", "");
+		if (img->vmd && img->namelen != 14)
+			syntax(ps, "Minix-vmd has 14 for its magic", "");
 		if (img->bsize != 1024)
 			syntax(ps, "only V3 has a block size", "");
 	}
+	if (img->vmd && img->version == 3)
+		syntax(ps, "Minix-vmd is V1 or V2", "");
+	img->maxname = img->vmd ? 60 : img->namelen;
 	img->zbytes = img->version == 1 ? 2 : 4;
 	img->isize = img->version == 1 ? 32 : 64;
 	img->dino = img->version == 3 ? 4 : 2;
@@ -767,6 +783,47 @@ put_entry(const struct image *img, unsigned char *p, uint32_t ino,
 	    img->namelen);
 }
 
+/* Write a flex entry at buf + *off, starting a block if it must. */
+static void
+put_flex(const struct image *img, unsigned char *buf, uint32_t *off,
+    uint32_t ino, const char *name)
+{
+	size_t len;
+	uint32_t size;
+
+	len = strlen(name);
+	size = 8 * (1 + (uint32_t)((len + 3) >> 3));
+	if (*off % img->bsize + size > img->bsize)
+		*off += img->bsize - *off % img->bsize;
+	put16(img, buf + *off, ino);
+	buf[*off + 2] = (unsigned char)((len + 3) >> 3);
+	(void)memcpy(buf + *off + 3, name, len);
+	*off += size;
+}
+
+static void
+write_flex_dir(struct image *img, struct node *dir)
+{
+	unsigned char *buf;
+	struct node *c;
+	uint32_t n, off;
+
+	n = 2;
+	for (c = dir->child; c != NULL; c = c->next)
+		n++;
+	/* 64 bytes an entry at most, and a block lost to each. */
+	if ((buf = calloc(n, 64 + img->bsize)) == NULL)
+		err(1, NULL);
+	off = 0;
+	put_flex(img, buf, &off, dir->ino, ".");
+	put_flex(img, buf, &off, dir->parent->ino, "..");
+	for (c = dir->child; c != NULL; c = c->next)
+		put_flex(img, buf, &off, entry_ino(c), c->name);
+	dir->size = off;
+	write_data(img, dir, buf, dir->size);
+	free(buf);
+}
+
 static void
 write_dir(struct image *img, struct node *dir)
 {
@@ -774,6 +831,10 @@ write_dir(struct image *img, struct node *dir)
 	struct node *c;
 	uint32_t esize, n, off;
 
+	if (img->vmd) {
+		write_flex_dir(img, dir);
+		return;
+	}
 	esize = img->dino + img->namelen;
 	n = 2;
 	for (c = dir->child; c != NULL; c = c->next)
@@ -913,6 +974,13 @@ write_super(const struct image *img)
 		put32(img, sb + SB12_MAXSIZE, max_size(img));
 		put16(img, sb + SB12_MAGIC, magic(img));
 		put16(img, sb + SB12_STATE, 1);
+		if (img->vmd) {
+			/* A byte of zone size, flex and clean, the mark. */
+			sb[SB12_LOGZONE] = (unsigned char)img->logzone;
+			sb[SB12_LOGZONE + 1] = 0x03;
+			sb[SB12_STATE] = 0x7f;
+			sb[SB12_STATE + 1] = 0x13;
+		}
 		if (img->version == 2)
 			put32(img, sb + SB12_ZONES, img->nzones);
 	}

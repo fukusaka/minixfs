@@ -1321,15 +1321,16 @@ check_super(struct check *c)
 		problem(c, 1, "the image holds %jd bytes of the %" PRIu64
 		    " that the file system needs", (intmax_t)fs->image_size,
 		    need);
-	if (fs->version != 3 && (fs->state & MFS_STATE_ERROR) != 0) {
+	if (fs->version != 3 && !fs->vmd &&
+	    (fs->state & MFS_STATE_ERROR) != 0) {
 		/* Whether it stays is decided at the end. */
 		if (c->repair)
 			fs->state &= (uint16_t)~MFS_STATE_ERROR;
 		problem(c, put_super(c), "the super block records errors");
 	}
 	warn_super(c);
-	if (!c->quiet && !mfs_is_clean(fs) &&
-	    (fs->version == 3 || (fs->state & MFS_STATE_ERROR) == 0))
+	if (!c->quiet && !mfs_is_clean(fs) && (fs->version == 3 || fs->vmd ||
+	    (fs->state & MFS_STATE_ERROR) == 0))
 		(void)printf("%s: the file system is not marked clean\n",
 		    c->image);
 }

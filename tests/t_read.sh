@@ -154,8 +154,10 @@ read_extract() {
 	fi
 }
 
-# format: version/name length/block size
-for format in 1/14/1024 1/30/1024 2/14/1024 2/30/1024 3/60/1024 3/60/4096; do
+# format: version/name length/block size; "vmd" for Minix-vmd, whose
+# flex directories take names of up to 60 characters.
+for format in 1/14/1024 1/30/1024 2/14/1024 2/30/1024 3/60/1024 3/60/4096 \
+    1/vmd/1024 2/vmd/1024; do
 for order in le be; do
 for logzone in 0 1; do
 	version=${format%%/*}
@@ -164,17 +166,21 @@ for logzone in 0 1; do
 	bsize=${format##*/}
 	if [ "$version" -eq 3 ]; then
 		fs="version=3 block=$bsize"
+	elif [ "$namelen" = vmd ]; then
+		fs="version=$version vmd"
+		namelen=60
 	else
 		fs="version=$version namelen=$namelen"
 	fi
 	# MINIX uses 14-character names in V1 and V2; the 30-character forms
 	# are the Linux extensions, with magic numbers of their own.
+	# Minix-vmd has the magic numbers of MINIX.
 	case $format in
-	1/14/*)	magic=0x137f ;;
-	1/30/*)	magic=0x138f ;;
-	2/14/*)	magic=0x2468 ;;
-	2/30/*)	magic=0x2478 ;;
-	*)	magic=0x4d5a ;;
+	1/14/*|1/vmd/*)	magic=0x137f ;;
+	1/30/*)		magic=0x138f ;;
+	2/14/*|2/vmd/*)	magic=0x2468 ;;
+	2/30/*)		magic=0x2478 ;;
+	*)		magic=0x4d5a ;;
 	esac
 	if [ "$order" = be ]; then
 		byteorder=big-endian

@@ -269,6 +269,9 @@ mfs_add_entry(struct mfs *fs, struct mfs_inode *dp, const char *name,
 	size_t len;
 	int r;
 
+	/* Entries of flex directories are not all the same size. */
+	if (fs->flex)
+		return -ENOTSUP;
 	if ((len = strlen(name)) > fs->namelen)
 		return -ENAMETOOLONG;
 	(void)memset(entry, 0, sizeof(entry));
