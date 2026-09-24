@@ -100,6 +100,63 @@ mfs_alloc_zone(struct mfs *fs, uint32_t *zone)
 }
 
 int
+mfs_free_inode(struct mfs *fs, uint32_t ino)
+{
+	int r;
+
+	if ((r = load_maps(fs)) < 0)
+		return r;
+	if (ino == 0 || ino > fs->ninodes)
+		return -EIO;
+	mfs_set_map_bit(fs, fs->imap, ino, 0);
+	return 0;
+}
+
+int
+mfs_free_zone(struct mfs *fs, uint32_t zone)
+{
+	int r;
+
+	if ((r = load_maps(fs)) < 0)
+		return r;
+	if (zone < fs->firstdatazone || zone >= fs->nzones)
+		return -EIO;
+	mfs_set_map_bit(fs, fs->zmap, zone - fs->firstdatazone + 1, 0);
+	return 0;
+}
+
+static int
+free_fn(uint32_t zone, int level, const struct mfs_zref *ref, void *arg)
+{
+	struct mfs *fs;
+
+	(void)level;
+	(void)ref;
+	fs = arg;
+	/* A number outside the data area names no zone of this file. */
+	if (zone < fs->firstdatazone || zone >= fs->nzones)
+		return 0;
+	return mfs_free_zone(fs, zone);
+}
+
+int
+mfs_truncate(struct mfs *fs, struct mfs_inode *ip)
+{
+	uint32_t i;
+	int r;
+
+	if ((r = load_maps(fs)) < 0)
+		return r;
+	/* The zone of a device holds its number, not data. */
+	if (!mfs_is_dev(ip) && (r = mfs_walk_zones(fs, ip, free_fn, fs)) < 0)
+		return r;
+	for (i = 0; i < MFS_NR_ZONES; i++)
+		ip->zone[i] = 0;
+	ip->size = 0;
+	return 0;
+}
+
+int
 mfs_sync(struct mfs *fs)
 {
 	int r;

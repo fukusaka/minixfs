@@ -405,6 +405,26 @@ int	mfs_pwrite(struct mfs *, struct mfs_inode *, const void *, size_t,
 int	mfs_add_entry(struct mfs *, struct mfs_inode *, const char *,
 	    uint32_t);
 
+/*
+ * Mark inode ino free in the inode map; the caller clears the inode.
+ * Returns 0, -EIO for a number outside the inode table, or -errno.
+ */
+int	mfs_free_inode(struct mfs *, uint32_t);
+
+/*
+ * Mark zone free in the zone map.  Returns 0, -EIO for a zone outside
+ * the data area, or -errno.
+ */
+int	mfs_free_zone(struct mfs *, uint32_t);
+
+/*
+ * Free every zone of the file *ip, data and indirect, and clear its zone
+ * slots and size; a device keeps no zones and only has its slots
+ * cleared.  *ip changes in memory only, for the caller to write back with
+ * mfs_put_inode().  Returns 0 or a negative errno value.
+ */
+int	mfs_truncate(struct mfs *, struct mfs_inode *);
+
 /* Write the bit maps back.  Returns 0 or -errno. */
 int	mfs_sync(struct mfs *);
 
