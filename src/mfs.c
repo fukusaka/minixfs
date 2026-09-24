@@ -227,24 +227,124 @@ check_super(struct mfs *fs)
 	return 0;
 }
 
-/* Open with the given open(2) flags; see mfs_open(). */
+/*
+ * Where byte off of the device is in the image file.  *len is cut to
+ * what lies in one piece there.
+ */
+static off_t
+file_offset(const struct mfs *fs, off_t off, size_t *len)
+{
+	uint64_t in, size, track;
+
+	if (fs->tracks.size == 0)
+		return off;
+	size = fs->tracks.size;
+	track = (uint64_t)off / size;
+	in = (uint64_t)off % size;
+	if (*len > size - in)
+		*len = (size_t)(size - in);
+	return (off_t)((track * fs->tracks.heads + fs->tracks.side) * size +
+	    in);
+}
+
+/* Read len bytes of the device at off; see read_at(). */
 static int
-open_fs(struct mfs *fs, const char *path, int flags)
+dev_read(struct mfs *fs, void *buf, size_t len, off_t off)
+{
+	unsigned char *p;
+	off_t where;
+	size_t n;
+	int r;
+
+	for (p = buf; len > 0; p += n, len -= n, off += (off_t)n) {
+		n = len;
+		where = file_offset(fs, off, &n);
+		if ((r = read_at(fs->fd, p, n, where)) < 0)
+			return r;
+	}
+	return 0;
+}
+
+/* Write len bytes of the device at off; see write_at(). */
+static int
+dev_write(struct mfs *fs, const void *buf, size_t len, off_t off)
+{
+	const unsigned char *p;
+	off_t where;
+	size_t n;
+	int r;
+
+	for (p = buf; len > 0; p += n, len -= n, off += (off_t)n) {
+		n = len;
+		where = file_offset(fs, off, &n);
+		if ((r = write_at(fs->fd, p, n, where)) < 0)
+			return r;
+	}
+	return 0;
+}
+
+/* The bytes of the device that the image file holds. */
+static off_t
+device_size(const struct mfs *fs)
+{
+	uint64_t cyl, rem, size;
+
+	if (fs->tracks.size == 0)
+		return fs->file_size;
+	size = fs->tracks.size;
+	cyl = size * fs->tracks.heads;
+	rem = (uint64_t)fs->file_size % cyl;
+	rem = rem > fs->tracks.side * size ? rem - fs->tracks.side * size : 0;
+	return (off_t)((uint64_t)fs->file_size / cyl * size +
+	    (rem < size ? rem : size));
+}
+
+int
+mfs_parse_tracks(const char *s, struct mfs_tracks *t)
+{
+	unsigned long v[3];
+	char *end;
+	int i;
+
+	for (i = 0; i < 3; i++) {
+		if (*s < '0' || *s > '9')
+			return -EINVAL;
+		errno = 0;
+		v[i] = strtoul(s, &end, 10);
+		if (errno != 0 || v[i] > UINT32_MAX ||
+		    *end != (i < 2 ? ':' : '\0'))
+			return -EINVAL;
+		s = end + 1;
+	}
+	if (v[0] == 0 || v[2] >= v[1])
+		return -EINVAL;
+	t->size = (uint32_t)v[0];
+	t->heads = (uint32_t)v[1];
+	t->side = (uint32_t)v[2];
+	return 0;
+}
+
+int
+mfs_open_tracks(struct mfs *fs, const char *path, int rw,
+    const struct mfs_tracks *tracks)
 {
 	unsigned char sb[SUPER_SIZE];
 	struct stat st;
 	int r;
 
 	(void)memset(fs, 0, sizeof(*fs));
-	if ((fs->fd = open(path, flags)) == -1)
+	if (tracks != NULL)
+		fs->tracks = *tracks;
+	if ((fs->fd = open(path, rw ? O_RDWR : O_RDONLY)) == -1)
 		return -errno;
-	fs->writable = (flags & O_ACCMODE) == O_RDWR;
+	fs->writable = rw;
 	if (fstat(fs->fd, &st) == -1) {
 		r = -errno;
 		goto fail;
 	}
-	fs->image_size = st.st_size;
-	if ((r = read_at(fs->fd, sb, sizeof(sb), SUPER_OFFSET)) < 0) {
+	fs->file_size = st.st_size;
+	fs->image_size = device_size(fs);
+	if ((r = dev_read(fs, sb, sizeof(sb), SUPER_OFFSET)) < 0) {
 		if (r == -EIO)
 			r = -EINVAL;	/* too short to hold a super block */
 		goto fail;
@@ -274,13 +374,13 @@ fail:
 int
 mfs_open(struct mfs *fs, const char *path)
 {
-	return open_fs(fs, path, O_RDONLY);
+	return mfs_open_tracks(fs, path, 0, NULL);
 }
 
 int
 mfs_open_rw(struct mfs *fs, const char *path)
 {
-	return open_fs(fs, path, O_RDWR);
+	return mfs_open_tracks(fs, path, 1, NULL);
 }
 
 void
@@ -300,7 +400,7 @@ mfs_read_block(struct mfs *fs, uint32_t block, void *buf)
 {
 	if (block >= fs->nblocks)
 		return -EIO;
-	return read_at(fs->fd, buf, fs->block_size,
+	return dev_read(fs, buf, fs->block_size,
 	    (off_t)block * fs->block_size);
 }
 
@@ -782,7 +882,7 @@ mfs_put_super(struct mfs *fs)
 
 	if (!fs->writable)
 		return -EROFS;
-	if ((r = read_at(fs->fd, sb, sizeof(sb), SUPER_OFFSET)) < 0)
+	if ((r = dev_read(fs, sb, sizeof(sb), SUPER_OFFSET)) < 0)
 		return r;
 	if (fs->version == 3) {
 		put32(fs->order, sb + SB3_MAXSIZE, fs->max_size);
@@ -791,7 +891,7 @@ mfs_put_super(struct mfs *fs)
 		put32(fs->order, sb + SB12_MAXSIZE, fs->max_size);
 		put16(fs->order, sb + SB12_STATE, fs->state);
 	}
-	return write_at(fs->fd, sb, sizeof(sb), SUPER_OFFSET);
+	return dev_write(fs, sb, sizeof(sb), SUPER_OFFSET);
 }
 
 int
@@ -819,7 +919,7 @@ mfs_write_block(struct mfs *fs, uint32_t block, const void *buf)
 		return -EROFS;
 	if (block >= fs->nblocks)
 		return -EIO;
-	return write_at(fs->fd, buf, fs->block_size,
+	return dev_write(fs, buf, fs->block_size,
 	    (off_t)block * fs->block_size);
 }
 

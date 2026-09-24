@@ -52,11 +52,11 @@ for older librefuse).
 
 ## Usage
 
-    minixfs info IMAGE
-    minixfs ls [-lR] IMAGE [PATH]
-    minixfs cat IMAGE PATH
-    minixfs extract [-v] IMAGE DEST [PATH]
-    minixfs tar IMAGE [PATH] > ARCHIVE
+    minixfs [-T SIZE:HEADS:SIDE] info IMAGE
+    minixfs [-T ...] ls [-lR] IMAGE [PATH]
+    minixfs [-T ...] cat IMAGE PATH
+    minixfs [-T ...] extract [-v] IMAGE DEST [PATH]
+    minixfs [-T ...] tar IMAGE [PATH] > ARCHIVE
 
 `info` prints the super block.  `ls -l` shows mode, links, owner, group,
 size (or major and minor numbers for devices) and modification time in
@@ -71,7 +71,17 @@ makes the devices when run as root.  Sockets cannot be stored.
 `extract` never writes outside `DEST`: directory entries whose names are
 empty, `.`, `..` or contain `/` are refused, and so are directory loops.
 
-    mount_minixfs [FUSE options] IMAGE MOUNTPOINT
+`-T SIZE:HEADS:SIDE`, which `minixfs`, `fsck_minixfs` and
+`mount_minixfs` all take, reads an image that holds the file system in
+the tracks of one side only: tracks of SIZE bytes, HEADS of them to a
+cylinder, of which side SIDE (from 0) holds the file system.  A
+single-sided 360K disk read as a double-sided 720K one, such as Atari
+MINIX 1.5 disks, is `-T 4608:2:0`: every other track is empty.  The
+super block is then still in place, so `info` looks right, while the
+rest reads as damage.  `fsck_minixfs -y -T` repairs such an image in
+place and leaves the other side alone.
+
+    mount_minixfs [-T SIZE:HEADS:SIDE] [FUSE options] IMAGE MOUNTPOINT
 
 mounts the image read-only.  Inode numbers, modes, owners, times and
 device numbers are those of the image.  Unmount it with `fusermount3 -u
@@ -91,7 +101,7 @@ that must come out the same each time; `-N` prints the layout and writes
 nothing.  The first 1024 bytes, where a boot block may be, are left
 alone.
 
-    fsck_minixfs [-lwy] [-e 0|1] image
+    fsck_minixfs [-lwy] [-e 0|1] [-T SIZE:HEADS:SIDE] image
 
 checks a file system: the super block (maximum file size, an image that
 holds the whole file system, errors that Linux recorded), directory

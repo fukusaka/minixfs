@@ -56,9 +56,24 @@ enum mfs_order {
 	MFS_BIG_ENDIAN
 };
 
+/*
+ * How the image file holds the device.  With size 0, byte for byte.
+ * Otherwise the file holds tracks of size bytes, heads of them to each
+ * cylinder, and the device is the tracks of one side: as when a
+ * single-sided disk was read as double-sided, and every other track of
+ * the image is empty.
+ */
+struct mfs_tracks {
+	uint32_t	size;		/* bytes in a track; 0: no tracks */
+	uint32_t	heads;		/* tracks in a cylinder */
+	uint32_t	side;		/* which of them: 0 .. heads - 1 */
+};
+
 /* An open file system image. */
 struct mfs {
-	off_t		image_size;	/* bytes in the image file */
+	struct mfs_tracks tracks;	/* how the file holds the device */
+	off_t		file_size;	/* bytes in the image file */
+	off_t		image_size;	/* bytes of the device in it */
 	uint64_t	max_file;	/* bytes the zone slots can address */
 	unsigned char	*ibuf;		/* one block: inodes, indirects */
 	unsigned char	*dbuf;		/* one block, for file data */
@@ -129,6 +144,19 @@ int	mfs_open(struct mfs *, const char *);
 
 /* As mfs_open(), for reading and writing. */
 int	mfs_open_rw(struct mfs *, const char *);
+
+/*
+ * As mfs_open() or, if rw is not 0, mfs_open_rw(), for an image file that
+ * holds the device as *tracks says; NULL means byte for byte.
+ */
+int	mfs_open_tracks(struct mfs *, const char *, int,
+	    const struct mfs_tracks *);
+
+/*
+ * Parse "SIZE:HEADS:SIDE" into *tracks.  Returns 0, or -EINVAL if the
+ * text is not three numbers, SIZE is 0 or SIDE is not below HEADS.
+ */
+int	mfs_parse_tracks(const char *, struct mfs_tracks *);
 
 /* Release what mfs_open() acquired. */
 void	mfs_close(struct mfs *);

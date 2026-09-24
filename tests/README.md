@@ -79,6 +79,11 @@ top of `tests/mkimage.c`).  The scripts:
   in several formats is read back by tar(1): contents, modes, owners and
   times, devices with their numbers, pipes, hard and symbolic links, a
   directory as the top, and names too long for a plain ustar header.
+- `t_tracks.sh` - `-T`: a file system spread over the tracks of either
+  side of a double-sided image reads with `info`, `ls`, `cat`,
+  `extract`, `tar` and `fsck_minixfs` as the file system itself, and
+  `fsck_minixfs -y -T` repairs it as `-y` repairs the file system and
+  leaves the other side alone; bad `-T` values are usage errors.
 - `t_fuse.sh` - where `mount_minixfs` is built and mounting is allowed:
   the tree read through the kernel in four formats, with its names,
   contents, modes, owners, inode numbers and device numbers.  Skipped

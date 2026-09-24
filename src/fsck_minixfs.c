@@ -4,7 +4,7 @@
  *
  * fsck_minixfs - check a MINIX file system image, and repair it.
  *
- *	fsck_minixfs [-lwy] [-e 0|1] image
+ *	fsck_minixfs [-lwy] [-e 0|1] [-T SIZE:HEADS:SIDE] image
  *
  * The check reads the super block, walks the tree from the root, and then
  * compares what it found with the inode table and the bit maps:
@@ -57,6 +57,9 @@
  * table leaves room for, a maximum file size other than the one MINIX
  * works out, and zones of more than 256 blocks.  Such a layout works, so
  * it is not a problem.
+ *
+ * -T reads and repairs an image that holds the file system in the
+ * tracks of one side only, as minixfs(1) does.
  *
  * Each problem is printed on a line of its own, with "(repaired)" or
  * "(not repaired)" after it under -y.  A file system that is not marked
@@ -127,6 +130,7 @@ struct opts {
 	int		lost;			/* -l */
 	int		end;			/* -e 0 or 1; -1: no check */
 	int		warn;			/* -w */
+	struct mfs_tracks tracks;		/* -T */
 };
 
 /* The state of one check. */
@@ -169,7 +173,8 @@ struct check {
 static void
 usage(void)
 {
-	(void)fprintf(stderr, "usage: fsck_minixfs [-lwy] [-e 0|1] image\n");
+	(void)fprintf(stderr, "usage: fsck_minixfs [-lwy] [-e 0|1] "
+	    "[-T SIZE:HEADS:SIDE] image\n");
 	exit(EXIT_USAGE);
 }
 
@@ -1346,10 +1351,7 @@ check(struct check *c, const char *image, const struct opts *o, int quiet)
 	c->end = o->end;
 	c->warn = o->warn;
 	c->quiet = quiet;
-	if (o->repair)
-		r = mfs_open_rw(&c->fs, image);
-	else
-		r = mfs_open(&c->fs, image);
+	r = mfs_open_tracks(&c->fs, image, o->repair, &o->tracks);
 	if (r == -EINVAL)
 		errx(EXIT_CANNOT, "%s: not a MINIX file system", image);
 	if (r == -ENOTSUP)
@@ -1394,13 +1396,13 @@ summary(const struct check *c, const char *when)
 
 /* Under -y, mark the file system clean, or as having errors. */
 static void
-mark(const char *image, int clean)
+mark(const char *image, const struct opts *o, int clean)
 {
 	struct mfs fs;
 	uint16_t state;
 	int r;
 
-	if ((r = mfs_open_rw(&fs, image)) < 0)
+	if ((r = mfs_open_tracks(&fs, image, 1, &o->tracks)) < 0)
 		errx(EXIT_CANNOT, "%s: %s", image, strerror(-r));
 	state = fs.state;
 	if ((r = mfs_mark_clean(&fs, clean)) < 0)
@@ -1422,7 +1424,8 @@ main(int argc, char **argv)
 	o.lost = 0;
 	o.end = -1;
 	o.warn = 0;
-	while ((ch = getopt(argc, argv, "e:lwy")) != -1) {
+	(void)memset(&o.tracks, 0, sizeof(o.tracks));
+	while ((ch = getopt(argc, argv, "e:lT:wy")) != -1) {
 		switch (ch) {
 		case 'e':
 			if (strcmp(optarg, "0") == 0)
@@ -1434,6 +1437,10 @@ main(int argc, char **argv)
 			break;
 		case 'l':
 			o.lost = 1;
+			break;
+		case 'T':
+			if (mfs_parse_tracks(optarg, &o.tracks) < 0)
+				usage();
 			break;
 		case 'w':
 			o.warn = 1;
@@ -1459,6 +1466,6 @@ main(int argc, char **argv)
 		check(&c, argv[optind], &o, 1);
 		summary(&c, " after the repairs");
 	}
-	mark(argv[optind], c.problems == 0);
+	mark(argv[optind], &o, c.problems == 0);
 	return c.problems == 0 ? 0 : EXIT_PROBLEMS;
 }

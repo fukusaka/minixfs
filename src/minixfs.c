@@ -4,11 +4,15 @@
  *
  * minixfs - inspect and extract MINIX file system images.
  *
- *	minixfs info IMAGE
- *	minixfs ls [-lR] IMAGE [PATH]
- *	minixfs cat IMAGE PATH
- *	minixfs extract [-v] IMAGE DEST [PATH]
- *	minixfs tar IMAGE [PATH] > ARCHIVE
+ *	minixfs [-T SIZE:HEADS:SIDE] info IMAGE
+ *	minixfs [-T ...] ls [-lR] IMAGE [PATH]
+ *	minixfs [-T ...] cat IMAGE PATH
+ *	minixfs [-T ...] extract [-v] IMAGE DEST [PATH]
+ *	minixfs [-T ...] tar IMAGE [PATH] > ARCHIVE
+ *
+ * -T reads an image that holds the file system in the tracks of one side
+ * only, such as a single-sided disk read as double-sided: tracks of SIZE
+ * bytes, HEADS to a cylinder, of which side SIDE (from 0) is used.
  *
  * Each command reports every problem it meets and goes on where it can.
  * The exit status is 0 on success, 1 if anything failed and 2 for a
@@ -39,6 +43,9 @@
 #define MAX_DEPTH	256		/* deepest directory entered */
 #define COPY_SIZE	65536		/* bytes copied at a time */
 
+/* How the image file holds the file system: -T. */
+static struct mfs_tracks tracks;
+
 /* One command on one image. */
 struct cmd {
 	struct mfs	fs;
@@ -66,11 +73,11 @@ static void
 usage(void)
 {
 	(void)fprintf(stderr,
-	    "usage: minixfs info IMAGE\n"
-	    "       minixfs ls [-lR] IMAGE [PATH]\n"
-	    "       minixfs cat IMAGE PATH\n"
-	    "       minixfs extract [-v] IMAGE DEST [PATH]\n"
-	    "       minixfs tar IMAGE [PATH] > ARCHIVE\n");
+	    "usage: minixfs [-T SIZE:HEADS:SIDE] info IMAGE\n"
+	    "       minixfs [-T ...] ls [-lR] IMAGE [PATH]\n"
+	    "       minixfs [-T ...] cat IMAGE PATH\n"
+	    "       minixfs [-T ...] extract [-v] IMAGE DEST [PATH]\n"
+	    "       minixfs [-T ...] tar IMAGE [PATH] > ARCHIVE\n");
 	exit(2);
 }
 
@@ -94,7 +101,7 @@ open_image(struct cmd *c, const char *image)
 
 	c->image = image;
 	c->status = 0;
-	if ((r = mfs_open(&c->fs, image)) == 0)
+	if ((r = mfs_open_tracks(&c->fs, image, 0, &tracks)) == 0)
 		return;
 	if (r == -EINVAL)
 		errx(1, "%s: not a MINIX file system", image);
@@ -1129,6 +1136,13 @@ main(int argc, char **argv)
 	};
 	size_t i;
 
+	/* -T comes before the command, whose options getopt() reads. */
+	if (argc > 2 && strcmp(argv[1], "-T") == 0) {
+		if (mfs_parse_tracks(argv[2], &tracks) < 0)
+			usage();
+		argc -= 2;
+		argv += 2;
+	}
 	if (argc < 2)
 		usage();
 	for (i = 0; i < sizeof(cmds) / sizeof(cmds[0]); i++)
