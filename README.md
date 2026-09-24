@@ -144,7 +144,7 @@ V1 and V2 keep the mark where Linux does; MINIX leaves that word zero.
 V3 keeps it in the flags of MINIX 3, which mounts a file system that is
 not clean read-only; `newfs_minixfs` marks new file systems clean.
 
-    tunefs_minixfs [-N] [-B le|be] [-c clean|dirty] [-e 0|1]
+    tunefs_minixfs [-fN] [-B le|be] [-c clean|dirty] [-e 0|1]
         [-l 14|30] [-m minix|linux|bytes] [-s blocks]
         [-T SIZE:HEADS:SIDE] image
 
@@ -170,8 +170,15 @@ file size in the super block to what MINIX works out, to what Linux and
 `newfs_minixfs` write, or to a number.  Each change is printed as the
 old and the new value.
 Changes that rewrite more than the super block and the maps expect a
-file system that `fsck_minixfs` passes, and one cut short leaves it half
-changed, so keep a copy.
+file system that `fsck_minixfs` passes and that is not mounted, and one
+cut short leaves it half changed, so keep a copy.  Linux and MINIX 3
+take the clean mark away while they have a file system mounted for
+writing, and would write their own idea of it back over the change, so
+`-B`, `-l` and `-s` refuse a file system that is not marked clean; `-f`
+changes it all the same.  `fsck_minixfs -y` marks a file system clean
+that it finds consistent, which also serves for V1 and V2 file systems
+made by MINIX, where the mark is never set.  None of this works on a
+mounted file system: neither MINIX nor Linux can grow one.
 
 The other commands exit with 0 on success, 1 if anything failed; all
 exit with 2 for a usage error.

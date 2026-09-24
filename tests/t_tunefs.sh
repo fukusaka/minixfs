@@ -256,6 +256,42 @@ check_err "V1 cannot count 70000 zones" "too many zones for V1"
 run "$TUNEFS_MINIXFS" -T 4608:2:0 -s 2000 "$T/img"
 check_err "an image of one side of a disk cannot grow" "cannot grow"
 
+# -B, -l and -s refuse a file system that is not marked clean, since it
+# may be mounted, unless -f is given; fsck_minixfs -y marks it clean.
+rm -f "$T/img"
+"$NEWFS_MINIXFS" -V 2 -s 1000 "$T/img"
+run "$TUNEFS_MINIXFS" -c dirty "$T/img"
+check_status "-c dirty works on a clean file system" 0
+cp "$T/img" "$T/before"
+for opt in "-B be" "-l 30" "-s 2000"; do
+	# The option and its value are split on purpose.
+	# shellcheck disable=SC2086
+	run "$TUNEFS_MINIXFS" $opt "$T/img"
+	check_err "$opt refuses a file system not marked clean" \
+	    "not marked clean, so it may be mounted"
+	check_same_file "$opt changes nothing then" "$T/before" "$T/img"
+	# shellcheck disable=SC2086
+	run "$TUNEFS_MINIXFS" -N $opt "$T/img"
+	check_status "-N $opt shows the change all the same" 0
+done
+for opt in "-c clean" "-m minix" "-e 0"; do
+	cp "$T/before" "$T/img"
+	# shellcheck disable=SC2086
+	run "$TUNEFS_MINIXFS" $opt "$T/img"
+	check_status "$opt works on a file system not marked clean" 0
+done
+cp "$T/before" "$T/img"
+run "$TUNEFS_MINIXFS" -f -s 2000 "$T/img"
+check_status "-f grows a file system not marked clean" 0
+run "$FSCK_MINIXFS" "$T/img"
+check_status "fsck passes what -f -s grew" 0
+cp "$T/before" "$T/img"
+run "$FSCK_MINIXFS" -y "$T/img"
+check_out_has "fsck -y marks the consistent file system clean" \
+    ": marked clean\$"
+run "$TUNEFS_MINIXFS" -s 2000 "$T/img"
+check_status "-s works after fsck -y" 0
+
 for bad in "-B middle" "-c maybe" "-e 2" "-m 0" "-m 2147483648" \
     "-m big" "-T 0:2:0" "-l 20" "-s 0" "-s x"; do
 	# The option and its value are split on purpose.

@@ -4,7 +4,7 @@
  *
  * tunefs_minixfs - change the settings of a MINIX file system.
  *
- *	tunefs_minixfs [-N] [-B le|be] [-c clean|dirty] [-e 0|1]
+ *	tunefs_minixfs [-fN] [-B le|be] [-c clean|dirty] [-e 0|1]
  *	    [-l 14|30] [-m minix|linux|bytes] [-s blocks]
  *	    [-T SIZE:HEADS:SIDE] image
  *
@@ -16,6 +16,8 @@
  *	-c	mark the file system clean or dirty: in V1 and V2 in the
  *		state word that Linux keeps, in V3 in the flags of MINIX 3,
  *		which mounts a file system that is not clean read-only
+ *	-f	change a file system that is not marked clean with -B, -l
+ *		and -s all the same
  *	-e	set the bits of each map past the last inode or zone to 0,
  *		as the mkfs of MINIX leaves them, or 1, as that of Linux
  *	-l	names of 14 or 30 characters, in V1 and V2: every
@@ -33,8 +35,12 @@
  * is changed first, then the name length, then the size.  Changes that
  * rewrite more than the super block and the maps work on a file system
  * that fsck_minixfs passes and that is not mounted, and one cut short
- * leaves it half changed: keep a copy.  Exit status: 0 on success, 1 if
- * anything failed, 2 for a usage error.
+ * leaves it half changed: keep a copy.  Linux and MINIX 3 take the clean
+ * mark away while they have a file system mounted for writing, and would
+ * write their own idea of it back over the change, so -B, -l and -s
+ * refuse a file system that is not marked clean, unless -f is given.
+ * fsck_minixfs -y marks a file system clean that it finds consistent.
+ * Exit status: 0 on success, 1 if anything failed, 2 for a usage error.
  */
 
 #include <err.h>
@@ -60,13 +66,14 @@ struct options {
 	int		clean;		/* -c: 1 clean, 0 dirty, -1 as is */
 	int		end;		/* -e: 0 or 1, or -1 as is */
 	int		dry_run;	/* -N */
+	int		force;		/* -f */
 };
 
 static void
 usage(void)
 {
 	(void)fprintf(stderr,
-	    "usage: tunefs_minixfs [-N] [-B le|be] [-c clean|dirty] [-e 0|1]\n"
+	    "usage: tunefs_minixfs [-fN] [-B le|be] [-c clean|dirty] [-e 0|1]\n"
 	    "           [-l 14|30] [-m minix|linux|bytes] [-s blocks]\n"
 	    "           [-T SIZE:HEADS:SIDE] image\n");
 	exit(2);
@@ -96,7 +103,7 @@ parse(int argc, char **argv, struct options *o)
 	o->clean = -1;
 	o->end = -1;
 	o->order = -1;
-	while ((ch = getopt(argc, argv, "B:c:e:l:m:Ns:T:")) != -1) {
+	while ((ch = getopt(argc, argv, "B:c:e:fl:m:Ns:T:")) != -1) {
 		switch (ch) {
 		case 'B':
 			if (strcmp(optarg, "le") == 0)
@@ -121,6 +128,9 @@ parse(int argc, char **argv, struct options *o)
 				o->end = 1;
 			else
 				usage();
+			break;
+		case 'f':
+			o->force = 1;
 			break;
 		case 'l':
 			if (strcmp(optarg, "14") == 0)
@@ -409,6 +419,11 @@ main(int argc, char **argv)
 		errx(1, "%s: %s", o.image, strerror(-r));
 	}
 	status = 0;
+	/* What rewrites more than the super block wants it unmounted. */
+	if (write && !o.force && !mfs_is_clean(&fs) &&
+	    (o.order != -1 || o.namelen != 0 || o.nblocks != 0))
+		errx(1, "%s: not marked clean, so it may be mounted; unmount "
+		    "it and run fsck_minixfs -y, or give -f", o.image);
 	if (o.order != -1) {
 		(void)printf("byte order: %s -> %s\n", order_name(fs.order),
 		    order_name(o.order));
