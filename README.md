@@ -97,10 +97,11 @@ device numbers are those of the image.  Unmount it with `fusermount3 -u
 MOUNTPOINT` on Linux or `umount MOUNTPOINT` on the BSDs.
 
     newfs_minixfs -V version [-N] [-B le|be] [-b block-size]
-        [-i inodes] [-l name-length] [-s blocks] [-t time]
-        [-z log-zone-size] image
+        [-d directory [-o uid:gid]] [-i inodes] [-l name-length]
+        [-s blocks] [-t time] [-z log-zone-size] image
 
-makes an empty file system.  The version has to be given.  The defaults
+makes a file system, empty or, with `-d`, holding a copy of a
+directory.  The version has to be given.  The defaults
 are little-endian, 14-character names in V1 and V2, 4096-byte blocks in
 V3 (the smallest that MINIX 3 mounts), one inode for about every three
 blocks, and one-block zones.  The size comes from `-s`, which also
@@ -109,6 +110,19 @@ existing file.  `-t` sets the time of the root directory, for images
 that must come out the same each time; `-N` prints the layout and writes
 nothing.  The first 1024 bytes, where a boot block may be, are left
 alone.
+
+With `-d`, the files, directories, symbolic links, devices and pipes of
+the directory go in with their modes, owners and times (symbolic links
+with 0777, as MINIX and Linux make them), in the order of their names,
+so that the same tree makes the same image; hard links stay links and
+blocks of zeros stay holes, and the root directory takes the mode, owner
+and times of the directory itself.  Sockets are left out with a
+warning.  `-o uid:gid` gives every file that owner and group
+instead, which V1 needs for a group above 255.  Everything is checked
+before anything is written: names too long, owners and device numbers
+too large, and room, counting holes as data.  Without `-s` and an image
+file, the image is made large enough by that count, with inodes enough
+for the tree unless `-i` gives them.
 
     fsck_minixfs [-lwy] [-e 0|1] [-T SIZE:HEADS:SIDE] image
 
@@ -199,9 +213,12 @@ sanitizers, other shells and JUnit output.
     src/newfs_minixfs.c     the newfs_minixfs command
     src/fsck_minixfs.c      the fsck_minixfs command
     src/tunefs_minixfs.c    the tunefs_minixfs command
+    src/tree.h, src/tree.c  newfs_minixfs -d: copying a directory tree
     src/mfs_format.c        library: laying out and writing a new
                             file system
     src/mfs_tune.c          library: changing a file system in place
+    src/mfs_write.c         library: taking inodes and zones, writing
+                            files and directory entries
     src/layout.h            the on-disk layout
     src/compat.h            the differences between systems
     tests/                  the test suite; see tests/README.md

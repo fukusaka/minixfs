@@ -9,7 +9,7 @@ WARNFLAGS =	-std=c99 -D_XOPEN_SOURCE=700 -Wall -Wextra -Wshadow \
 		-Wstrict-prototypes -Wmissing-prototypes -Wpointer-arith \
 		-Wcast-qual -Wwrite-strings
 
-LIBOBJS =	src/mfs.o src/mfs_format.o src/mfs_tune.o
+LIBOBJS =	src/mfs.o src/mfs_format.o src/mfs_tune.o src/mfs_write.o
 PROG =		minixfs
 NEWFS =		newfs_minixfs
 FSCK =		fsck_minixfs
@@ -40,8 +40,9 @@ $(MKIMAGE): tests/mkimage.c
 $(PROG): src/minixfs.o $(LIBOBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $(PROG) src/minixfs.o $(LIBOBJS)
 
-$(NEWFS): src/newfs_minixfs.o $(LIBOBJS)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $(NEWFS) src/newfs_minixfs.o $(LIBOBJS)
+$(NEWFS): src/newfs_minixfs.o src/tree.o $(LIBOBJS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $(NEWFS) src/newfs_minixfs.o src/tree.o \
+	    $(LIBOBJS)
 
 $(FSCK): src/fsck_minixfs.o $(LIBOBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $(FSCK) src/fsck_minixfs.o $(LIBOBJS)
@@ -56,8 +57,10 @@ $(TUNEFS): src/tunefs_minixfs.o $(LIBOBJS)
 src/mfs.o: src/mfs.h src/layout.h
 src/mfs_format.o: src/mfs.h src/layout.h
 src/mfs_tune.o: src/mfs.h src/layout.h
+src/mfs_write.o: src/mfs.h src/layout.h
 src/minixfs.o: src/mfs.h
-src/newfs_minixfs.o: src/mfs.h
+src/newfs_minixfs.o: src/mfs.h src/tree.h
+src/tree.o: src/compat.h src/mfs.h src/tree.h
 src/fsck_minixfs.o: src/mfs.h
 src/tunefs_minixfs.o: src/mfs.h
 
@@ -79,16 +82,16 @@ check-sanitize: $(MKIMAGE)
 	rm -rf build-san && mkdir build-san
 	$(CC) $(SANFLAGS) $(WARNFLAGS) -o build-san/$(PROG) \
 	    src/minixfs.c src/mfs.c src/mfs_format.c \
-	    src/mfs_tune.c
+	    src/mfs_tune.c src/mfs_write.c
 	$(CC) $(SANFLAGS) $(WARNFLAGS) -o build-san/$(NEWFS) \
-	    src/newfs_minixfs.c src/mfs.c src/mfs_format.c \
-	    src/mfs_tune.c
+	    src/newfs_minixfs.c src/tree.c src/mfs.c src/mfs_format.c \
+	    src/mfs_tune.c src/mfs_write.c
 	$(CC) $(SANFLAGS) $(WARNFLAGS) -o build-san/$(FSCK) \
 	    src/fsck_minixfs.c src/mfs.c src/mfs_format.c \
-	    src/mfs_tune.c
+	    src/mfs_tune.c src/mfs_write.c
 	$(CC) $(SANFLAGS) $(WARNFLAGS) -o build-san/$(TUNEFS) \
 	    src/tunefs_minixfs.c src/mfs.c src/mfs_format.c \
-	    src/mfs_tune.c
+	    src/mfs_tune.c src/mfs_write.c
 	if [ -n "$(SAN_POSTLINK)" ]; then \
 	    $(SAN_POSTLINK) build-san/$(PROG); \
 	    $(SAN_POSTLINK) build-san/$(NEWFS); \

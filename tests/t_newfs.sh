@@ -163,9 +163,136 @@ refusals() {
 	check_err "a missing image needs -s" "does not exist"
 }
 
+# ls -lR in the order of the names, without the link counts and owners
+# and without /dev; with set-user-ID dropped and without the times of
+# symbolic links, as extract leaves them: what a copy must keep.
+listing() {
+	"$MINIXFS" ls -lR "$1" | sed -e 's/rws/rwx/' | awk '!/ dev(\/|$)/ {
+		$2 = ""; $3 = ""; $4 = ""
+		if ($1 ~ /^l/)
+			$6 = $7 = ""
+		print $8, $0 }' | sort
+}
+
+# -d: the test tree, taken out of an image by extract with its modes and
+# times, goes into every format and comes back as it was.
+from_tree() {
+	for fs in "1 14 le" "1 30 be" "2 14 be" "2 30 le" "3 60 le" \
+	    "3 60 be"; do
+		set -- $fs
+		v="V$1/$2/$3"
+		opts="-V $1 -B $3"
+		spec="version=$1 order=$3"
+		if [ "$1" -ne 3 ]; then
+			opts="$opts -l $2"
+			spec="$spec namelen=$2"
+		fi
+		sed -e "s/@FS@/$spec/" -e "s/@ORDER@/$3/" \
+		    -e "s/@BLOCKS@/4096/" -e "s/@LOGZONE@/0/" \
+		    -e "s/order=$3 order=$3/order=$3/" tests/tree.spec \
+		    >"$T/spec"
+		rm -rf "$T/exp" "$T/x"
+		mkimage "$T/spec" "$T/want.img"
+		"$MINIXFS" extract "$T/want.img" "$T/exp" 2>/dev/null
+		rm -f "$T/img"
+		# The options are split on purpose.
+		# shellcheck disable=SC2086
+		run "$NEWFS_MINIXFS" $opts -d "$T/exp" -o 0:0 "$T/img"
+		check_status "$v: -d makes an image of the tree" 0
+		run "$FSCK_MINIXFS" "$T/img"
+		check_status "$v: fsck passes the image of the tree" 0
+		run "$MINIXFS" extract "$T/img" "$T/x"
+		check_true "$v: the pipe comes back out" test -p "$T/x/dev/fifo"
+		# diff(1) cannot compare pipes.
+		rm -f "$T/exp/dev/fifo" "$T/x/dev/fifo"
+		check_same_tree "$v: the tree comes back out" "$T/exp" "$T/x"
+		listing "$T/want.img" >"$T/want"
+		listing "$T/img" >"$T/got"
+		check_same_file "$v: modes, sizes and times are kept" \
+		    "$T/want" "$T/got"
+	done
+}
+
+# -d: hard links, symbolic links, pipes, owners and sizes.
+tree_kinds() {
+	rm -rf "$T/t"
+	mkdir -p "$T/t/d"
+	echo hello >"$T/t/a"
+	ln "$T/t/a" "$T/t/d/b"
+	awk 'BEGIN { for (i = 0; i < 40000; i++) printf "%c", 65 + i % 26 }' \
+	    >"$T/t/big"
+	ln -s a "$T/t/s"
+	mkfifo "$T/t/p"
+	rm -f "$T/img"
+	run "$NEWFS_MINIXFS" -V 2 -d "$T/t" "$T/img"
+	check_status "-d copies links and pipes" 0
+	run "$MINIXFS" ls -l "$T/img" /d/b
+	check_out_has "a hard link stays one file" "^-rw-.*  *2 "
+	run "$MINIXFS" ls -l "$T/img" /s
+	check_out_has "a symbolic link keeps its text" "/s -> a\$"
+	run "$MINIXFS" ls -l "$T/img" /p
+	check_out_has "a pipe stays a pipe" "^p"
+	check_info "without -s the image is just large enough" "$T/img" \
+	    "free zones" 0
+
+	rm -f "$T/img"
+	run "$NEWFS_MINIXFS" -V 2 -d "$T/t" -o 7:3 "$T/img"
+	run "$MINIXFS" ls -l "$T/img" /a
+	check_out_has "-o gives every file its owner" "^-rw-.*  *7  *3 "
+
+	rm -f "$T/img"
+	run "$NEWFS_MINIXFS" -V 2 -d "$T/t" -N "$T/img"
+	check_out_has "-N -d says what the tree needs" "^the tree needs: "
+	check_true "-N -d makes no image" test ! -e "$T/img"
+
+	rm -f "$T/img"
+	run "$NEWFS_MINIXFS" -V 2 -d "$T/t" -s 20 "$T/img"
+	check_err "a size too small is refused" "give more with -s"
+	check_true "an image too small is not made" test ! -e "$T/img"
+
+	mkdir "$T/t/a_name_of_twenty_c"
+	rm -f "$T/img"
+	run "$NEWFS_MINIXFS" -V 1 -d "$T/t" -o 0:0 "$T/img"
+	check_err "names too long for V1 are refused" \
+	    "a_name_of_twenty_c: name longer than 14 characters"
+	check_true "nothing is made for names too long" test ! -e "$T/img"
+	rmdir "$T/t/a_name_of_twenty_c"
+
+	if [ "$(id -g)" -gt 255 ]; then
+		run "$NEWFS_MINIXFS" -V 1 -d "$T/t" "$T/img"
+		check_err "a group too large for V1 is refused" \
+		    "does not fit in V1"
+		check_true "the refusal says what to do" \
+		    grep -q -e "can be set with -o uid:gid" "$T/err"
+	fi
+	run "$NEWFS_MINIXFS" -V 2 -o 0:0 -s 100 "$T/img"
+	check_status "-o without -d is a usage error" 2
+
+	if command -v fakeroot >/dev/null 2>&1; then
+		rm -f "$T/img"
+		cmd="mknod \"$T/t/c\" c 4 0 && mknod \"$T/t/b\" b 2 1 &&"
+		cmd="$cmd \"$NEWFS_MINIXFS\" -V 2 -d \"$T/t\" \"$T/img\""
+		# fakeroot preloads its library, which AddressSanitizer
+		# would refuse to follow.
+		ASAN_OPTIONS=verify_asan_link_order=0 fakeroot sh -c "$cmd" \
+		    >"$T/out" 2>"$T/err"
+		status=$?
+		check_status "-d copies devices" 0
+		run "$MINIXFS" ls -l "$T/img" /c
+		check_out_has "a character device keeps its numbers" \
+		    "^c.* 4, *0 "
+		run "$MINIXFS" ls -l "$T/img" /b
+		check_out_has "a block device keeps its numbers" "^b.* 2, *1 "
+	else
+		skip "-d copies devices" "no fakeroot"
+	fi
+}
+
 formats
 defaults
 sizes
 refusals
+from_tree
+tree_kinds
 
 finish

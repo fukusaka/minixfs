@@ -416,9 +416,13 @@ mfs_close(struct mfs *fs)
 		(void)close(fs->fd);
 	free(fs->ibuf);
 	free(fs->dbuf);
+	free(fs->imap);
+	free(fs->zmap);
 	fs->fd = -1;
 	fs->ibuf = NULL;
 	fs->dbuf = NULL;
+	fs->imap = NULL;
+	fs->zmap = NULL;
 }
 
 int

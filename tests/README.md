@@ -52,7 +52,11 @@ top of `tests/mkimage.c`).  The scripts:
   without writing outside `DEST`.
 - `t_newfs.sh` - `newfs_minixfs` makes, in every format, the image that
   `tests/mkimage` makes from an empty tree; defaults, sizes, `-N`, the
-  boot block, and the options it must refuse.
+  boot block, and the options it must refuse.  With `-d`, the test tree
+  goes into every format and comes back out with its modes, sizes and
+  times; hard and symbolic links, pipes, `-o`, the size made to fit,
+  `-N`, sizes too small and names too long; and, where fakeroot(1) is
+  installed, devices.
 - `t_fsck.sh` - `fsck_minixfs` passes the test tree in every format and
   an empty file system, and finds each kind of damage in every version
   and byte order: a bad maximum file size, a short image, the clean mark

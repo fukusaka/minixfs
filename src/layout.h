@@ -123,6 +123,23 @@ put32(enum mfs_order order, unsigned char *p, uint32_t v)
 	}
 }
 
+/* Load a number stored in the byte order of an image. */
+static inline uint32_t
+load16(enum mfs_order order, const unsigned char *p)
+{
+	if (order == MFS_BIG_ENDIAN)
+		return (uint32_t)p[0] << 8 | p[1];
+	return (uint32_t)p[1] << 8 | p[0];
+}
+
+static inline uint32_t
+load32(enum mfs_order order, const unsigned char *p)
+{
+	if (order == MFS_BIG_ENDIAN)
+		return load16(order, p) << 16 | load16(order, p + 2);
+	return load16(order, p + 2) << 16 | load16(order, p);
+}
+
 /* Write exactly len bytes at off. */
 static inline int
 write_at(int fd, const void *buf, size_t len, off_t off)

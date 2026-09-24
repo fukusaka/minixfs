@@ -80,6 +80,10 @@ struct mfs {
 	enum mfs_order	order;
 	int		fd;
 	int		writable;	/* opened by mfs_open_rw() */
+	unsigned char	*imap;		/* kept by mfs_write.c, or NULL */
+	unsigned char	*zmap;
+	uint32_t	inext;		/* where to look for a free inode */
+	uint32_t	znext;		/* and for a free zone, as map bits */
 	int		version;	/* 1, 2 or 3 */
 
 	/* From the super block. */
@@ -357,6 +361,43 @@ void	mfs_set_map_bit(const struct mfs *, unsigned char *, uint32_t, int);
 
 /* Write a map from mfs_load_map() back.  Returns 0 or -errno. */
 int	mfs_store_map(struct mfs *, enum mfs_map, const unsigned char *);
+
+/*
+ * Writing files (mfs_write.c).  The bit maps are read on the first
+ * allocation and kept in memory; mfs_sync() writes them back, and
+ * mfs_close() drops them without writing.
+ */
+
+/*
+ * Take a free inode, mark it in use and store its number in *ino; the
+ * caller fills it in with mfs_put_inode().  Returns 0, -ENOSPC or -errno.
+ */
+int	mfs_alloc_inode(struct mfs *, uint32_t *);
+
+/* Take a free zone, fill it with zeros and mark it in use. */
+int	mfs_alloc_zone(struct mfs *, uint32_t *);
+
+/*
+ * Write len bytes of buf at offset off of the file *ip, taking zones and
+ * indirect zones as it needs them; a block of zeros that falls into a
+ * hole stays a hole.  The size grows to the end of what was written.
+ * *ip changes in memory only, for the caller to write back with
+ * mfs_put_inode().  Returns 0, -EFBIG past the reach of the zones, -ENOSPC
+ * or another negative errno value.
+ */
+int	mfs_pwrite(struct mfs *, struct mfs_inode *, const void *, size_t,
+	    uint32_t);
+
+/*
+ * Add an entry name, naming ino, to the directory *dp: in the first free
+ * entry, or at the end.  *dp changes as for mfs_pwrite().  Returns 0,
+ * -ENAMETOOLONG or another negative errno value.
+ */
+int	mfs_add_entry(struct mfs *, struct mfs_inode *, const char *,
+	    uint32_t);
+
+/* Write the bit maps back.  Returns 0 or -errno. */
+int	mfs_sync(struct mfs *);
 
 /*
  * Changing file systems in place (mfs_tune.c).  These need a file system

@@ -2,15 +2,27 @@
  * SPDX-License-Identifier: BSD-2-Clause
  * Copyright (c) 2026 Shoichi Fukusaka
  *
- * newfs_minixfs - make an empty MINIX file system.
+ * newfs_minixfs - make a MINIX file system, empty or from a directory.
  *
  *	newfs_minixfs -V version [-N] [-B le|be] [-b block-size]
- *	    [-i inodes] [-l name-length] [-s blocks] [-t time]
- *	    [-z log-zone-size] image
+ *	    [-d directory [-o uid:gid]] [-i inodes] [-l name-length]
+ *	    [-s blocks] [-t time] [-z log-zone-size] image
  *
  * The version has to be given.  The size is taken from -s, or else from
  * the size of an existing image file; with -s, an image file is created
  * or cut to that size.  -N prints the layout and writes nothing.
+ *
+ * With -d, the file system holds a copy of the directory: its files,
+ * directories, symbolic links, devices and pipes, with their modes,
+ * owners and times, and hard links as links; -o gives every file the
+ * owner uid and group gid instead, since the group of a V1 inode is one
+ * byte.  The root directory takes
+ * the mode, owner and times of the directory itself.  Everything is
+ * checked before anything is written: names too long, owners and device
+ * numbers too large, and whether it fits, counting holes as data.
+ * Without -s and an image file, the image is made large enough by that
+ * count, and the inodes are raised to what the tree needs unless -i
+ * gives them.
  */
 
 #include <sys/stat.h>
@@ -27,6 +39,7 @@
 #include <unistd.h>
 
 #include "mfs.h"
+#include "tree.h"
 
 #define STATIC_BLOCK	1024		/* block size of V1 and V2 */
 #define V3_BLOCK	4096		/* default block size of V3 */
@@ -35,8 +48,11 @@
 struct options {
 	struct mfs_params	params;
 	const char		*image;
+	const char		*dir;		/* -d, or NULL */
+	const char		*owner;		/* -o, or NULL */
 	int			dry_run;	/* -N */
 	int			sized;		/* -s given */
+	int			inodes;		/* -i given */
 };
 
 static void
@@ -44,7 +60,8 @@ usage(void)
 {
 	(void)fprintf(stderr,
 	    "usage: newfs_minixfs -V version [-N] [-B le|be] [-b block-size]\n"
-	    "           [-i inodes] [-l name-length] [-s blocks] [-t time]\n"
+	    "           [-d directory [-o uid:gid]] [-i inodes]\n"
+	    "           [-l name-length] [-s blocks] [-t time]\n"
 	    "           [-z log-zone-size] image\n");
 	exit(2);
 }
@@ -74,7 +91,7 @@ parse(int argc, char **argv, struct options *o)
 	p = &o->params;
 	p->order = MFS_LITTLE_ENDIAN;
 	p->time = (uint32_t)time(NULL);
-	while ((ch = getopt(argc, argv, "B:b:i:l:Ns:t:V:z:")) != -1) {
+	while ((ch = getopt(argc, argv, "B:b:d:i:l:No:s:t:V:z:")) != -1) {
 		switch (ch) {
 		case 'B':
 			if (strcmp(optarg, "le") == 0)
@@ -87,16 +104,23 @@ parse(int argc, char **argv, struct options *o)
 		case 'b':
 			p->block_size = number("block size", optarg);
 			break;
+		case 'd':
+			o->dir = optarg;
+			break;
 		case 'i':
 			p->ninodes = number("number of inodes", optarg);
 			if (p->ninodes == 0)
 				errx(2, "the number of inodes must be > 0");
+			o->inodes = 1;
 			break;
 		case 'l':
 			p->namelen = number("name length", optarg);
 			break;
 		case 'N':
 			o->dry_run = 1;
+			break;
+		case 'o':
+			o->owner = optarg;
 			break;
 		case 's':
 			p->nblocks = number("size", optarg);
@@ -115,7 +139,8 @@ parse(int argc, char **argv, struct options *o)
 			usage();
 		}
 	}
-	if (argc - optind != 1 || p->version == 0)
+	if (argc - optind != 1 || p->version == 0 ||
+	    (o->owner != NULL && o->dir == NULL))
 		usage();
 	o->image = argv[optind];
 }
@@ -215,11 +240,116 @@ plan(const struct options *o, struct mfs_layout *l)
 	}
 }
 
+/* What the tree is copied into, and with which owners. */
+static void
+tree_shape(const struct options *o, uint32_t block_size, struct tree_fs *f)
+{
+	const char *gid;
+
+	(void)memset(f, 0, sizeof(*f));
+	f->version = o->params.version;
+	f->block_size = block_size;
+	f->log_zone_size = o->params.log_zone_size;
+	f->namelen = o->params.namelen != 0 ? o->params.namelen :
+	    o->params.version == 3 ? 60 : 14;
+	if (o->owner == NULL)
+		return;
+	if ((gid = strchr(o->owner, ':')) == NULL)
+		errx(2, "%s: give the owner as uid:gid", o->owner);
+	f->owned = 1;
+	f->gid = number("group", gid + 1);
+	f->uid = (uint32_t)strtoul(o->owner, NULL, 10);
+	if (o->owner[0] < '0' || o->owner[0] > '9' ||
+	    strspn(o->owner, "0123456789") != (size_t)(gid - o->owner))
+		errx(2, "%s: bad owner", o->owner);
+}
+
+/* Walk the directory of -d, and stop if any of it cannot be copied. */
+static void
+scan(const struct options *o, const struct tree_fs *f,
+    struct tree_need *need)
+{
+	if (tree_scan(o->dir, f, need) == -1)
+		exit(1);
+	if (need->owners > 0)
+		warnx("%s: owners that do not fit can be set with -o uid:gid",
+		    o->dir);
+	if (need->problems > 0)
+		errx(1, "%s: %lu things above cannot be copied; nothing "
+		    "written", o->dir, need->problems);
+}
+
+/*
+ * Make sure that the layout holds the tree: raise the inodes if -i did
+ * not give them, or stop.
+ */
+static void
+fit(struct options *o, struct mfs_layout *l, const struct tree_need *need)
+{
+	uint32_t avail;
+
+	if (l->ninodes < need->inodes) {
+		if (o->inodes)
+			errx(1, "%s: the tree needs %ju inodes, more than -i "
+			    "gives", o->dir, (uintmax_t)need->inodes);
+		if (need->inodes > UINT32_MAX)
+			errx(1, "%s: too many files", o->dir);
+		o->params.ninodes = (uint32_t)need->inodes;
+		plan(o, l);
+	}
+	avail = l->nzones - l->firstdatazone;
+	if (need->zones > avail)
+		errx(1, "%s: the tree needs up to %ju zones, and %" PRIu32
+		    " blocks leave %" PRIu32 "; give more with -s", o->dir,
+		    (uintmax_t)need->zones, l->nblocks, avail);
+}
+
+/* The size of an image just large enough for the tree. */
+static void
+size_for(struct options *o, const struct tree_need *need)
+{
+	struct mfs_layout l;
+	uint64_t avail, nblocks, zone;
+	int r;
+
+	zone = (uint64_t)1 << o->params.log_zone_size;
+	nblocks = (need->zones + 1) * zone;
+	for (;;) {
+		if (nblocks > UINT32_MAX)
+			errx(1, "%s: too large a tree", o->dir);
+		o->params.nblocks = (uint32_t)nblocks;
+		if (!o->inodes)
+			o->params.ninodes = 0;
+		if ((r = mfs_plan(&o->params, &l)) == -ENOSPC) {
+			nblocks += zone;
+			continue;
+		}
+		if (r < 0)
+			plan(o, &l);		/* says why, and exits */
+		if (!o->inodes && l.ninodes < need->inodes) {
+			o->params.ninodes = (uint32_t)need->inodes;
+			plan(o, &l);
+		}
+		if (l.ninodes < need->inodes)
+			errx(1, "%s: the tree needs %ju inodes, more than -i "
+			    "gives", o->dir, (uintmax_t)need->inodes);
+		avail = l.nzones - l.firstdatazone;
+		if (avail >= need->zones)
+			break;
+		nblocks += (need->zones - avail) * zone;
+	}
+	o->sized = 1;
+}
+
 int
 main(int argc, char **argv)
 {
+	struct tree_need need;
+	struct tree_fs f;
 	struct mfs_layout l;
 	struct options o;
+	struct stat st;
+	struct mfs fs;
 	uint32_t block_size;
 	int fd, r;
 
@@ -228,11 +358,28 @@ main(int argc, char **argv)
 	block_size = o.params.block_size;
 	if (block_size == 0)
 		block_size = o.params.version == 3 ? V3_BLOCK : STATIC_BLOCK;
+	if (o.dir != NULL) {
+		tree_shape(&o, block_size, &f);
+		scan(&o, &f, &need);
+		if (!o.sized && stat(o.image, &st) == -1 && errno == ENOENT)
+			size_for(&o, &need);
+		/* With the size known, check before the image is made. */
+		if (o.sized) {
+			plan(&o, &l);
+			fit(&o, &l, &need);
+		}
+	}
 
 	fd = open_image(&o, block_size);
 	plan(&o, &l);
+	if (o.dir != NULL)
+		fit(&o, &l, &need);
 	if (o.dry_run) {
 		print_layout(&o.params, &l);
+		if (o.dir != NULL)
+			(void)printf("the tree needs: %ju inodes, up to %ju "
+			    "zones\n", (uintmax_t)need.inodes,
+			    (uintmax_t)need.zones);
 		return 0;
 	}
 	if (o.sized && ftruncate(fd, (off_t)l.nblocks * l.block_size) == -1) {
@@ -244,5 +391,11 @@ main(int argc, char **argv)
 		errx(1, "%s: %s", o.image, strerror(-r));
 	if (close(fd) == -1)
 		err(1, "%s", o.image);
-	return 0;
+	if (o.dir == NULL)
+		return 0;
+	if ((r = mfs_open_rw(&fs, o.image)) < 0)
+		errx(1, "%s: %s", o.image, strerror(-r));
+	r = tree_copy(&fs, o.dir, &f);
+	mfs_close(&fs);
+	return r == 0 ? 0 : 1;
 }
