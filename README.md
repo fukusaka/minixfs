@@ -78,7 +78,8 @@ short or a file system smaller than its disk shows too.  None of this
 is an error in itself.  `ls -l` shows mode, links, owner, group,
 size (or major and minor numbers for devices) and modification time in
 UTC.  `extract` copies a directory tree out of the image, keeping
-permission bits (without set-uid, set-gid and sticky bits) and times.
+permission bits (without set-uid, set-gid and sticky bits) and times,
+and the other names of a file with more than one link as links.
 It makes pipes, and devices only with `-d`, which takes root; devices
 left out and sockets, which cannot be copied, are reported in a warning
 at the end, and with `-v` one by one.  `tar` writes the tree to standard

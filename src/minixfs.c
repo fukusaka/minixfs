@@ -228,6 +228,79 @@ entry_inode(struct cmd *c, const struct mfs_dirent *de, const char *path,
 	return 0;
 }
 
+/*
+ * The first name that a file with more than one link got, by inode, so
+ * that its other names can become links to it.
+ */
+struct link_name {
+	uint32_t	ino;		/* 0: a free slot */
+	char		*name;
+};
+
+struct names {
+	struct link_name *tab;		/* open addressing, by inode */
+	size_t		n;
+	size_t		max;		/* a power of 2 */
+};
+
+/* The first name of inode ino, or NULL if it has none yet. */
+static const char *
+names_find(const struct names *nm, uint32_t ino)
+{
+	size_t i;
+
+	if (nm->max == 0)
+		return NULL;
+	for (i = ino & (nm->max - 1); nm->tab[i].ino != 0;
+	    i = (i + 1) & (nm->max - 1)) {
+		if (nm->tab[i].ino == ino)
+			return nm->tab[i].name;
+	}
+	return NULL;
+}
+
+/* Note name as the first name of inode ino. */
+static void
+names_add(struct names *nm, uint32_t ino, const char *name)
+{
+	struct link_name *old;
+	size_t i, j, max;
+
+	if (nm->n * 2 >= nm->max) {
+		old = nm->tab;
+		max = nm->max;
+		nm->max = max == 0 ? 64 : max * 2;
+		if ((nm->tab = calloc(nm->max, sizeof(*nm->tab))) == NULL)
+			err(1, NULL);
+		for (i = 0; i < max; i++) {
+			if (old[i].ino == 0)
+				continue;
+			j = old[i].ino & (nm->max - 1);
+			while (nm->tab[j].ino != 0)
+				j = (j + 1) & (nm->max - 1);
+			nm->tab[j] = old[i];
+		}
+		free(old);
+	}
+	for (i = ino & (nm->max - 1); nm->tab[i].ino != 0;
+	    i = (i + 1) & (nm->max - 1))
+		continue;
+	nm->tab[i].ino = ino;
+	if ((nm->tab[i].name = strdup(name)) == NULL)
+		err(1, NULL);
+	nm->n++;
+}
+
+static void
+names_free(struct names *nm)
+{
+	size_t i;
+
+	for (i = 0; i < nm->max; i++)
+		free(nm->tab[i].name);
+	free(nm->tab);
+}
+
 /* info */
 
 #define SECTOR		512		/* the unit of the fill scan */
@@ -630,8 +703,10 @@ struct extract {
 	unsigned long	dirs;
 	unsigned long	files;
 	unsigned long	links;
+	unsigned long	hardlinks;
 	unsigned long	devs;
 	unsigned long	pipes;
+	struct names	names;		/* first names of linked files */
 	unsigned long	devs_skipped;	/* without -d */
 	unsigned long	sockets;	/* cannot be made */
 	int		devices;	/* -d: make devices, as root */
@@ -770,8 +845,20 @@ static void
 extract_entry(struct extract *x, const struct mfs_inode *ip,
     const char *src, const char *dest)
 {
+	const char *first;
+	struct stat st;
+
 	if (x->verbose)
 		(void)printf("%s\n", src);
+	/* Another name of a file already made: a link to it. */
+	if (!mfs_is_dir(ip) && ip->nlinks > 1 &&
+	    (first = names_find(&x->names, ip->num)) != NULL) {
+		if (link(first, dest) == -1)
+			problem(x->c, "%s: %s", dest, strerror(errno));
+		else
+			x->hardlinks++;
+		return;
+	}
 	switch (ip->mode & MFS_S_IFMT) {
 	case MFS_S_IFDIR:
 		if (make_dir(x, dest) == -1 ||
@@ -803,6 +890,9 @@ extract_entry(struct extract *x, const struct mfs_inode *ip,
 		x->sockets++;
 		break;
 	}
+	/* Its other names become links to what was made, if it was. */
+	if (!mfs_is_dir(ip) && ip->nlinks > 1 && lstat(dest, &st) == 0)
+		names_add(&x->names, ip->num, dest);
 }
 
 static void
@@ -876,9 +966,10 @@ cmd_extract(int argc, char **argv)
 			extract_dir(&x, &ino, path, dest);
 	}
 	mfs_close(&c.fs);
+	names_free(&x.names);
 	(void)fprintf(stderr, "%lu files, %lu directories, %lu symbolic links,"
-	    " %lu devices, %lu pipes\n", x.files, x.dirs, x.links, x.devs,
-	    x.pipes);
+	    " %lu hard links, %lu devices, %lu pipes\n", x.files, x.dirs,
+	    x.links, x.hardlinks, x.devs, x.pipes);
 	/* What is missing from the copy must not go unnoticed. */
 	if (x.devs_skipped > 0)
 		warnx("warning: %lu devices not made; make them with extract "
@@ -903,18 +994,10 @@ cmd_extract(int argc, char **argv)
 #define TAR_NAME	100		/* bytes of name and linkname */
 #define TAR_PREFIX	155		/* bytes of prefix */
 
-/* Where the first name of a file with more than one link went. */
-struct tar_link {
-	uint32_t	ino;		/* 0: a free slot */
-	char		*name;
-};
-
 struct tar {
 	struct walk	w;
 	struct cmd	*c;
-	struct tar_link	*links;		/* open addressing, by inode */
-	size_t		nlinks;
-	size_t		maxlinks;	/* a power of 2 */
+	struct names	names;		/* first names of linked files */
 	uint64_t	written;	/* bytes, for the last record */
 	unsigned long	dirs;
 	unsigned long	files;
@@ -1100,45 +1183,6 @@ tar_member(struct tar *t, const struct mfs_inode *ip, const char *name,
 	tar_header(t, &h);
 }
 
-/*
- * The name under which inode ino went into the archive first, or NULL
- * after noting that it goes in now as name.
- */
-static const char *
-first_name(struct tar *t, uint32_t ino, const char *name)
-{
-	struct tar_link *old;
-	size_t i, j, max;
-
-	if (t->nlinks * 2 >= t->maxlinks) {
-		old = t->links;
-		max = t->maxlinks;
-		t->maxlinks = max == 0 ? 64 : max * 2;
-		t->links = calloc(t->maxlinks, sizeof(*t->links));
-		if (t->links == NULL)
-			err(1, NULL);
-		for (i = 0; i < max; i++) {
-			if (old[i].ino == 0)
-				continue;
-			j = old[i].ino & (t->maxlinks - 1);
-			while (t->links[j].ino != 0)
-				j = (j + 1) & (t->maxlinks - 1);
-			t->links[j] = old[i];
-		}
-		free(old);
-	}
-	for (i = ino & (t->maxlinks - 1); t->links[i].ino != 0;
-	    i = (i + 1) & (t->maxlinks - 1)) {
-		if (t->links[i].ino == ino)
-			return t->links[i].name;
-	}
-	t->links[i].ino = ino;
-	if ((t->links[i].name = strdup(name)) == NULL)
-		err(1, NULL);
-	t->nlinks++;
-	return NULL;
-}
-
 /* The contents of a regular file, padded to whole blocks. */
 static void
 tar_contents(struct tar *t, const struct mfs_inode *ip, const char *name)
@@ -1179,11 +1223,13 @@ tar_entry(struct tar *t, const struct mfs_inode *ip, const char *src,
 	ssize_t n;
 
 	if (!mfs_is_dir(ip) && ip->nlinks > 1 &&
-	    (first = first_name(t, ip->num, name)) != NULL) {
+	    (first = names_find(&t->names, ip->num)) != NULL) {
 		tar_member(t, ip, name, '1', first, 0);
 		t->hardlinks++;
 		return;
 	}
+	if (!mfs_is_dir(ip) && ip->nlinks > 1)
+		names_add(&t->names, ip->num, name);
 	switch (ip->mode & MFS_S_IFMT) {
 	case MFS_S_IFDIR:
 		if ((dname = join(t->c, name, "")) == NULL)
@@ -1265,7 +1311,6 @@ cmd_tar(int argc, char **argv)
 	struct tar t;
 	struct cmd c;
 	const char *path;
-	size_t i;
 
 	if (argc < 2 || argc > 3)
 		usage();
@@ -1288,9 +1333,7 @@ cmd_tar(int argc, char **argv)
 	if (fflush(stdout) == EOF && !t.failed)
 		problem(&c, "standard output: %s", strerror(errno));
 	mfs_close(&c.fs);
-	for (i = 0; i < t.maxlinks; i++)
-		free(t.links[i].name);
-	free(t.links);
+	names_free(&t.names);
 	(void)fprintf(stderr, "%lu files, %lu directories, %lu symbolic links,"
 	    " %lu hard links, %lu devices and pipes; %lu sockets skipped\n",
 	    t.files, t.dirs, t.symlinks, t.hardlinks, t.special, t.skipped);

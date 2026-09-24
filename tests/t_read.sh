@@ -92,12 +92,17 @@ read_cat() {
 
 # extract, run on the image of the current variant $v.
 read_extract() {
+	_read_extract_made="^16 files, 7 directories, 1 symbolic links,"
+	_read_extract_made="$_read_extract_made 1 hard links,"
 	rm -rf "$T/x"
 	run "$MINIXFS" extract "$img" "$T/x"
 	check_note "$v: extract counts what it did" \
-	    "^17 files, 7 directories, 1 symbolic links, 0 devices, 1 pipes\$"
+	    "$_read_extract_made 0 devices, 1 pipes\$"
 	check_note "$v: extract warns of the devices it did not make" \
 	    "warning: 2 devices not made; make them with extract -d as root"
+	check_true "$v: extract makes a hard link one file" \
+	    test "$(ls -i "$T/x/bin/sh" | awk '{ print $1 }')" = \
+	    "$(ls -i "$T/x/bin/sh2" | awk '{ print $1 }')"
 	check_true "$v: extract makes the pipe" test -p "$T/x/dev/fifo"
 	check_mode "$v: extract keeps the mode of the pipe" "$T/x/dev/fifo" \
 	    prw-------
@@ -144,7 +149,7 @@ read_extract() {
 		    >"$T/out" 2>"$T/err"
 		status=$?
 		check_note "$v: extract -d as root makes the devices" \
-		    "^17 files, 7 directories, 1 symbolic links, 2 devices,"
+		    "$_read_extract_made 2 devices,"
 		check_out_has "$v: the character device has its numbers" \
 		    "^crw--w---- .* 4, *0 .*tty0\$"
 		check_out_has "$v: the block device has its numbers" \

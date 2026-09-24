@@ -85,6 +85,8 @@ which is made if it does not exist.
 Files, directories, symbolic links and pipes are made with their
 permission bits, without the set-user-ID, set-group-ID and sticky bits,
 and their times; owners are not set.
+The other names of a file with more than one link are made as links to
+the first.
 Devices are made only with
 .Fl d ,
 which takes root.
@@ -107,9 +109,9 @@ Write the directory
 .Ar path ,
 the root by default, to standard output as a POSIX ustar archive, which
 must not be a terminal.
-Unlike
+Besides pipes and hard links, it keeps, unlike
 .Cm extract ,
-it keeps devices with their numbers, pipes, owners and hard links, which
+devices with their numbers and owners, which
 .Xr tar 1
 lists without privileges and makes when run as root.
 Names and link targets longer than ustar holds go into pax extended
@@ -166,8 +168,3 @@ $ minixfs -T 4608:2:0 extract disk02 out
 .Xr tunefs_minixfs 8
 .Sh AUTHORS
 .An Shoichi Fukusaka
-.Sh BUGS
-.Cm extract
-copies each name of a file with more than one link as a file of its own;
-.Cm tar
-keeps them as links.
