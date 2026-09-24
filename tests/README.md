@@ -76,7 +76,11 @@ top of `tests/mkimage.c`).  The scripts:
   `fsck_minixfs` passes and that has what was asked for, in several
   versions and byte orders; `-B` turns the test tree of every format
   and zone size into the image mkimage makes in the other byte order,
-  and back; bad values are usage errors.
+  and back; `-l` keeps every name and file of the test tree, with a
+  directory that needs an indirect zone, through 14 -> 30 -> 14,
+  lists all names too long for 14 characters and changes nothing,
+  changes nothing when the directories would not fit, and refuses V3;
+  bad values are usage errors.
 - `t_utillinux.sh` - where util-linux is installed: `fsck.minix` accepts
   the test images and those of `newfs_minixfs`, images from `mkfs.minix`
   are readable and pass `fsck_minixfs`, and `fsck_minixfs` and

@@ -5,7 +5,7 @@
  * tunefs_minixfs - change the settings of a MINIX file system.
  *
  *	tunefs_minixfs [-N] [-B le|be] [-c clean|dirty] [-e 0|1]
- *	    [-m minix|linux|bytes] [-T SIZE:HEADS:SIDE] image
+ *	    [-l 14|30] [-m minix|linux|bytes] [-T SIZE:HEADS:SIDE] image
  *
  * Without options, or with -N, the settings are printed and nothing is
  * written; -N shows what the other options would change.
@@ -17,15 +17,19 @@
  *		which mounts a file system that is not clean read-only
  *	-e	set the bits of each map past the last inode or zone to 0,
  *		as the mkfs of MINIX leaves them, or 1, as that of Linux
+ *	-l	names of 14 or 30 characters, in V1 and V2: every
+ *		directory is written anew with entries of the new size.
+ *		Names too long for 14 are listed, and nothing is changed.
  *	-m	the maximum file size in the super block: what MINIX works
  *		out, what Linux and newfs_minixfs write, or a number
  *	-T	an image that holds one side of a disk, as for minixfs(1)
  *
  * Each change is printed as the old and the new value.  The byte order
- * is changed first.  Changes that rewrite more than the super block and
- * the maps work on a file system that fsck_minixfs passes, and one cut
- * short leaves it half changed: keep a copy.  Exit status: 0 on success,
- * 1 if anything failed, 2 for a usage error.
+ * is changed first, then the name length.  Changes that rewrite more
+ * than the super block and the maps work on a file system that
+ * fsck_minixfs passes, and one cut short leaves it half changed: keep a
+ * copy.  Exit status: 0 on success, 1 if anything failed, 2 for a usage
+ * error.
  */
 
 #include <err.h>
@@ -46,6 +50,7 @@ struct options {
 	const char	*image;
 	const char	*max;		/* -m, or NULL */
 	int		order;		/* -B: an mfs_order, or -1 as is */
+	uint32_t	namelen;	/* -l: 14 or 30, or 0 as is */
 	int		clean;		/* -c: 1 clean, 0 dirty, -1 as is */
 	int		end;		/* -e: 0 or 1, or -1 as is */
 	int		dry_run;	/* -N */
@@ -56,7 +61,8 @@ usage(void)
 {
 	(void)fprintf(stderr,
 	    "usage: tunefs_minixfs [-N] [-B le|be] [-c clean|dirty] [-e 0|1]\n"
-	    "           [-m minix|linux|bytes] [-T SIZE:HEADS:SIDE] image\n");
+	    "           [-l 14|30] [-m minix|linux|bytes]\n"
+	    "           [-T SIZE:HEADS:SIDE] image\n");
 	exit(2);
 }
 
@@ -69,7 +75,7 @@ parse(int argc, char **argv, struct options *o)
 	o->clean = -1;
 	o->end = -1;
 	o->order = -1;
-	while ((ch = getopt(argc, argv, "B:c:e:m:NT:")) != -1) {
+	while ((ch = getopt(argc, argv, "B:c:e:l:m:NT:")) != -1) {
 		switch (ch) {
 		case 'B':
 			if (strcmp(optarg, "le") == 0)
@@ -92,6 +98,14 @@ parse(int argc, char **argv, struct options *o)
 				o->end = 0;
 			else if (strcmp(optarg, "1") == 0)
 				o->end = 1;
+			else
+				usage();
+			break;
+		case 'l':
+			if (strcmp(optarg, "14") == 0)
+				o->namelen = 14;
+			else if (strcmp(optarg, "30") == 0)
+				o->namelen = 30;
 			else
 				usage();
 			break;
@@ -118,8 +132,8 @@ parse(int argc, char **argv, struct options *o)
 static int
 changes(const struct options *o)
 {
-	return o->order != -1 || o->clean != -1 || o->end != -1 ||
-	    o->max != NULL;
+	return o->order != -1 || o->namelen != 0 || o->clean != -1 ||
+	    o->end != -1 || o->max != NULL;
 }
 
 /* The maximum file size that -m asks for. */
@@ -210,6 +224,99 @@ end_value(const struct mfs *fs, const struct map_end *m, int n)
 	return "mixed";
 }
 
+/* A directory waiting to be searched for long names. */
+struct pending {
+	uint32_t	ino;
+	char		*path;
+};
+
+struct long_names {
+	struct pending	*queue;
+	size_t		n;
+	size_t		max;
+	const char	*dir;		/* the path of the one searched */
+	uint32_t	namelen;
+	unsigned long	found;
+	struct mfs	*fs;
+	unsigned char	*seen;		/* bit per inode: queued */
+};
+
+static char *
+join(const char *dir, const char *name)
+{
+	char *s;
+
+	if ((s = malloc(strlen(dir) + strlen(name) + 2)) == NULL)
+		err(1, NULL);
+	(void)sprintf(s, "%s%s%s", dir, strcmp(dir, "/") == 0 ? "" : "/",
+	    name);
+	return s;
+}
+
+static int
+long_fn(const struct mfs_dirent *de, void *arg)
+{
+	struct long_names *l;
+	struct mfs_inode ip;
+	struct pending *q;
+
+	l = arg;
+	if (strcmp(de->name, ".") == 0 || strcmp(de->name, "..") == 0)
+		return 0;
+	if (strlen(de->name) > l->namelen) {
+		(void)printf("name longer than %" PRIu32
+		    " characters: %s%s%s\n", l->namelen, l->dir,
+		    strcmp(l->dir, "/") == 0 ? "" : "/", de->name);
+		l->found++;
+	}
+	if (de->ino == 0 || de->ino > l->fs->ninodes ||
+	    (l->seen[de->ino / 8] >> (de->ino % 8) & 1) != 0 ||
+	    mfs_get_inode(l->fs, de->ino, &ip) < 0 || !mfs_is_dir(&ip))
+		return 0;
+	l->seen[de->ino / 8] |= (unsigned char)(1 << (de->ino % 8));
+	if (l->n == l->max) {
+		l->max = l->max == 0 ? 64 : l->max * 2;
+		if ((q = realloc(l->queue, l->max * sizeof(*q))) == NULL)
+			err(1, NULL);
+		l->queue = q;
+	}
+	l->queue[l->n].ino = de->ino;
+	l->queue[l->n++].path = join(l->dir, de->name);
+	return 0;
+}
+
+/* Print every name longer than namelen, and return how many. */
+static unsigned long
+long_names(struct mfs *fs, uint32_t namelen)
+{
+	struct long_names l;
+	struct mfs_inode ip;
+	size_t i;
+
+	(void)memset(&l, 0, sizeof(l));
+	l.fs = fs;
+	l.namelen = namelen;
+	if ((l.seen = calloc((size_t)fs->ninodes / 8 + 1, 1)) == NULL)
+		err(1, NULL);
+	l.seen[MFS_ROOT_INO / 8] |= 1 << MFS_ROOT_INO % 8;
+	if ((l.queue = malloc(sizeof(*l.queue))) == NULL)
+		err(1, NULL);
+	l.max = 1;
+	l.queue[l.n].ino = MFS_ROOT_INO;
+	if ((l.queue[l.n++].path = strdup("/")) == NULL)
+		err(1, NULL);
+	for (i = 0; i < l.n; i++) {
+		l.dir = l.queue[i].path;
+		if (mfs_get_inode(fs, l.queue[i].ino, &ip) == 0)
+			(void)mfs_readdir(fs, &ip, long_fn, &l);
+	}
+	for (i = 0; i < l.n; i++)
+		free(l.queue[i].path);
+	free(l.queue);
+	free(l.seen);
+	return l.found;
+}
+
 static const char *
 order_name(int order)
 {
@@ -252,6 +359,17 @@ main(int argc, char **argv)
 		if (write && (r = mfs_convert_order(&fs, o.order)) < 0)
 			errx(1, "%s: byte order: %s", o.image, strerror(-r));
 	}
+	if (o.namelen != 0) {
+		if (fs.version == 3)
+			errx(1, "%s: V3 names are always 60 characters",
+			    o.image);
+		(void)printf("name length: %" PRIu32 " -> %" PRIu32 "\n",
+		    fs.namelen, o.namelen);
+		if (long_names(&fs, o.namelen) > 0)
+			errx(1, "%s: names too long; nothing changed", o.image);
+		if (write && (r = mfs_change_namelen(&fs, o.namelen)) < 0)
+			errx(1, "%s: name length: %s", o.image, strerror(-r));
+	}
 	for (i = 0; i < 2; i++) {
 		if ((r = load_end(&fs, i == 0 ? MFS_IMAP : MFS_ZMAP,
 		    &maps[i])) < 0)
@@ -260,6 +378,7 @@ main(int argc, char **argv)
 
 	if (!changes(&o)) {
 		(void)printf("byte order: %s\n", order_name(fs.order));
+		(void)printf("name length: %" PRIu32 "\n", fs.namelen);
 		(void)printf("state: %s\n", clean_value(&fs, fs.state));
 		(void)printf("max file size: %" PRIu32 " (MINIX works out %"
 		    PRIu32 ")\n", fs.max_size, mfs_minix_max_size(&fs));

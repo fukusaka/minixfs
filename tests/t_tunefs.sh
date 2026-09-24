@@ -115,8 +115,90 @@ for logzone in 0 1; do
 done
 done
 
+# -l: the test tree, with a directory that needs an indirect zone, keeps
+# every name and file through 14 -> 30 -> 14.
+for fs in "1 le" "1 be" "2 le" "2 be"; do
+	version=${fs% *}
+	order=${fs#* }
+	v="V$version/$order"
+	sed -e "s/@FS@/version=$version/" -e "s/@ORDER@/$order/" \
+	    -e "s/@BLOCKS@/4096/" -e "s/@LOGZONE@/0/" \
+	    -e "s/inodes=64/inodes=700/" tests/tree.spec >"$T/spec"
+	echo "dir /many 0755 0 0 0" >>"$T/spec"
+	i=0
+	while [ "$i" -lt 600 ]; do
+		echo "file /many/f$i 0644 0 0 0 1 $i"
+		i=$((i + 1))
+	done >>"$T/spec"
+	mkimage "$T/spec" "$T/img"
+	run "$MINIXFS" tar "$T/img"
+	cp "$T/out" "$T/want.tar"
+
+	cp "$T/img" "$T/before"
+	run "$TUNEFS_MINIXFS" -N -l 30 "$T/img"
+	check_out_has "$v: -N -l shows the change" "^name length: 14 -> 30\$"
+	check_same_file "$v: -N -l writes nothing" "$T/before" "$T/img"
+	for len in 30 14; do
+		run "$TUNEFS_MINIXFS" -l "$len" "$T/img"
+		tuned "-l $len"
+		check_info "$v: -l $len gives $len-character names" "$T/img" \
+		    "name length" "$len"
+		run "$MINIXFS" tar "$T/img"
+		check_out "$v: -l $len keeps every name and file" \
+		    "$T/want.tar"
+	done
+	check_info "$v: the magic is back" "$T/img" magic \
+	    "$(info_field "$T/before" magic)"
+done
+
+# Names too long for 14 characters are all listed, and nothing changes.
+long=a_long_directory_name
+cat >"$T/spec" <<EOF
+fs version=2 namelen=30 order=le blocks=1024 inodes=64
+dir  /$long 0755 0 0 0
+file /$long/a_long_file_name 0644 0 0 0 10 1
+file /short 0644 0 0 0 10 2
+EOF
+mkimage "$T/spec" "$T/img"
+cp "$T/img" "$T/before"
+run "$TUNEFS_MINIXFS" -l 14 "$T/img"
+check_status "-l 14 refuses names that are too long" 1
+check_true "-l 14 lists a long directory name" grep -q -x -e \
+    "name longer than 14 characters: /$long" "$T/out"
+check_true "-l 14 lists a long name below it" grep -q -x -e \
+    "name longer than 14 characters: /$long/a_long_file_name" "$T/out"
+check_same_file "-l 14 changes nothing when names are too long" \
+    "$T/before" "$T/img"
+
+# There must be room for the larger directories, or nothing changes.
+cat >"$T/spec" <<EOF
+fs version=1 order=le blocks=80 inodes=16
+file /f 0644 0 0 0 10 1
+dir  /d 0755 0 0 0
+EOF
+i=0
+while [ "$i" -lt 200 ]; do
+	echo "hard /d/h$i /f"
+	i=$((i + 1))
+done >>"$T/spec"
+mkimage "$T/spec" "$T/img"
+free=$(info_field "$T/img" "free zones")
+echo "file /filler 0644 0 0 0 $(((free - 2) * 1024)) 2" >>"$T/spec"
+mkimage "$T/spec" "$T/img"
+check_info "the full image has one free zone" "$T/img" "free zones" 1
+cp "$T/img" "$T/before"
+run "$TUNEFS_MINIXFS" -l 30 "$T/img"
+check_err "-l 30 needs room for the larger directories" \
+    "No space left on device"
+check_same_file "-l 30 changes nothing without room" "$T/before" "$T/img"
+
+rm -f "$T/img"
+"$NEWFS_MINIXFS" -V 3 -s 1024 "$T/img"
+run "$TUNEFS_MINIXFS" -l 30 "$T/img"
+check_err "V3 has no name length to change" "always 60 characters"
+
 for bad in "-B middle" "-c maybe" "-e 2" "-m 0" "-m 2147483648" \
-    "-m big" "-T 0:2:0"; do
+    "-m big" "-T 0:2:0" "-l 20"; do
 	# The option and its value are split on purpose.
 	# shellcheck disable=SC2086
 	run "$TUNEFS_MINIXFS" $bad "$T/img"

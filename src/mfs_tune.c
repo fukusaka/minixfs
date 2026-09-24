@@ -274,3 +274,350 @@ out:
 	free(buf);
 	return r;
 }
+
+/*
+ * Changing the name length.
+ */
+
+/* One directory, as it was read before anything is written. */
+struct dir_copy {
+	struct mfs_dirent *ent;		/* the entries in use, in order */
+	uint32_t	*zones;		/* every zone it had */
+	size_t		nent;
+	size_t		maxent;
+	size_t		nzones;
+	size_t		maxzones;
+	uint32_t	ino;
+	uint32_t	need;		/* zones it needs with new entries */
+};
+
+struct rename_state {
+	struct mfs	*fs;
+	struct dir_copy	*dirs;
+	size_t		ndirs;
+	uint32_t	namelen;	/* the new one */
+	int		error;
+};
+
+static int
+copy_entry(const struct mfs_dirent *de, void *arg)
+{
+	struct dir_copy *d;
+	struct mfs_dirent *p;
+
+	d = arg;
+	if (d->nent == d->maxent) {
+		d->maxent = d->maxent == 0 ? 16 : d->maxent * 2;
+		if ((p = realloc(d->ent, d->maxent * sizeof(*p))) == NULL)
+			return -ENOMEM;
+		d->ent = p;
+	}
+	d->ent[d->nent++] = *de;
+	return 0;
+}
+
+static int
+copy_zone(uint32_t zone, int level, const struct mfs_zref *ref, void *arg)
+{
+	struct rename_state *rs;
+	struct dir_copy *d;
+	uint32_t *p;
+
+	(void)level;
+	(void)ref;
+	rs = arg;
+	d = &rs->dirs[rs->ndirs - 1];
+	if (zone < rs->fs->firstdatazone || zone >= rs->fs->nzones)
+		return MFS_WALK_SKIP;
+	if (d->nzones == d->maxzones) {
+		d->maxzones = d->maxzones == 0 ? 16 : d->maxzones * 2;
+		if ((p = realloc(d->zones, d->maxzones * sizeof(*p))) == NULL)
+			return -ENOMEM;
+		d->zones = p;
+	}
+	d->zones[d->nzones++] = zone;
+	return 0;
+}
+
+/*
+ * The zones a directory of n entries of size bytes takes: data zones
+ * and the indirect zones that list them.  0 if the double indirect zone
+ * cannot reach so far.
+ */
+static uint32_t
+zones_for(const struct mfs *fs, size_t n, uint32_t size)
+{
+	uint64_t bytes, data, zbytes, rest;
+
+	zbytes = (uint64_t)fs->block_size << fs->log_zone_size;
+	bytes = (uint64_t)n * size;
+	data = (bytes + zbytes - 1) / zbytes;
+	if (data <= fs->ndzones)
+		return (uint32_t)data;
+	rest = data - fs->ndzones;
+	if (rest <= fs->nindirs)
+		return (uint32_t)(data + 1);
+	rest -= fs->nindirs;
+	if (rest > (uint64_t)fs->nindirs * fs->nindirs)
+		return 0;
+	return (uint32_t)(data + 2 + (rest + fs->nindirs - 1) / fs->nindirs);
+}
+
+/* Read every directory, and check that the new entries fit. */
+static int
+read_dirs(struct rename_state *rs)
+{
+	struct mfs_inode ip;
+	struct dir_copy *d;
+	struct mfs *fs;
+	uint32_t ino, size;
+	size_t i;
+	int r;
+
+	fs = rs->fs;
+	size = fs->dirent_ino + rs->namelen;
+	for (ino = 1; ino <= fs->ninodes; ino++) {
+		if ((r = mfs_get_inode(fs, ino, &ip)) < 0)
+			return r;
+		if (ip.mode == 0 || !mfs_is_dir(&ip))
+			continue;
+		d = realloc(rs->dirs, (rs->ndirs + 1) * sizeof(*d));
+		if (d == NULL)
+			return -ENOMEM;
+		rs->dirs = d;
+		d = &rs->dirs[rs->ndirs++];
+		(void)memset(d, 0, sizeof(*d));
+		d->ino = ino;
+		if ((r = mfs_readdir(fs, &ip, copy_entry, d)) < 0 ||
+		    (r = mfs_walk_zones(fs, &ip, copy_zone, rs)) < 0)
+			return r;
+		for (i = 0; i < d->nent; i++)
+			if (strlen(d->ent[i].name) > rs->namelen)
+				return -ENAMETOOLONG;
+		if ((d->need = zones_for(fs, d->nent, size)) == 0 &&
+		    d->nent > 0)
+			return -EFBIG;
+	}
+	return 0;
+}
+
+/* Take the first free zone of the map. */
+static uint32_t
+take_zone(struct mfs *fs, unsigned char *zmap, uint32_t *next)
+{
+	uint32_t n;
+
+	n = fs->nzones - fs->firstdatazone;
+	for (; *next <= n; (*next)++) {
+		if (!mfs_map_bit(fs, zmap, *next)) {
+			mfs_set_map_bit(fs, zmap, *next, 1);
+			return fs->firstdatazone + (*next)++ - 1;
+		}
+	}
+	return 0;
+}
+
+/* Take a free zone for an indirect zone, and fill it with zeros. */
+static uint32_t
+take_indirect(struct mfs *fs, unsigned char *zmap, uint32_t *next,
+    unsigned char *zero)
+{
+	uint32_t i, z;
+
+	if ((z = take_zone(fs, zmap, next)) == 0)
+		return 0;
+	for (i = 0; i < 1U << fs->log_zone_size; i++)
+		if (mfs_write_block(fs, (z << fs->log_zone_size) + i, zero) < 0)
+			return 0;
+	return z;
+}
+
+/* Set entry index of the indirect zone ind to zone. */
+static int
+set_listed(struct mfs *fs, uint32_t ind, uint32_t index, uint32_t zone)
+{
+	struct mfs_zref ref;
+
+	ref.block = ind << fs->log_zone_size;
+	ref.index = index;
+	return mfs_set_zref(fs, NULL, &ref, zone);
+}
+
+/* Write a whole zone from buf, which holds a zone of bytes. */
+static int
+write_zone(struct mfs *fs, uint32_t zone, const unsigned char *buf)
+{
+	uint32_t i;
+	int r;
+
+	for (i = 0; i < 1U << fs->log_zone_size; i++) {
+		r = mfs_write_block(fs, (zone << fs->log_zone_size) + i,
+		    buf + (size_t)i * fs->block_size);
+		if (r < 0)
+			return r;
+	}
+	return 0;
+}
+
+/*
+ * Write directory d with entries of the new size into zones taken from
+ * zmap, and point its inode at them.
+ */
+static int
+write_dir(struct rename_state *rs, const struct dir_copy *d,
+    unsigned char *zmap, uint32_t *next, unsigned char *buf)
+{
+	struct mfs_inode ip;
+	struct mfs *fs;
+	unsigned char *p, *zero;
+	uint64_t zbytes;
+	uint32_t dsize, k, ndata, per, z;
+	uint32_t ind1, ind2, sub;
+	size_t e, len;
+	int r;
+
+	fs = rs->fs;
+	zbytes = (uint64_t)fs->block_size << fs->log_zone_size;
+	dsize = fs->dirent_ino + rs->namelen;
+	per = (uint32_t)(zbytes / dsize);
+	if ((r = mfs_get_inode(fs, d->ino, &ip)) < 0)
+		return r;
+	(void)memset(ip.zone, 0, sizeof(ip.zone));
+	ndata = (uint32_t)((d->nent + per - 1) / per);
+	/* The last block of buf is kept for zeros. */
+	zero = buf + zbytes;
+	ind1 = ind2 = sub = 0;
+	for (k = 0, e = 0; k < ndata; k++) {
+		(void)memset(buf, 0, (size_t)zbytes);
+		for (p = buf; e < d->nent && p + dsize <= buf + zbytes;
+		    e++, p += dsize) {
+			if (fs->dirent_ino == 2)
+				put16(fs->order, p, d->ent[e].ino);
+			else
+				put32(fs->order, p, d->ent[e].ino);
+			len = strlen(d->ent[e].name);
+			(void)memcpy(p + fs->dirent_ino, d->ent[e].name, len);
+		}
+		if ((z = take_zone(fs, zmap, next)) == 0)
+			return -ENOSPC;
+		if ((r = write_zone(fs, z, buf)) < 0)
+			return r;
+
+		/* Where zone k of the directory is listed. */
+		if (k < fs->ndzones) {
+			ip.zone[k] = z;
+		} else if (k - fs->ndzones < fs->nindirs) {
+			if (ind1 == 0) {
+				if ((ind1 = take_indirect(fs, zmap, next,
+				    zero)) == 0)
+					return -ENOSPC;
+				ip.zone[fs->ndzones] = ind1;
+			}
+			r = set_listed(fs, ind1, k - fs->ndzones, z);
+		} else {
+			if (ind2 == 0) {
+				if ((ind2 = take_indirect(fs, zmap, next,
+				    zero)) == 0)
+					return -ENOSPC;
+				ip.zone[fs->ndzones + 1] = ind2;
+			}
+			if ((k - fs->ndzones - fs->nindirs) % fs->nindirs ==
+			    0) {
+				if ((sub = take_indirect(fs, zmap, next,
+				    zero)) == 0)
+					return -ENOSPC;
+				r = set_listed(fs, ind2, (k - fs->ndzones -
+				    fs->nindirs) / fs->nindirs, sub);
+				if (r < 0)
+					return r;
+			}
+			r = set_listed(fs, sub, (k - fs->ndzones -
+			    fs->nindirs) % fs->nindirs, z);
+		}
+		if (r < 0)
+			return r;
+	}
+	ip.size = (uint32_t)(d->nent * dsize);
+	return mfs_put_inode(fs, &ip);
+}
+
+int
+mfs_change_namelen(struct mfs *fs, uint32_t namelen)
+{
+	struct rename_state rs;
+	unsigned char sb[SUPER_SIZE], *buf, *zmap;
+	uint64_t avail, need;
+	uint32_t bit, n, next;
+	uint16_t magic;
+	size_t i, j;
+	int r;
+
+	if (!fs->writable)
+		return -EROFS;
+	if (fs->version == 3 || (namelen != 14 && namelen != 30))
+		return -EINVAL;
+	if (fs->namelen == namelen)
+		return 0;
+	(void)memset(&rs, 0, sizeof(rs));
+	rs.fs = fs;
+	rs.namelen = namelen;
+	zmap = NULL;
+	/* A zone of data, and a block of zeros after it. */
+	buf = calloc(((size_t)1 << fs->log_zone_size) + 1, fs->block_size);
+	if (buf == NULL) {
+		r = -ENOMEM;
+		goto out;
+	}
+	if ((r = read_dirs(&rs)) < 0 ||
+	    (r = mfs_load_map(fs, MFS_ZMAP, &zmap)) < 0)
+		goto out;
+
+	/* The directories give back their zones and take new ones. */
+	n = fs->nzones - fs->firstdatazone;
+	avail = need = 0;
+	for (bit = 1; bit <= n; bit++)
+		if (!mfs_map_bit(fs, zmap, bit))
+			avail++;
+	for (i = 0; i < rs.ndirs; i++) {
+		avail += rs.dirs[i].nzones;
+		need += rs.dirs[i].need;
+	}
+	if (need > avail) {
+		r = -ENOSPC;
+		goto out;
+	}
+
+	for (i = 0; i < rs.ndirs && r == 0; i++) {
+		for (j = 0; j < rs.dirs[i].nzones; j++)
+			mfs_set_map_bit(fs, zmap,
+			    rs.dirs[i].zones[j] - fs->firstdatazone + 1, 0);
+		next = 1;
+		r = write_dir(&rs, &rs.dirs[i], zmap, &next, buf);
+	}
+	if (r == 0)
+		r = mfs_store_map(fs, MFS_ZMAP, zmap);
+	if (r == 0)
+		r = mfs_read_device(fs, sb, sizeof(sb), SUPER_OFFSET);
+	if (r == 0) {
+		if (fs->version == 1)
+			magic = namelen == 14 ? MFS_MAGIC_V1 : MFS_MAGIC_V1L;
+		else
+			magic = namelen == 14 ? MFS_MAGIC_V2 : MFS_MAGIC_V2L;
+		put16(fs->order, sb + SB12_MAGIC, magic);
+		r = mfs_write_device(fs, sb, sizeof(sb), SUPER_OFFSET);
+	}
+	if (r == 0) {
+		fs->magic = magic;
+		fs->namelen = namelen;
+		fs->dirent_size = fs->dirent_ino + namelen;
+	}
+out:
+	for (i = 0; i < rs.ndirs; i++) {
+		free(rs.dirs[i].ent);
+		free(rs.dirs[i].zones);
+	}
+	free(rs.dirs);
+	free(zmap);
+	free(buf);
+	return r;
+}

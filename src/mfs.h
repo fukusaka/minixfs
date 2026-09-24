@@ -374,6 +374,17 @@ int	mfs_store_map(struct mfs *, enum mfs_map, const unsigned char *);
 int	mfs_convert_order(struct mfs *, enum mfs_order);
 
 /*
+ * Give a V1 or V2 file system names of namelen (14 or 30) characters:
+ * the magic number changes, and every directory is written anew with
+ * entries of the new size, in zones that may differ from the old ones.
+ * Returns 0; -EINVAL for V3 or another length; -ENAMETOOLONG if a name
+ * is longer than namelen; -ENOSPC if the directories would not fit;
+ * -EFBIG if a directory would outgrow its double indirect zone; or
+ * another negative errno value.  Only the last can follow a write.
+ */
+int	mfs_change_namelen(struct mfs *, uint32_t);
+
+/*
  * Making file systems (mfs_format.c).
  */
 
