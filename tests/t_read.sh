@@ -8,38 +8,6 @@
 
 . ./tests/lib.sh
 
-# The names "ls -R" prints, in directory order.
-cat >"$T/names" <<'EOF'
-bin
-bin/sh
-bin/login
-bin/sh2
-etc
-etc/empty
-etc/one
-etc/b1023
-etc/b1024
-etc/b1025
-etc/direct
-etc/direct1
-etc/indirect
-etc/dindirect
-etc/sh.link
-dev
-dev/tty0
-dev/fd0
-dev/fifo
-usr
-usr/a
-usr/a/b
-usr/a/b/c
-usr/a/b/c/deep
-usr/big
-usr/holes
-usr/sparse
-12345678901234
-EOF
-
 # The regular files of the tree.
 files="bin/sh bin/login bin/sh2 etc/empty etc/one etc/b1023 etc/b1024
 etc/b1025 etc/direct etc/direct1 etc/indirect etc/dindirect usr/a/b/c/deep
@@ -47,6 +15,9 @@ usr/big usr/holes usr/sparse 12345678901234"
 
 # A name longer than any version allows.
 toolong=1234567890123456789012345678901234567890123456789012345678901
+
+# The names of the tree, in directory order.
+grep -v '^#' tests/tree.names >"$T/names"
 
 touch -t 200001010000 "$T/y2000"
 

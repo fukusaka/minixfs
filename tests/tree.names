@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Shoichi Fukusaka
+#
+# The names in tests/tree.spec, in directory order, as "ls -R" prints
+# them.
+bin
+bin/sh
+bin/login
+bin/sh2
+etc
+etc/empty
+etc/one
+etc/b1023
+etc/b1024
+etc/b1025
+etc/direct
+etc/direct1
+etc/indirect
+etc/dindirect
+etc/sh.link
+dev
+dev/tty0
+dev/fd0
+dev/fifo
+usr
+usr/a
+usr/a/b
+usr/a/b/c
+usr/a/b/c/deep
+usr/big
+usr/holes
+usr/sparse
+12345678901234

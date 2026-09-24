@@ -13,7 +13,8 @@ file systems, on Linux, FreeBSD, NetBSD and MINIX 3 itself:
 ## Status
 
 Read-only access to V1, V2 and V3 file systems in either byte order,
-through the `minixfs` command.
+through the `minixfs` command, and read-only mounts through FUSE with
+`mount_minixfs`.
 
 | Magic  | Version | Names | Origin |
 |--------|---------|-------|--------|
@@ -37,6 +38,17 @@ are big-endian, and the Linux kernel on a PC cannot read them.
 The Makefile works with both GNU make and BSD make.  The code is C99 with
 POSIX.1-2008 interfaces and needs no libraries.
 
+`mount_minixfs` needs a FUSE library and is built on request:
+
+    make fuse                                           # libfuse 3
+    make fuse FUSE_LIBS="-lrefuse -lpuffs"              # NetBSD
+    make fuse FUSE_LIBS="-lrefuse -lpuffs" FUSE_VERSION=26   # FUSE 2
+
+`FUSE_CFLAGS` and `FUSE_LIBS` default to what `pkg-config fuse3` says.
+The source uses only the high-level FUSE API, in its FUSE 3 form
+(`FUSE_VERSION=31`, the default) or its FUSE 2 form (`FUSE_VERSION=26`,
+for older librefuse).
+
 ## Usage
 
     minixfs info IMAGE
@@ -52,6 +64,12 @@ Devices, pipes and sockets are counted but not created.
 
 `extract` never writes outside `DEST`: directory entries whose names are
 empty, `.`, `..` or contain `/` are refused, and so are directory loops.
+
+    mount_minixfs [FUSE options] IMAGE MOUNTPOINT
+
+mounts the image read-only.  Inode numbers, modes, owners, times and
+device numbers are those of the image.  Unmount it with `fusermount3 -u
+MOUNTPOINT` on Linux or `umount MOUNTPOINT` on the BSDs.
 
 Exit status is 0 on success, 1 if anything failed, and 2 for a usage
 error.
@@ -106,16 +124,25 @@ top of `tests/mkimage.c`).  The scripts:
 - `t_fsck.sh` - where util-linux is installed: `fsck.minix` accepts the
   test images, and images from `mkfs.minix` are readable.  Skipped
   otherwise.
+- `t_fuse.sh` - where `mount_minixfs` is built and mounting is allowed:
+  the tree read through the kernel in four formats, with its names,
+  contents, modes, owners, inode numbers and device numbers.  Skipped
+  otherwise.  `MINIXFS_FUSE` names the program; `FUSE_SUDO` is a
+  command to mount and read with where users cannot mount, such as
+  `sudo` on NetBSD.
 
 ## Layout
 
     src/mfs.h, src/mfs.c    library: super block, inodes, zone mapping,
                             file data, directories, path lookup
     src/minixfs.c           the minixfs command
+    src/mount_minixfs.c     the FUSE file system
+    src/compat.h            the differences between systems
     tests/lib.sh            helpers for the test scripts
     tests/run.sh            runs the scripts; tap2junit.awk makes JUnit
     tests/mkimage.c         the independent image writer
-    tests/tree.spec         the tree that t_read.sh reads
+    tests/tree.spec         the tree that t_read.sh and t_fuse.sh read
+    tests/tree.names        the names in that tree
     tests/t_*.sh            the tests
 
 ## References

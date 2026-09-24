@@ -13,6 +13,16 @@ OBJS =		src/mfs.o src/minixfs.o
 PROG =		minixfs
 MKIMAGE =	tests/mkimage
 
+# mount_minixfs needs a FUSE library, so it is built on request: "make
+# fuse".  FUSE_CFLAGS and FUSE_LIBS come from pkg-config where libfuse 3
+# is installed; on NetBSD, give FUSE_LIBS="-lrefuse -lpuffs".
+# FUSE_VERSION is the FUSE_USE_VERSION to build against: 31, or 26 for
+# the FUSE 2 interface.
+FUSEPROG =	mount_minixfs
+FUSE_VERSION =	31
+FUSE_CFLAGS !=	pkg-config --cflags fuse3 2>/dev/null || true
+FUSE_LIBS !=	pkg-config --libs fuse3 2>/dev/null || true
+
 SANFLAGS =	-O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined \
 		-fno-sanitize-recover=all
 # A command run on the sanitizer binary after it is linked, for systems
@@ -33,6 +43,13 @@ $(PROG): $(OBJS)
 src/mfs.o: src/mfs.h
 src/minixfs.o: src/mfs.h
 
+fuse: $(FUSEPROG)
+
+$(FUSEPROG): src/mount_minixfs.c src/compat.h src/mfs.h src/mfs.o
+	$(CC) $(CFLAGS) $(WARNFLAGS) -D_FILE_OFFSET_BITS=64 \
+	    -DFUSE_USE_VERSION=$(FUSE_VERSION) $(FUSE_CFLAGS) \
+	    -o $(FUSEPROG) src/mount_minixfs.c src/mfs.o $(LDFLAGS) $(FUSE_LIBS)
+
 check: $(PROG) $(MKIMAGE)
 	MINIXFS=./$(PROG) sh tests/run.sh
 
@@ -46,7 +63,7 @@ check-sanitize: $(MKIMAGE)
 	MINIXFS=./build-san/$(PROG) sh tests/run.sh
 
 clean:
-	rm -f $(PROG) $(OBJS) $(MKIMAGE)
+	rm -f $(PROG) $(OBJS) $(MKIMAGE) $(FUSEPROG)
 	rm -rf build-san
 
-.PHONY: all check check-sanitize clean
+.PHONY: all check check-sanitize clean fuse
