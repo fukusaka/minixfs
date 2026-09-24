@@ -785,6 +785,9 @@ walk_indirect(struct mfs *fs, uint32_t ind, int level,
 			r = fn(zone, 0, &ref, arg);
 		else
 			r = walk_indirect(fs, zone, level - 1, &ref, fn, arg);
+		/* A data zone lists nothing to skip: go on to the next. */
+		if (r == MFS_WALK_SKIP)
+			r = 0;
 	}
 	free(buf);
 	return r;

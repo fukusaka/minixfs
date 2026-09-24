@@ -235,6 +235,22 @@ damage_inodes() {
 	check_field "$v: -y clears a zone outside the data area" "$T/fixed" \
 	    4 zone0 0
 
+	# A bad zone in the indirect zone of /big, before the good ones: only
+	# the zone it replaced is left over.
+	zwidth=32
+	if [ "$version" -eq 1 ]; then
+		zwidth=16
+	fi
+	ind=$(get_inode "$T/good" 5 zone7)
+	cp "$T/good" "$T/img"
+	poke_number "$T/img" $(((ind << lz) * bs + zwidth / 8)) "$zwidth" \
+	    60000
+	fsck_damaged "a zone outside the data area in an indirect zone" \
+	    "/big: zone 60000 is outside the data area"
+	run "$FSCK_MINIXFS" "$T/img"
+	check_true "$v: the zones after a bad one in an indirect zone count" \
+	    test "$(grep -c 'free but marked' "$T/out")" -eq 1
+
 	cp "$T/good" "$T/img"
 	set_inode "$T/img" 6 zone0 "$(get_inode "$T/good" 4 zone0)"
 	fsck_damaged "a zone that two files use" "used by another file too"
