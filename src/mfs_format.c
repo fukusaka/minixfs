@@ -83,7 +83,7 @@ plan_inodes(const struct mfs_params *p, struct mfs_layout *l)
 int
 mfs_plan(const struct mfs_params *p, struct mfs_layout *l)
 {
-	uint64_t bits, bytes, first, itable, maps;
+	uint64_t bits, first, itable, maps;
 	uint32_t isize;
 	int r;
 
@@ -123,15 +123,10 @@ mfs_plan(const struct mfs_params *p, struct mfs_layout *l)
 		return -EFBIG;
 	l->firstdatazone = (uint32_t)first;
 
+	l->max_size = mfs_max_size(p->version, p->log_zone_size);
 	if (p->version == 1) {
-		/* What the zone slots reach: 16-bit zone numbers. */
-		bytes = (NR_DZONES + 512 + 512 * 512) *
-		    ((uint64_t)STATIC_BLOCK << p->log_zone_size);
-		l->max_size = bytes < V2_MAX_SIZE ? (uint32_t)bytes :
-		    V2_MAX_SIZE;
 		l->magic = l->namelen == 14 ? MFS_MAGIC_V1 : MFS_MAGIC_V1L;
 	} else {
-		l->max_size = V2_MAX_SIZE;
 		if (p->version == 3)
 			l->magic = MFS_MAGIC_V3;
 		else
@@ -139,6 +134,19 @@ mfs_plan(const struct mfs_params *p, struct mfs_layout *l)
 			    MFS_MAGIC_V2L;
 	}
 	return 0;
+}
+
+uint32_t
+mfs_max_size(int version, uint32_t log_zone_size)
+{
+	uint64_t bytes;
+
+	if (version != 1)
+		return V2_MAX_SIZE;
+	/* What the zone slots reach: 16-bit zone numbers. */
+	bytes = (NR_DZONES + 512 + 512 * 512) *
+	    ((uint64_t)STATIC_BLOCK << log_zone_size);
+	return bytes < V2_MAX_SIZE ? (uint32_t)bytes : V2_MAX_SIZE;
 }
 
 static void
@@ -156,6 +164,7 @@ fill_super(const struct mfs_params *p, const struct mfs_layout *l,
 		put16(o, sb + SB3_FIRSTDATA, l->firstdatazone <= MAX_16 ?
 		    l->firstdatazone : 0);
 		put16(o, sb + SB3_LOGZONE, p->log_zone_size);
+		put16(o, sb + SB3_FLAGS, MFS_FLAG_CLEAN);
 		put32(o, sb + SB3_MAXSIZE, l->max_size);
 		put32(o, sb + SB3_ZONES, l->nzones);
 		put16(o, sb + SB3_MAGIC, l->magic);
@@ -170,7 +179,7 @@ fill_super(const struct mfs_params *p, const struct mfs_layout *l,
 	put16(o, sb + SB12_LOGZONE, p->log_zone_size);
 	put32(o, sb + SB12_MAXSIZE, l->max_size);
 	put16(o, sb + SB12_MAGIC, l->magic);
-	put16(o, sb + SB12_STATE, 1);
+	put16(o, sb + SB12_STATE, MFS_STATE_VALID);
 	if (p->version == 2)
 		put32(o, sb + SB12_ZONES, l->nzones);
 }

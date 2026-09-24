@@ -76,6 +76,7 @@ defaults() {
 	    "free inodes" 479
 	check_info "an empty V1 has one data zone in use" "$T/img" \
 	    "free zones" 1420
+	check_info "V1 is marked clean as Linux marks it" "$T/img" clean yes
 
 	rm -f "$T/img"
 	run "$NEWFS_MINIXFS" -V 3 -s 2048 "$T/img"
@@ -85,6 +86,8 @@ defaults() {
 	check_info "V3 inodes fill the blocks of the inode table" "$T/img" \
 	    inodes 704
 	check_info "V3 has 60-character names" "$T/img" "name length" 60
+	check_info "V3 is marked clean, or MINIX 3 mounts it read-only" \
+	    "$T/img" clean yes
 
 	run "$MINIXFS" ls "$T/img"
 	: >"$T/empty"

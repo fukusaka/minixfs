@@ -88,17 +88,25 @@ alone.
 
     fsck_minixfs [-y] image
 
-checks a file system: directory entries (inode numbers, names, "." and
-".."), inodes (types, sizes, zone numbers, zones used twice), link
-counts, inodes that no directory names, and both bit maps.  It prints
-one line per problem and a summary.  Without `-y` the image is only
-read.  With `-y` each problem is repaired where it can be: bad entries
-are removed, "." and ".." are pointed where they belong, bad zone
-numbers and the second use of a zone are cleared, sizes are cut, link
-counts are set, inodes that no directory names are freed, and the bit
-maps are made to match; the image is then checked again.  It exits with
-0 if the file system is consistent (after the repairs, with `-y`), 1 if
+checks a file system: the super block (maximum file size, an image that
+holds the whole file system, errors that Linux recorded), directory
+entries (inode numbers, names, "." and ".."), inodes (types, sizes, zone
+numbers, zones used twice, zones of device files, the text of symbolic
+links), link counts, inodes that no directory names, and both bit maps.
+It prints one line per problem and a summary.  Without `-y` the image is
+only read.  With `-y` each problem is repaired where it can be: bad
+entries are removed, "." and ".." are pointed where they belong or put
+back, bad zone numbers and the second use of a zone are cleared, sizes
+are cut, link counts are set, inodes that no directory names are freed,
+and the bit maps are made to match; the image is then checked again and
+marked clean, or as having errors if problems remain.  It exits with 0
+if the file system is consistent (after the repairs, with `-y`), 1 if
 problems remain and 3 if the image cannot be checked at all.
+
+A file system that is not marked clean is noted but is not a problem.
+V1 and V2 keep the mark where Linux does; MINIX leaves that word zero.
+V3 keeps it in the flags of MINIX 3, which mounts a file system that is
+not clean read-only; `newfs_minixfs` marks new file systems clean.
 
 The other commands exit with 0 on success, 1 if anything failed; all
 exit with 2 for a usage error.

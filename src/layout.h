@@ -59,7 +59,7 @@
 #define SB12_LOGZONE	10		/* 16 */
 #define SB12_MAXSIZE	12		/* 32 */
 #define SB12_MAGIC	16		/* 16 */
-#define SB12_STATE	18		/* 16, Linux: 1 if cleanly unmounted */
+#define SB12_STATE	18		/* 16, Linux: MFS_STATE_* */
 #define SB12_ZONES	20		/* 32, V2 only */
 
 /* V3 super block. */
@@ -68,6 +68,7 @@
 #define SB3_ZMAP	8		/* 16 */
 #define SB3_FIRSTDATA	10		/* 16; 0 if it does not fit */
 #define SB3_LOGZONE	12		/* 16 */
+#define SB3_FLAGS	14		/* 16, MINIX 3: MFS_FLAG_* */
 #define SB3_MAXSIZE	16		/* 32 */
 #define SB3_ZONES	20		/* 32 */
 #define SB3_MAGIC	24		/* 16 */

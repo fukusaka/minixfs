@@ -332,6 +332,10 @@ layout() {
 	[12]:logzone)	echo "10 16" ;;
 	3:logzone)	echo "12 16" ;;
 	3:blocksize)	echo "28 16" ;;
+	[12]:maxsize)	echo "12 32" ;;
+	3:maxsize)	echo "16 32" ;;
+	[12]:state)	echo "18 16" ;;
+	3:flags)	echo "14 16" ;;
 	[123]:mode)	echo "0 16" ;;
 	1:nlinks)	echo "13 8" ;;
 	[23]:nlinks)	echo "2 16" ;;
@@ -339,6 +343,8 @@ layout() {
 	[23]:size)	echo "8 32" ;;
 	1:zone0)	echo "14 16" ;;
 	[23]:zone0)	echo "24 32" ;;
+	1:zone1)	echo "16 16" ;;
+	[23]:zone1)	echo "28 32" ;;
 	1:zone7)	echo "28 16" ;;
 	[23]:zone7)	echo "52 32" ;;
 	[23]:zone9)	echo "60 32" ;;

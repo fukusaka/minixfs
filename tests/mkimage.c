@@ -70,6 +70,7 @@
 #define SB3_ZMAP	8
 #define SB3_FIRSTDATA	10
 #define SB3_LOGZONE	12
+#define SB3_FLAGS	14		/* MINIX 3: 1 means clean */
 #define SB3_MAXSIZE	16
 #define SB3_ZONES	20
 #define SB3_MAGIC	24
@@ -884,6 +885,7 @@ write_super(const struct image *img)
 		put16(img, sb + SB3_FIRSTDATA, img->firstdatazone <= 0xffff ?
 		    img->firstdatazone : 0);
 		put16(img, sb + SB3_LOGZONE, img->logzone);
+		put16(img, sb + SB3_FLAGS, 1);
 		put32(img, sb + SB3_MAXSIZE, max_size(img));
 		put32(img, sb + SB3_ZONES, img->nzones);
 		put16(img, sb + SB3_MAGIC, magic(img));

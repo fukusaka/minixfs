@@ -97,14 +97,22 @@ EOF
 		zone=$(get_inode "$T/good" 4 zone0)
 		zbit=$((zone - first + 1))
 		for damage in "imap 4 0" "imap 20 1" "zmap $zbit 0" \
-		    "nlinks 3" "zone0 60000"; do
+		    "nlinks 3" "zone0 60000" "no entries in /d/e"; do
 			cp "$T/good" "$T/img"
 			# The words of each damage are split on purpose.
 			# shellcheck disable=SC2086
 			set -- $damage
 			case $1 in
-			imap|zmap)	set_map_bit "$T/img" "$1" "$2" "$3" ;;
-			*)		set_inode "$T/img" 4 "$1" "$2" ;;
+			imap|zmap)
+				set_map_bit "$T/img" "$1" "$2" "$3"
+				;;
+			no)
+				set_inode "$T/img" 3 size 0
+				set_inode "$T/img" 3 zone0 0
+				;;
+			*)
+				set_inode "$T/img" 4 "$1" "$2"
+				;;
 			esac
 			run "$FSCK_MINIX" -f "$T/img"
 			check_true "$fs: fsck.minix finds \"$damage\"" \

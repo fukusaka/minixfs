@@ -31,6 +31,16 @@
 #define MFS_MAGIC_V2L	0x2478		/* V2, 30-character names (Linux) */
 #define MFS_MAGIC_V3	0x4d5a		/* V3, 60-character names */
 
+/*
+ * Whether the file system was left in order.  MINIX leaves this word
+ * zero in V1 and V2, where Linux keeps its state in it; MINIX 3 keeps
+ * flags in V3, and mounts a file system that is not clean read-only.
+ */
+#define MFS_STATE_VALID	0x0001		/* V1, V2: cleanly unmounted */
+#define MFS_STATE_ERROR	0x0002		/* V1, V2: errors were found */
+#define MFS_FLAG_CLEAN	0x0001		/* V3: cleanly unmounted */
+#define MFS_FLAG_MANDATORY 0xff00	/* V3: features one must know */
+
 /* File types in the mode word; the values are those of MINIX. */
 #define MFS_S_IFMT	0170000
 #define MFS_S_IFIFO	0010000
@@ -67,6 +77,7 @@ struct mfs {
 	uint32_t	max_size;
 	uint32_t	block_size;	/* V1 and V2: always 1024 */
 	uint16_t	magic;
+	uint16_t	state;		/* V1, V2: MFS_STATE_*; V3: flags */
 
 	/* Derived from the super block. */
 	uint32_t	namelen;	/* bytes of a name in an entry */
@@ -110,7 +121,8 @@ typedef int (*mfs_dirent_fn)(const struct mfs_dirent *, void *);
 
 /*
  * Open the image at path and check its super block.  Returns 0, -EINVAL
- * if the image is not a consistent MINIX file system, or another negative
+ * if the image is not a consistent MINIX file system, -ENOTSUP if it
+ * needs features that this library does not know, or another negative
  * errno value.  On success the caller releases fs with mfs_close().
  */
 int	mfs_open(struct mfs *, const char *);
@@ -180,6 +192,9 @@ int	mfs_is_dev(const struct mfs_inode *);
 
 /* The device number of a device inode. */
 uint32_t mfs_rdev(const struct mfs_inode *);
+
+/* Whether the super block says that the file system is clean. */
+int	mfs_is_clean(const struct mfs *);
 
 /*
  * Checking file systems.
@@ -255,6 +270,19 @@ int	mfs_count_free(struct mfs *, uint32_t *, uint32_t *);
  */
 int	mfs_write_block(struct mfs *, uint32_t, const void *);
 
+/*
+ * Write max_size and state back to the super block.  Returns 0 or
+ * -errno.
+ */
+int	mfs_put_super(struct mfs *);
+
+/*
+ * Mark the file system clean, or not clean, in the super block: in V1
+ * and V2 as Linux does, valid and with or without errors, and in V3 with
+ * the clean flag of MINIX 3.  Returns 0 or -errno.
+ */
+int	mfs_mark_clean(struct mfs *, int);
+
 /* Write *ip back to inode number ip->num.  Returns 0 or -errno. */
 int	mfs_put_inode(struct mfs *, const struct mfs_inode *);
 
@@ -265,6 +293,15 @@ int	mfs_put_inode(struct mfs *, const struct mfs_inode *);
  */
 int	mfs_set_entry(struct mfs *, const struct mfs_inode *, uint32_t,
 	    uint32_t);
+
+/*
+ * Write a whole directory entry, inode number ino and name, at byte
+ * offset off of the directory *dp.  The offset may be anywhere in the
+ * zones of *dp, also past its size.  Returns 0, -ENAMETOOLONG, or
+ * another negative errno value.
+ */
+int	mfs_put_entry(struct mfs *, const struct mfs_inode *, uint32_t,
+	    uint32_t, const char *);
 
 /*
  * Clear the zone number that ref points to.  A slot of the inode is
@@ -311,6 +348,13 @@ struct mfs_layout {
 	uint32_t	max_size;	/* for the super block */
 	uint16_t	magic;
 };
+
+/*
+ * The s_max_size that a new file system of a version and zone size
+ * gets: what the zones of V1 reach, and the largest signed 32-bit size
+ * for V2 and V3, as Linux writes it.
+ */
+uint32_t mfs_max_size(int, uint32_t);
 
 /*
  * Check the parameters and lay the file system out in *l.  Returns 0,

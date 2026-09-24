@@ -53,10 +53,13 @@ top of `tests/mkimage.c`).  The scripts:
   boot block, and the options it must refuse.
 - `t_fsck.sh` - `fsck_minixfs` passes the test tree in every format and
   an empty file system, and finds each kind of damage in every version
-  and byte order: bit maps that disagree with the files, wrong link
-  counts, zones outside the data area or used twice, inodes that no
-  directory names or with no valid type, bad directory sizes, "." that
-  names another inode, and entries naming inodes past the last, free
+  and byte order: a bad maximum file size, a short image, the clean mark
+  and the errors Linux records, bit maps that disagree with the files
+  and a clear bit 0, wrong link counts, zones outside the data area or
+  used twice, inodes that no directory names or with no valid type, bad
+  directory and file sizes, device files with zones, symbolic links that
+  are empty, too long or hold a NUL byte, "." that names another inode,
+  missing "." and "..", and entries naming inodes past the last, free
   inodes, names with "/" and directories listed twice; `-y` repairs
   each of them so that a second check finds nothing, and leaves a
   consistent image as it was.

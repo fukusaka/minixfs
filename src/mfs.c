@@ -119,6 +119,7 @@ read_super(struct mfs *fs, const unsigned char *sb)
 		fs->max_size = get32(fs, sb + SB3_MAXSIZE);
 		fs->nzones = get32(fs, sb + SB3_ZONES);
 		fs->block_size = get16(fs, sb + SB3_BLOCKSIZE);
+		fs->state = get16(fs, sb + SB3_FLAGS);
 	} else {
 		fs->ninodes = get16(fs, sb + SB12_NINODES);
 		fs->imap_blocks = get16(fs, sb + SB12_IMAP);
@@ -131,6 +132,7 @@ read_super(struct mfs *fs, const unsigned char *sb)
 		else
 			fs->nzones = get32(fs, sb + SB12_ZONES);
 		fs->block_size = STATIC_BLOCK;
+		fs->state = get16(fs, sb + SB12_STATE);
 	}
 
 	switch (fs->magic) {
@@ -252,6 +254,10 @@ open_fs(struct mfs *fs, const char *path, int flags)
 	read_super(fs, sb);
 	if ((r = check_super(fs)) < 0)
 		goto fail;
+	if (fs->version == 3 && (fs->state & MFS_FLAG_MANDATORY) != 0) {
+		r = -ENOTSUP;
+		goto fail;
+	}
 	fs->ibuf = malloc(fs->block_size);
 	fs->dbuf = malloc(fs->block_size);
 	if (fs->ibuf == NULL || fs->dbuf == NULL) {
@@ -760,6 +766,53 @@ mfs_count_free(struct mfs *fs, uint32_t *inodes, uint32_t *zones)
 }
 
 int
+mfs_is_clean(const struct mfs *fs)
+{
+	if (fs->version == 3)
+		return (fs->state & MFS_FLAG_CLEAN) != 0;
+	return (fs->state & (MFS_STATE_VALID | MFS_STATE_ERROR)) ==
+	    MFS_STATE_VALID;
+}
+
+int
+mfs_put_super(struct mfs *fs)
+{
+	unsigned char sb[SUPER_SIZE];
+	int r;
+
+	if (!fs->writable)
+		return -EROFS;
+	if ((r = read_at(fs->fd, sb, sizeof(sb), SUPER_OFFSET)) < 0)
+		return r;
+	if (fs->version == 3) {
+		put32(fs->order, sb + SB3_MAXSIZE, fs->max_size);
+		put16(fs->order, sb + SB3_FLAGS, fs->state);
+	} else {
+		put32(fs->order, sb + SB12_MAXSIZE, fs->max_size);
+		put16(fs->order, sb + SB12_STATE, fs->state);
+	}
+	return write_at(fs->fd, sb, sizeof(sb), SUPER_OFFSET);
+}
+
+int
+mfs_mark_clean(struct mfs *fs, int clean)
+{
+	if (fs->version == 3) {
+		if (clean)
+			fs->state |= MFS_FLAG_CLEAN;
+		else
+			fs->state &= (uint16_t)~MFS_FLAG_CLEAN;
+	} else {
+		fs->state |= MFS_STATE_VALID;
+		if (clean)
+			fs->state &= (uint16_t)~MFS_STATE_ERROR;
+		else
+			fs->state |= MFS_STATE_ERROR;
+	}
+	return mfs_put_super(fs);
+}
+
+int
 mfs_write_block(struct mfs *fs, uint32_t block, const void *buf)
 {
 	if (!fs->writable)
@@ -824,27 +877,66 @@ mfs_put_inode(struct mfs *fs, const struct mfs_inode *ip)
 	return mfs_write_block(fs, block, fs->ibuf);
 }
 
-int
-mfs_set_entry(struct mfs *fs, const struct mfs_inode *dp, uint32_t off,
-    uint32_t ino)
+/*
+ * Read the block that holds byte off of the directory *dp into fs->dbuf
+ * and store its number in *block.
+ */
+static int
+entry_block(struct mfs *fs, const struct mfs_inode *dp, uint32_t off,
+    uint32_t *block)
 {
-	unsigned char *p;
-	uint32_t block;
 	int r;
 
-	if (off >= dp->size || off % fs->dirent_size != 0)
+	if (off % fs->dirent_size != 0)
 		return -EINVAL;
-	if ((r = mfs_bmap(fs, dp, off / fs->block_size, &block)) < 0)
+	if ((r = mfs_bmap(fs, dp, off / fs->block_size, block)) < 0)
 		return r;
-	if (block == 0)
+	if (*block == 0)
 		return -EIO;
-	if ((r = mfs_read_block(fs, block, fs->dbuf)) < 0)
-		return r;
-	p = fs->dbuf + off % fs->block_size;
+	return mfs_read_block(fs, *block, fs->dbuf);
+}
+
+static void
+put_ino(const struct mfs *fs, unsigned char *p, uint32_t ino)
+{
 	if (fs->dirent_ino == 2)
 		put16(fs->order, p, ino);
 	else
 		put32(fs->order, p, ino);
+}
+
+int
+mfs_set_entry(struct mfs *fs, const struct mfs_inode *dp, uint32_t off,
+    uint32_t ino)
+{
+	uint32_t block;
+	int r;
+
+	if (off >= dp->size)
+		return -EINVAL;
+	if ((r = entry_block(fs, dp, off, &block)) < 0)
+		return r;
+	put_ino(fs, fs->dbuf + off % fs->block_size, ino);
+	return mfs_write_block(fs, block, fs->dbuf);
+}
+
+int
+mfs_put_entry(struct mfs *fs, const struct mfs_inode *dp, uint32_t off,
+    uint32_t ino, const char *name)
+{
+	unsigned char *p;
+	uint32_t block;
+	size_t len;
+	int r;
+
+	if ((len = strlen(name)) > fs->namelen)
+		return -ENAMETOOLONG;
+	if ((r = entry_block(fs, dp, off, &block)) < 0)
+		return r;
+	p = fs->dbuf + off % fs->block_size;
+	put_ino(fs, p, ino);
+	(void)memset(p + fs->dirent_ino, 0, fs->namelen);
+	(void)memcpy(p + fs->dirent_ino, name, len);
 	return mfs_write_block(fs, block, fs->dbuf);
 }
 
