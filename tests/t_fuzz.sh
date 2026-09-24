@@ -53,12 +53,19 @@ try_commands() {
 			note_problem "$cmd"
 		fi
 	done
+	# fsck_minixfs exits with 3 for an image it cannot check.
+	"$FSCK_MINIXFS" "$T/img" >/dev/null 2>"$T/err"
+	status=$?
+	if crashed || [ "$status" -gt 3 ]; then
+		note_problem fsck_minixfs
+	fi
 }
 
 # try_extract - extract $T/img with the size of each file capped at
 # 10 MB.  With SIGXFSZ ignored, a larger write fails with EFBIG and is
 # reported.
 try_extract() {
+	chmod -R u+rwx "$T/cage" 2>/dev/null
 	rm -rf "$T/cage"
 	mkdir "$T/cage"
 	run sh -c 'trap "" XFSZ; ulimit -f 20480; exec "$@"' sh \
@@ -66,8 +73,9 @@ try_extract() {
 	if crashed || [ "$status" -gt 1 ]; then
 		note_problem extract
 	fi
+	# A damaged mode can make a directory unreadable; find says so.
 	if [ -n "$(cd "$T/cage" && find . ! -path . ! -path ./out \
-	    ! -path './out/*')" ]; then
+	    ! -path './out/*' 2>/dev/null)" ]; then
 		note_problem "extract wrote outside its directory"
 	fi
 }

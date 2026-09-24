@@ -14,8 +14,8 @@ file systems, on Linux, FreeBSD, NetBSD and MINIX 3 itself:
 
 Read-only access to V1, V2 and V3 file systems in either byte order,
 through the `minixfs` command, read-only mounts through FUSE with
-`mount_minixfs`, and empty file systems of any of them with
-`newfs_minixfs`.
+`mount_minixfs`, empty file systems of any of them with
+`newfs_minixfs`, and consistency checks with `fsck_minixfs`.
 
 | Magic  | Version | Names | Origin |
 |--------|---------|-------|--------|
@@ -86,8 +86,17 @@ that must come out the same each time; `-N` prints the layout and writes
 nothing.  The first 1024 bytes, where a boot block may be, are left
 alone.
 
-Exit status is 0 on success, 1 if anything failed, and 2 for a usage
-error.
+    fsck_minixfs image
+
+checks a file system without changing it: directory entries (inode
+numbers, names, "." and ".."), inodes (types, sizes, zone numbers,
+zones used twice), link counts, inodes that no directory names, and both
+bit maps.  It prints one line per problem and a summary, and exits with
+0 if the file system is consistent, 1 if it found problems and 3 if the
+image cannot be checked at all.
+
+The other commands exit with 0 on success, 1 if anything failed; all
+exit with 2 for a usage error.
 
 ## Tests
 
@@ -103,6 +112,7 @@ sanitizers, other shells and JUnit output.
     src/minixfs.c           the minixfs command
     src/mount_minixfs.c     the FUSE file system
     src/newfs_minixfs.c     the newfs_minixfs command
+    src/fsck_minixfs.c      the fsck_minixfs command
     src/mfs_format.c        library: laying out and writing a new
                             file system
     src/layout.h            the on-disk layout

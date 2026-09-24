@@ -46,14 +46,22 @@ top of `tests/mkimage.c`).  The scripts:
   inode numbers, directory loops, names that would escape `DEST`, and
   truncated images, for every version.
 - `t_fuzz.sh` - images with random bytes damaged: every command must end
-  with status 0 or 1, without crashing and without writing outside
-  `DEST`.
+  with status 0 or 1 (`fsck_minixfs`: up to 3), without crashing and
+  without writing outside `DEST`.
 - `t_newfs.sh` - `newfs_minixfs` makes, in every format, the image that
   `tests/mkimage` makes from an empty tree; defaults, sizes, `-N`, the
   boot block, and the options it must refuse.
-- `t_fsck.sh` - where util-linux is installed: `fsck.minix` accepts the
-  test images and those of `newfs_minixfs`, and images from `mkfs.minix`
-  are readable.  Skipped otherwise.
+- `t_fsck.sh` - `fsck_minixfs` passes the test tree in every format and
+  an empty file system, and finds each kind of damage in every version
+  and byte order: bit maps that disagree with the files, wrong link
+  counts, zones outside the data area or used twice, inodes that no
+  directory names or with no valid type, bad directory sizes, "." that
+  names another inode, and entries naming inodes past the last, free
+  inodes, names with "/" and directories listed twice.
+- `t_utillinux.sh` - where util-linux is installed: `fsck.minix` accepts
+  the test images and those of `newfs_minixfs`, images from `mkfs.minix`
+  are readable and pass `fsck_minixfs`, and `fsck_minixfs` and
+  `fsck.minix` find the same damage.  Skipped otherwise.
 - `t_fuse.sh` - where `mount_minixfs` is built and mounting is allowed:
   the tree read through the kernel in four formats, with its names,
   contents, modes, owners, inode numbers and device numbers.  Skipped

@@ -321,7 +321,7 @@ decode_v2(const struct mfs *fs, const unsigned char *p, struct mfs_inode *ip)
 }
 
 int
-mfs_read_inode(struct mfs *fs, uint32_t num, struct mfs_inode *ip)
+mfs_get_inode(struct mfs *fs, uint32_t num, struct mfs_inode *ip)
 {
 	uint64_t off;
 	int r;
@@ -341,7 +341,16 @@ mfs_read_inode(struct mfs *fs, uint32_t num, struct mfs_inode *ip)
 		decode_v1(fs, fs->ibuf + off % fs->block_size, ip);
 	else
 		decode_v2(fs, fs->ibuf + off % fs->block_size, ip);
+	return 0;
+}
 
+int
+mfs_read_inode(struct mfs *fs, uint32_t num, struct mfs_inode *ip)
+{
+	int r;
+
+	if ((r = mfs_get_inode(fs, num, ip)) < 0)
+		return r;
 	/* A size the zones cannot reach means a damaged inode. */
 	if (ip->size > fs->max_file)
 		return -EIO;
@@ -593,46 +602,123 @@ mfs_rdev(const struct mfs_inode *ip)
 }
 
 /*
- * Is bit n of a bit map block set?  The maps are arrays of words, 16 bits
- * wide in V1 and V2 and 32 bits in V3, in the byte order of the image.
+ * Walk the indirect block at zone ind, of the given level: report it,
+ * then what it lists.  A zone outside the data area is reported but not
+ * read.
  */
 static int
-map_bit(const struct mfs *fs, const unsigned char *block, uint32_t n)
+walk_indirect(struct mfs *fs, uint32_t ind, int level, mfs_zone_fn fn,
+    void *arg)
+{
+	unsigned char *buf;
+	uint32_t i, zone;
+	int r;
+
+	if ((r = fn(ind, level, arg)) != 0)
+		return r;
+	if (check_zone(fs, ind) < 0)
+		return 0;
+	if ((buf = malloc(fs->block_size)) == NULL)
+		return -ENOMEM;
+	if ((r = mfs_read_block(fs, ind << fs->log_zone_size, buf)) < 0) {
+		free(buf);
+		return r;
+	}
+	for (i = 0; i < fs->nindirs && r == 0; i++) {
+		zone = getn(fs, buf + i * fs->zone_num_size,
+		    fs->zone_num_size);
+		if (zone == 0)
+			continue;
+		if (level == 1)
+			r = fn(zone, 0, arg);
+		else
+			r = walk_indirect(fs, zone, level - 1, fn, arg);
+	}
+	free(buf);
+	return r;
+}
+
+int
+mfs_walk_zones(struct mfs *fs, const struct mfs_inode *ip, mfs_zone_fn fn,
+    void *arg)
+{
+	uint32_t i, level;
+	int r;
+
+	for (i = 0; i < fs->ndzones; i++)
+		if (ip->zone[i] != 0 && (r = fn(ip->zone[i], 0, arg)) != 0)
+			return r;
+	for (level = 1; level <= fs->nlevels; level++) {
+		i = fs->ndzones + level - 1;
+		if (ip->zone[i] == 0)
+			continue;
+		r = walk_indirect(fs, ip->zone[i], (int)level, fn, arg);
+		if (r != 0)
+			return r;
+	}
+	return 0;
+}
+
+int
+mfs_load_map(struct mfs *fs, enum mfs_map which, unsigned char **mapp)
+{
+	unsigned char *map;
+	uint32_t i, n, start;
+	int r;
+
+	if (which == MFS_IMAP) {
+		start = START_BLOCK;
+		n = fs->imap_blocks;
+	} else {
+		start = START_BLOCK + fs->imap_blocks;
+		n = fs->zmap_blocks;
+	}
+	if ((map = malloc((size_t)n * fs->block_size)) == NULL)
+		return -ENOMEM;
+	for (i = 0; i < n; i++) {
+		r = mfs_read_block(fs, start + i,
+		    map + (size_t)i * fs->block_size);
+		if (r < 0) {
+			free(map);
+			return r;
+		}
+	}
+	*mapp = map;
+	return 0;
+}
+
+/*
+ * The maps are arrays of words, 16 bits wide in V1 and V2 and 32 bits in
+ * V3, in the byte order of the image.
+ */
+int
+mfs_map_bit(const struct mfs *fs, const unsigned char *map, uint32_t n)
 {
 	uint32_t byte;
 
 	byte = n / 8;
 	if (fs->order == MFS_BIG_ENDIAN)
 		byte ^= fs->version == 3 ? 3 : 1;
-	return (block[byte] >> (n % 8)) & 1;
+	return (map[byte] >> (n % 8)) & 1;
 }
 
-/* Count the clear bits among bits 1 to nbits of the map at block start. */
+/* Count the clear bits among bits 1 to nbits of a map. */
 static int
-count_clear(struct mfs *fs, uint32_t start, uint32_t nbits, uint32_t *count)
+count_clear(struct mfs *fs, enum mfs_map which, uint32_t nbits,
+    uint32_t *count)
 {
-	unsigned char *buf;
-	uint32_t bit, block, loaded, per;
+	unsigned char *map;
+	uint32_t bit;
 	int r;
 
-	if ((buf = malloc(fs->block_size)) == NULL)
-		return -ENOMEM;
-	per = fs->block_size * 8;
-	loaded = UINT32_MAX;
-	r = 0;
+	if ((r = mfs_load_map(fs, which, &map)) < 0)
+		return r;
 	*count = 0;
-	for (bit = 1; bit <= nbits; bit++) {
-		block = bit / per;
-		if (block != loaded) {
-			if ((r = mfs_read_block(fs, start + block, buf)) < 0)
-				break;
-			loaded = block;
-		}
-		if (!map_bit(fs, buf, bit % per))
+	for (bit = 1; bit <= nbits; bit++)
+		if (!mfs_map_bit(fs, map, bit))
 			(*count)++;
-	}
-	free(buf);
-	return r;
+	free(map);
+	return 0;
 }
 
 int
@@ -640,8 +726,8 @@ mfs_count_free(struct mfs *fs, uint32_t *inodes, uint32_t *zones)
 {
 	int r;
 
-	if ((r = count_clear(fs, START_BLOCK, fs->ninodes, inodes)) < 0)
+	if ((r = count_clear(fs, MFS_IMAP, fs->ninodes, inodes)) < 0)
 		return r;
-	return count_clear(fs, START_BLOCK + fs->imap_blocks,
-	    fs->nzones - fs->firstdatazone, zones);
+	return count_clear(fs, MFS_ZMAP, fs->nzones - fs->firstdatazone,
+	    zones);
 }

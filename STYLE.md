@@ -124,7 +124,8 @@ NetBSD.  The points that matter most, and the choices KNF leaves open:
   byte offsets.
 - Test data that several scripts use lives in files under `tests/`.
 - awk programs longer than a few lines live in files of their own
-  (`tests/*.awk`) and use POSIX awk only.
+  (`tests/*.awk`) and use POSIX awk only, without `^` (busybox awk may
+  be built without it).
 
 ## Editors
 

@@ -177,6 +177,50 @@ int	mfs_is_dev(const struct mfs_inode *);
 uint32_t mfs_rdev(const struct mfs_inode *);
 
 /*
+ * Checking file systems.
+ */
+
+/*
+ * Read inode number num into *ip without checking its contents.  Returns
+ * 0, or -EIO for a number outside the inode table.
+ */
+int	mfs_get_inode(struct mfs *, uint32_t, struct mfs_inode *);
+
+/*
+ * Called by mfs_walk_zones() for each zone number in use, with level 0
+ * for a data zone and 1, 2 or 3 for an indirect zone of that level.  A
+ * non-zero return value stops the walk and becomes its return value.
+ */
+typedef int (*mfs_zone_fn)(uint32_t, int, void *);
+
+/*
+ * Call fn for each zone of the file *ip: the direct zones, then each
+ * indirect zone followed by what it lists.  Zone numbers outside the data
+ * area are reported but not followed.  Returns 0, the first non-zero
+ * value fn returned, or a negative errno value.
+ */
+int	mfs_walk_zones(struct mfs *, const struct mfs_inode *, mfs_zone_fn,
+	    void *);
+
+enum mfs_map {
+	MFS_IMAP,			/* the inode map */
+	MFS_ZMAP			/* the zone map */
+};
+
+/*
+ * Read a whole bit map into new memory in *mapp, which the caller frees.
+ * Returns 0 or a negative errno value.
+ */
+int	mfs_load_map(struct mfs *, enum mfs_map, unsigned char **);
+
+/*
+ * Bit n of a map from mfs_load_map().  Bit i of the inode map is inode
+ * i; bit i of the zone map is zone firstdatazone + i - 1; bit 0 of both
+ * is never used.
+ */
+int	mfs_map_bit(const struct mfs *, const unsigned char *, uint32_t);
+
+/*
  * Count the inodes and zones that the bit maps mark free.  Returns 0 or a
  * negative errno value.
  */

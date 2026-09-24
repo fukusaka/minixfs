@@ -15,6 +15,7 @@
 : "${MINIXFS:=./minixfs}"
 : "${MKIMAGE:=./tests/mkimage}"
 : "${NEWFS_MINIXFS:=./newfs_minixfs}"
+: "${FSCK_MINIXFS:=./fsck_minixfs}"
 
 # The sanitizers are told to exit with this status, so that a sanitizer
 # report can be told apart from an ordinary failure (status 1).
@@ -28,7 +29,9 @@ export ASAN_OPTIONS UBSAN_OPTIONS
 T=${TMPDIR:-/tmp}/minixfs-test.$$
 rm -rf "$T"
 mkdir "$T" || exit 1
-trap 'rm -rf "$T"' 0
+# Extracted trees can hold directories without permissions; give them
+# back so that the whole scratch directory can be removed.
+trap 'chmod -R u+rwx "$T" 2>/dev/null; rm -rf "$T"' 0
 trap 'exit 1' 1 2 15
 
 ntest=0
@@ -142,6 +145,19 @@ check_note() {
 		pass "$1"
 	else
 		fail "$1" "stderr does not match \"$2\":" "$(last_err)"
+	fi
+}
+
+# check_found NAME PATTERN - it exited with 1, the status for problems
+# found, and printed a line matching PATTERN.
+check_found() {
+	if [ "$status" -ne 1 ]; then
+		fail "$1" "exit status $status, expected 1" \
+		    "stdout: $(head -5 "$T/out")"
+	elif grep -q -e "$2" "$T/out"; then
+		pass "$1"
+	else
+		fail "$1" "no line matches \"$2\":" "$(head -10 "$T/out")"
 	fi
 }
 
@@ -315,6 +331,9 @@ layout() {
 	[12]:logzone)	echo "10 16" ;;
 	3:logzone)	echo "12 16" ;;
 	3:blocksize)	echo "28 16" ;;
+	[123]:mode)	echo "0 16" ;;
+	1:nlinks)	echo "13 8" ;;
+	[23]:nlinks)	echo "2 16" ;;
 	1:size)		echo "4 32" ;;
 	[23]:size)	echo "8 32" ;;
 	1:zone0)	echo "14 16" ;;
@@ -361,4 +380,59 @@ set_inode() {
 	# shellcheck disable=SC2046
 	set -- "$1" "$4" $(layout "$(info_field "$1" version)" "$3")
 	poke_number "$1" $((_set_inode_base + $3)) "$4" "$2"
+}
+
+# get_number IMAGE OFFSET BITS - read a number stored in the byte order
+# of the image.
+get_number() {
+	od -An -tu1 -j "$2" -N $(($3 / 8)) "$1" |
+	    awk -v be="$(info_field "$1" "byte order")" '{
+		m = 1
+		for (i = 1; i <= NF; i++) {
+			if (be == "big-endian") {
+				v = v * 256 + $i
+			} else {
+				v = v + $i * m
+				m = m * 256
+			}
+		}
+	} END { printf "%.0f\n", v }'
+}
+
+# get_inode IMAGE INO FIELD - read a field of an inode.
+get_inode() {
+	_get_inode_base=$(inode_offset "$1" "$2")
+	# layout prints two words.
+	# shellcheck disable=SC2046
+	set -- "$1" $(layout "$(info_field "$1" version)" "$3")
+	get_number "$1" $((_get_inode_base + $2)) "$3"
+}
+
+# set_map_bit IMAGE imap|zmap BIT 0|1 - clear or set a bit of a bit map.
+# The maps are arrays of words, 16 bits wide in V1 and V2 and 32 bits in
+# V3, in the byte order of the image.
+set_map_bit() {
+	_set_map_bit_bs=$(info_field "$1" "block size")
+	_set_map_bit_start=$((2 * _set_map_bit_bs))
+	if [ "$2" = zmap ]; then
+		_set_map_bit_start=$((_set_map_bit_start + \
+		    $(info_field "$1" "inode map blocks") * _set_map_bit_bs))
+	fi
+	_set_map_bit_byte=$(($3 / 8))
+	if [ "$(info_field "$1" "byte order")" = big-endian ]; then
+		if [ "$(info_field "$1" version)" -eq 3 ]; then
+			_set_map_bit_byte=$((_set_map_bit_byte ^ 3))
+		else
+			_set_map_bit_byte=$((_set_map_bit_byte ^ 1))
+		fi
+	fi
+	_set_map_bit_off=$((_set_map_bit_start + _set_map_bit_byte))
+	_set_map_bit_old=$(od -An -tu1 -j "$_set_map_bit_off" -N 1 "$1")
+	_set_map_bit_mask=$((1 << ($3 % 8)))
+	if [ "$4" -eq 1 ]; then
+		_set_map_bit_new=$((_set_map_bit_old | _set_map_bit_mask))
+	else
+		_set_map_bit_new=$((_set_map_bit_old & ~_set_map_bit_mask))
+	fi
+	poke "$1" "$_set_map_bit_off" "$(printf '%03o' "$_set_map_bit_new")"
 }

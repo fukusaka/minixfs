@@ -1,4 +1,5 @@
 *.o
+/fsck_minixfs
 /minixfs
 /mount_minixfs
 /newfs_minixfs
