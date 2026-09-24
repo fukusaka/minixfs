@@ -227,15 +227,23 @@ mfs_read_dir(const char *path, void *buf, fuse_fill_dir_t filler, off_t off,
 static int
 mfs_statfs(const char *path, struct statvfs *sv)
 {
-	const struct mfs *fs;
+	struct mfs *fs;
+	uint32_t inodes, zones;
+	int r;
 
 	(void)path;
 	fs = image();
+	if ((r = mfs_count_free(fs, &inodes, &zones)) < 0)
+		return r;
 	(void)memset(sv, 0, sizeof(*sv));
 	sv->f_bsize = fs->block_size;
 	sv->f_frsize = fs->block_size;
 	sv->f_blocks = fs->nblocks;
+	sv->f_bfree = (fsblkcnt_t)zones << fs->log_zone_size;
+	sv->f_bavail = sv->f_bfree;
 	sv->f_files = fs->ninodes;
+	sv->f_ffree = inodes;
+	sv->f_favail = inodes;
 	sv->f_namemax = fs->namelen;
 	sv->f_flag = ST_RDONLY;
 	return 0;

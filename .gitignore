@@ -1,5 +1,6 @@
 *.o
 /minixfs
 /mount_minixfs
+/newfs_minixfs
 /tests/mkimage
 /build-san/

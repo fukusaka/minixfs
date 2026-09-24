@@ -224,6 +224,8 @@ cmd_info(int argc, char **argv)
 {
 	struct cmd c;
 	const struct mfs *fs;
+	uint32_t inodes, zones;
+	int r;
 
 	if (argc != 2)
 		usage();
@@ -242,6 +244,12 @@ cmd_info(int argc, char **argv)
 	(void)printf("first data zone: %" PRIu32 "\n", fs->firstdatazone);
 	(void)printf("log zone size: %" PRIu32 "\n", fs->log_zone_size);
 	(void)printf("max file size: %" PRIu32 "\n", fs->max_size);
+	if ((r = mfs_count_free(&c.fs, &inodes, &zones)) < 0) {
+		problem(&c, "%s: bit maps: %s", c.image, strerror(-r));
+	} else {
+		(void)printf("free inodes: %" PRIu32 "\n", inodes);
+		(void)printf("free zones: %" PRIu32 "\n", zones);
+	}
 	mfs_close(&c.fs);
 	return c.status;
 }

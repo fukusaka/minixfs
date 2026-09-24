@@ -13,8 +13,9 @@ file systems, on Linux, FreeBSD, NetBSD and MINIX 3 itself:
 ## Status
 
 Read-only access to V1, V2 and V3 file systems in either byte order,
-through the `minixfs` command, and read-only mounts through FUSE with
-`mount_minixfs`.
+through the `minixfs` command, read-only mounts through FUSE with
+`mount_minixfs`, and empty file systems of any of them with
+`newfs_minixfs`.
 
 | Magic  | Version | Names | Origin |
 |--------|---------|-------|--------|
@@ -71,6 +72,20 @@ mounts the image read-only.  Inode numbers, modes, owners, times and
 device numbers are those of the image.  Unmount it with `fusermount3 -u
 MOUNTPOINT` on Linux or `umount MOUNTPOINT` on the BSDs.
 
+    newfs_minixfs -V version [-N] [-B le|be] [-b block-size]
+        [-i inodes] [-l name-length] [-s blocks] [-t time]
+        [-z log-zone-size] image
+
+makes an empty file system.  The version has to be given.  The defaults
+are little-endian, 14-character names in V1 and V2, 4096-byte blocks in
+V3 (the smallest that MINIX 3 mounts), one inode for about every three
+blocks, and one-block zones.  The size comes from `-s`, which also
+creates the image file or cuts it to size, or from the size of an
+existing file.  `-t` sets the time of the root directory, for images
+that must come out the same each time; `-N` prints the layout and writes
+nothing.  The first 1024 bytes, where a boot block may be, are left
+alone.
+
 Exit status is 0 on success, 1 if anything failed, and 2 for a usage
 error.
 
@@ -121,9 +136,12 @@ top of `tests/mkimage.c`).  The scripts:
 - `t_fuzz.sh` - images with random bytes damaged: every command must end
   with status 0 or 1, without crashing and without writing outside
   `DEST`.
+- `t_newfs.sh` - `newfs_minixfs` makes, in every format, the image that
+  `tests/mkimage` makes from an empty tree; defaults, sizes, `-N`, the
+  boot block, and the options it must refuse.
 - `t_fsck.sh` - where util-linux is installed: `fsck.minix` accepts the
-  test images, and images from `mkfs.minix` are readable.  Skipped
-  otherwise.
+  test images and those of `newfs_minixfs`, and images from `mkfs.minix`
+  are readable.  Skipped otherwise.
 - `t_fuse.sh` - where `mount_minixfs` is built and mounting is allowed:
   the tree read through the kernel in four formats, with its names,
   contents, modes, owners, inode numbers and device numbers.  Skipped
@@ -137,6 +155,10 @@ top of `tests/mkimage.c`).  The scripts:
                             file data, directories, path lookup
     src/minixfs.c           the minixfs command
     src/mount_minixfs.c     the FUSE file system
+    src/newfs_minixfs.c     the newfs_minixfs command
+    src/mfs_format.c        library: laying out and writing a new
+                            file system
+    src/layout.h            the on-disk layout
     src/compat.h            the differences between systems
     tests/lib.sh            helpers for the test scripts
     tests/run.sh            runs the scripts; tap2junit.awk makes JUnit

@@ -14,6 +14,7 @@
 
 : "${MINIXFS:=./minixfs}"
 : "${MKIMAGE:=./tests/mkimage}"
+: "${NEWFS_MINIXFS:=./newfs_minixfs}"
 
 # The sanitizers are told to exit with this status, so that a sanitizer
 # report can be told apart from an ordinary failure (status 1).
@@ -321,6 +322,10 @@ layout() {
 	1:zone7)	echo "28 16" ;;
 	[23]:zone7)	echo "52 32" ;;
 	[23]:zone9)	echo "60 32" ;;
+	1:mtime)	echo "8 32" ;;
+	[23]:atime)	echo "12 32" ;;
+	[23]:mtime)	echo "16 32" ;;
+	[23]:ctime)	echo "20 32" ;;
 	*)
 		echo "Bail out! no field $2 in V$1" >&2
 		exit 1

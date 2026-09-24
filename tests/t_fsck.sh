@@ -62,6 +62,20 @@ EOF
 	done
 }
 
+# fsck_newfs: fsck.minix accepts what newfs_minixfs makes, in every format
+# it reads.
+fsck_newfs() {
+	for opts in "-V 1 -l 14" "-V 1 -l 30" "-V 2 -l 14" "-V 2 -l 30" \
+	    "-V 3 -b 1024"; do
+		rm -f "$T/img"
+		# The options are split on purpose.
+		# shellcheck disable=SC2086
+		"$NEWFS_MINIXFS" $opts -s 2048 "$T/img"
+		run "$FSCK_MINIX" -f "$T/img"
+		check_status "fsck.minix accepts newfs_minixfs $opts" 0
+	done
+}
+
 # mkfs_readable: images made by mkfs.minix can be read.  Each item is
 # the options, then the version and name length they give.
 mkfs_readable() {
@@ -88,6 +102,7 @@ mkfs_readable() {
 if have "$FSCK_MINIX"; then
 	fsck_accepts
 	fsck_triple
+	fsck_newfs
 else
 	skip "fsck.minix accepts the test images" "no $FSCK_MINIX"
 fi

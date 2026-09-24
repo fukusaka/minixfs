@@ -2,11 +2,12 @@
  * SPDX-License-Identifier: BSD-2-Clause
  * Copyright (c) 2026 Shoichi Fukusaka
  *
- * mfs.h - read access to MINIX file system images.
+ * mfs.h - read access to MINIX file system images, and making new ones.
  *
  * The library opens an image file, recognises the file system version and
  * byte order from the super block, and gives access to inodes, file data
- * and directories.  It never prints and has no global state.  Functions
+ * and directories; mfs_plan() and mfs_format() make empty file systems.
+ * The library never prints and has no global state.  Functions
  * return 0 (or a byte count) on success and a negative errno value on
  * failure, so that the result can be handed straight back to FUSE.
  */
@@ -174,5 +175,59 @@ int	mfs_is_dev(const struct mfs_inode *);
 
 /* The device number of a device inode. */
 uint32_t mfs_rdev(const struct mfs_inode *);
+
+/*
+ * Count the inodes and zones that the bit maps mark free.  Returns 0 or a
+ * negative errno value.
+ */
+int	mfs_count_free(struct mfs *, uint32_t *, uint32_t *);
+
+/*
+ * Making file systems (mfs_format.c).
+ */
+
+/* What the caller asks of a new file system. */
+struct mfs_params {
+	enum mfs_order	order;
+	int		version;	/* 1, 2 or 3 */
+	uint32_t	block_size;	/* 0: 1024, or 4096 for V3 */
+	uint32_t	namelen;	/* 0: 14, or 60 for V3 */
+	uint32_t	nblocks;	/* size in blocks */
+	uint32_t	ninodes;	/* 0: one for every 3 blocks */
+	uint32_t	log_zone_size;
+	uint32_t	time;		/* of the root directory */
+};
+
+/* Where everything goes; mfs_plan() works it out. */
+struct mfs_layout {
+	uint32_t	block_size;
+	uint32_t	namelen;
+	uint32_t	nblocks;	/* a whole number of zones */
+	uint32_t	nzones;
+	uint32_t	ninodes;
+	uint32_t	imap_blocks;
+	uint32_t	zmap_blocks;
+	uint32_t	inode_start;	/* first block of the inode table */
+	uint32_t	itable_blocks;
+	uint32_t	firstdatazone;
+	uint32_t	max_size;	/* for the super block */
+	uint16_t	magic;
+};
+
+/*
+ * Check the parameters and lay the file system out in *l.  Returns 0,
+ * -EINVAL for parameters that do not fit the version, -ENOSPC if the
+ * file system is too small to hold its root directory, or -EFBIG if it
+ * has more blocks or inodes than the version can count.
+ */
+int	mfs_plan(const struct mfs_params *, struct mfs_layout *);
+
+/*
+ * Write a new, empty file system laid out by mfs_plan() to the open
+ * descriptor fd: the super block, the bit maps, the inode table and the
+ * root directory.  The rest of the device is left as it is.  Returns 0
+ * or a negative errno value.
+ */
+int	mfs_format(int, const struct mfs_params *, const struct mfs_layout *);
 
 #endif /* MFS_H */

@@ -99,6 +99,11 @@ read_mount() {
 	check_true "$v: the device number is that of the image" \
 	    test "$(field_of "$mnt/dev/fd0" 6)" = "2,"
 
+	# df -P: file system, size, used, available, capacity, mount point.
+	check_true "$v: df shows free space" \
+	    test "$(as_mounter df -P "$mnt" | awk 'NR == 2 { print $4 }')" \
+	    -gt 0
+
 	check_true "$v: the mount cannot be written" \
 	    test "$(can_write "$mnt/new" && echo yes)" != yes
 }
