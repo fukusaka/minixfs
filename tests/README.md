@@ -64,7 +64,9 @@ top of `tests/mkimage.c`).  The scripts:
   each of them so that a second check finds nothing, and leaves a
   consistent image as it was.  `-y -l` links trees that nothing names,
   also in a loop, into a `/lost+found` that it makes or finds; `-e`
-  checks and sets the bits past the end of the maps.  A directory
+  checks and sets the bits past the end of the maps; `-w` notes spare
+  map blocks, a gap before the data zones and a maximum file size
+  other than MINIX's, and nothing about a layout as MINIX makes it.  A directory
   holding more directories than the walk first has room for is
   checked too.
 - `t_utillinux.sh` - where util-linux is installed: `fsck.minix` accepts

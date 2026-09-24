@@ -12,7 +12,7 @@
  * blanks and '#' starts a comment:
  *
  *	fs   [version=1|2|3] order=le|be [namelen=14|30] [block=N]
- *	     blocks=N inodes=N [logzone=N]
+ *	     blocks=N inodes=N [logzone=N] [spare=N] [gap=N]
  *	dir  PATH MODE UID GID MTIME
  *	file PATH MODE UID GID MTIME SIZE SEED [HOLESTART:HOLELEN ...]
  *	link PATH TARGET UID GID MTIME
@@ -23,7 +23,9 @@
  *
  * The fs line comes first.  namelen applies to V1 and V2; V3 names are
  * always 60 characters.  block is the block size of V3 (default 1024); V1
- * and V2 always use 1024.  blocks counts blocks of that size.
+ * and V2 always use 1024.  blocks counts blocks of that size.  spare gives
+ * each bit map N more blocks than it needs, and gap leaves N zones between
+ * the inode table and the first data zone, as other mkfs may.
  *
  * MODE is octal permission bits.  File contents are a pattern made from
  * SEED; bytes inside a hole are zero, and zones that lie wholly inside a
@@ -136,6 +138,8 @@ struct image {
 	uint32_t	inode_start;
 	uint32_t	isize;		/* bytes of an inode */
 	uint32_t	logzone;
+	uint32_t	spare;		/* map blocks beyond the need */
+	uint32_t	gap;		/* zones before the first data zone */
 	uint32_t	namelen;
 	uint32_t	nblocks;
 	uint32_t	next_ino;
@@ -516,6 +520,10 @@ fs_option(struct parser *ps, char *s)
 		img->ninodes = number(ps, s + 7, 10);
 	else if (strncmp(s, "logzone=", 8) == 0)
 		img->logzone = number(ps, s + 8, 10);
+	else if (strncmp(s, "spare=", 6) == 0)
+		img->spare = number(ps, s + 6, 10);
+	else if (strncmp(s, "gap=", 4) == 0)
+		img->gap = number(ps, s + 4, 10);
 	else
 		syntax(ps, "unknown fs option", s);
 }
@@ -563,13 +571,13 @@ lay_out_blocks(const struct parser *ps, struct image *img)
 		syntax(ps, "bad number of blocks", "");
 	img->nblocks = img->nzones << img->logzone;
 	bits = img->bsize * 8;
-	img->imap_blocks = (img->ninodes + 1 + bits - 1) / bits;
-	img->zmap_blocks = (img->nzones + 1 + bits - 1) / bits;
+	img->imap_blocks = (img->ninodes + 1 + bits - 1) / bits + img->spare;
+	img->zmap_blocks = (img->nzones + 1 + bits - 1) / bits + img->spare;
 	img->inode_start = START_BLOCK + img->imap_blocks + img->zmap_blocks;
 	itable = ((uint64_t)img->ninodes * img->isize + img->bsize - 1) /
 	    img->bsize;
 	img->firstdatazone = (uint32_t)((img->inode_start + itable +
-	    ((uint64_t)1 << img->logzone) - 1) >> img->logzone);
+	    ((uint64_t)1 << img->logzone) - 1) >> img->logzone) + img->gap;
 	if (img->firstdatazone >= img->nzones)
 		syntax(ps, "no room for data", "");
 	img->next_zone = img->firstdatazone;

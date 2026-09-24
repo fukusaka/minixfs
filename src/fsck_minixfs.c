@@ -4,7 +4,7 @@
  *
  * fsck_minixfs - check a MINIX file system image, and repair it.
  *
- *	fsck_minixfs [-ly] [-e 0|1] image
+ *	fsck_minixfs [-lwy] [-e 0|1] image
  *
  * The check reads the super block, walks the tree from the root, and then
  * compares what it found with the inode table and the bit maps:
@@ -51,6 +51,12 @@
  * V1 and V2 as Linux marks it, in V3 with the clean flag of MINIX 3, which
  * otherwise mounts the file system read-only.  If problems remain, it is
  * marked as having errors instead.
+ *
+ * With -w, what the fsck of MINIX 3 warns about is noted as well: map
+ * blocks beyond what the maps need, a first data zone after the inode
+ * table leaves room for, a maximum file size other than the one MINIX
+ * works out, and zones of more than 256 blocks.  Such a layout works, so
+ * it is not a problem.
  *
  * Each problem is printed on a line of its own, with "(repaired)" or
  * "(not repaired)" after it under -y.  A file system that is not marked
@@ -120,6 +126,7 @@ struct opts {
 	int		repair;			/* -y */
 	int		lost;			/* -l */
 	int		end;			/* -e 0 or 1; -1: no check */
+	int		warn;			/* -w */
 };
 
 /* The state of one check. */
@@ -153,6 +160,7 @@ struct check {
 	int			repair;		/* -y */
 	int			lost;		/* -l */
 	int			end;		/* -e, or -1 */
+	int			warn;		/* -w */
 	int			quiet;		/* report nothing but the sum */
 	int			cur_dirty;	/* *cur needs writing back */
 	char			why[64];	/* what makes an inode bad */
@@ -161,7 +169,7 @@ struct check {
 static void
 usage(void)
 {
-	(void)fprintf(stderr, "usage: fsck_minixfs [-ly] [-e 0|1] image\n");
+	(void)fprintf(stderr, "usage: fsck_minixfs [-lwy] [-e 0|1] image\n");
 	exit(EXIT_USAGE);
 }
 
@@ -1214,6 +1222,71 @@ check_maps(struct check *c)
 	free(zmap);
 }
 
+/* With -w, note something that works but is not as MINIX makes it. */
+static void
+warning(struct check *c, const char *fmt, ...)
+{
+	va_list ap;
+
+	if (!c->warn || c->quiet)
+		return;
+	(void)printf("%s: warning: ", c->image);
+	va_start(ap, fmt);
+	(void)vprintf(fmt, ap);
+	va_end(ap);
+	(void)putchar('\n');
+}
+
+/* Blocks of a map for n bits. */
+static uint64_t
+map_blocks(const struct check *c, uint64_t n)
+{
+	uint64_t per;
+
+	per = (uint64_t)c->fs.block_size * 8;
+	return (n + per - 1) / per;
+}
+
+/*
+ * What the fsck of MINIX 3 warns about.  The zone map may have a bit for
+ * each zone, as MINIX makes it, or for each data zone, as Linux does.
+ */
+static void
+warn_super(struct check *c)
+{
+	struct mfs *fs;
+	uint64_t first, itable, max, need, zones;
+
+	fs = &c->fs;
+	need = map_blocks(c, (uint64_t)fs->ninodes + 1);
+	if (fs->imap_blocks > need)
+		warning(c, "%" PRIu32 " inode map blocks, where %" PRIu64
+		    " are enough", fs->imap_blocks, need);
+	need = map_blocks(c, (uint64_t)fs->nzones + 1);
+	if (fs->zmap_blocks > need)
+		warning(c, "%" PRIu32 " zone map blocks, where %" PRIu64
+		    " are enough", fs->zmap_blocks, need);
+	itable = ((uint64_t)fs->ninodes * fs->inode_size + fs->block_size -
+	    1) / fs->block_size;
+	first = (fs->inode_start + itable + (1U << fs->log_zone_size) - 1) >>
+	    fs->log_zone_size;
+	if (fs->firstdatazone != first)
+		warning(c, "the first data zone is %" PRIu32 ", where the "
+		    "inode table leaves room from %" PRIu64,
+		    fs->firstdatazone, first);
+
+	/* MINIX reaches up to the double indirect zone. */
+	zones = fs->ndzones + fs->nindirs + (uint64_t)fs->nindirs * fs->nindirs;
+	max = MAX_SIZE;
+	if (((max - 1) >> fs->log_zone_size) / fs->block_size >= zones)
+		max = (zones * fs->block_size) << fs->log_zone_size;
+	if (fs->max_size != max)
+		warning(c, "the maximum file size is %" PRIu32 ", where MINIX "
+		    "works out %" PRIu64, fs->max_size, max);
+	if (fs->log_zone_size > 8)
+		warning(c, "a zone is %u blocks", 1U << fs->log_zone_size);
+}
+
 /* Under -y, write the super block back; see problem() for the result. */
 static int
 put_super(struct check *c)
@@ -1253,6 +1326,7 @@ check_super(struct check *c)
 			fs->state &= (uint16_t)~MFS_STATE_ERROR;
 		problem(c, put_super(c), "the super block records errors");
 	}
+	warn_super(c);
 	if (!c->quiet && !mfs_is_clean(fs) &&
 	    (fs->version == 3 || (fs->state & MFS_STATE_ERROR) == 0))
 		(void)printf("%s: the file system is not marked clean\n",
@@ -1270,6 +1344,7 @@ check(struct check *c, const char *image, const struct opts *o, int quiet)
 	c->repair = o->repair;
 	c->lost = o->lost;
 	c->end = o->end;
+	c->warn = o->warn;
 	c->quiet = quiet;
 	if (o->repair)
 		r = mfs_open_rw(&c->fs, image);
@@ -1346,7 +1421,8 @@ main(int argc, char **argv)
 	o.repair = 0;
 	o.lost = 0;
 	o.end = -1;
-	while ((ch = getopt(argc, argv, "e:ly")) != -1) {
+	o.warn = 0;
+	while ((ch = getopt(argc, argv, "e:lwy")) != -1) {
 		switch (ch) {
 		case 'e':
 			if (strcmp(optarg, "0") == 0)
@@ -1358,6 +1434,9 @@ main(int argc, char **argv)
 			break;
 		case 'l':
 			o.lost = 1;
+			break;
+		case 'w':
+			o.warn = 1;
 			break;
 		case 'y':
 			o.repair = 1;

@@ -422,6 +422,41 @@ run "$FSCK_MINIXFS" "$T/img"
 check_out_has "an empty file system from newfs_minixfs is consistent" \
     "1 of 704 inodes and 1 of 2033 zones in use, 0 problems\$"
 
+# -w notes what the fsck of MINIX 3 warns about, and none of it is a
+# problem.
+spec_small "version=3 block=4096 order=le" >"$T/spec"
+mkimage "$T/spec" "$T/img"
+run "$FSCK_MINIXFS" -w "$T/img"
+check_true "-w notes nothing about a layout as MINIX makes it" \
+    test "$(grep -c ': warning: ' "$T/out")" -eq 0
+spec_small "version=3 block=4096 order=le spare=1 gap=2" >"$T/spec"
+mkimage "$T/spec" "$T/img"
+run "$FSCK_MINIXFS" "$T/img"
+check_status "spare map blocks and a gap are no problem" 0
+check_true "without -w they are not noted" \
+    test "$(grep -c ': warning: ' "$T/out")" -eq 0
+run "$FSCK_MINIXFS" -w "$T/img"
+check_status "-w does not make them a problem" 0
+check_out_has "-w notes a spare inode map block" \
+    ": warning: 2 inode map blocks, where 1 are enough\$"
+check_out_has "-w notes a spare zone map block" \
+    ": warning: 2 zone map blocks, where 1 are enough\$"
+first=$(info_field "$T/img" "first data zone")
+check_out_has "-w notes a gap before the first data zone" \
+    ": warning: the first data zone is $first, where the inode table \
+leaves room from $((first - 2))\$"
+set_super "$T/img" maxsize 1000000
+run "$FSCK_MINIXFS" -w "$T/img"
+check_out_has "-w notes a maximum file size other than MINIX's" \
+    ": warning: the maximum file size is 1000000, where MINIX works out \
+2147483647\$"
+spec_small "version=2 order=be" >"$T/spec"
+mkimage "$T/spec" "$T/img"
+run "$FSCK_MINIXFS" -w "$T/img"
+check_out_has "-w notes the maximum file size that Linux writes in V2" \
+    ": warning: the maximum file size is 2147483647, where MINIX works \
+out 67378176\$"
+
 # Each kind of damage, in every version and both byte orders.
 for fs in "version=1" "version=2 namelen=30" "version=3" \
     "version=3 block=4096"; do
