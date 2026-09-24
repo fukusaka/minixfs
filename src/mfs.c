@@ -300,6 +300,12 @@ device_size(const struct mfs *fs)
 }
 
 int
+mfs_read_device(struct mfs *fs, void *buf, size_t len, off_t off)
+{
+	return dev_read(fs, buf, len, off);
+}
+
+int
 mfs_parse_tracks(const char *s, struct mfs_tracks *t)
 {
 	unsigned long v[3];

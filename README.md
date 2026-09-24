@@ -58,7 +58,13 @@ for older librefuse).
     minixfs [-T ...] extract [-v] IMAGE DEST [PATH]
     minixfs [-T ...] tar IMAGE [PATH] > ARCHIVE
 
-`info` prints the super block.  `ls -l` shows mode, links, owner, group,
+`info` prints the super block, the size of the image against that of
+the file system, and how much of the image is sectors of nothing but
+0xe5 or 0xa5, which formats leave and nothing else writes, with the
+commonest length of such runs.  A disk read with more sides than it was
+written on shows as runs of one track, half of the image; a copy cut
+short or a file system smaller than its disk shows too.  None of this
+is an error in itself.  `ls -l` shows mode, links, owner, group,
 size (or major and minor numbers for devices) and modification time in
 UTC.  `extract` copies a directory tree out of the image, keeping
 permission bits (without set-uid, set-gid and sticky bits) and times.

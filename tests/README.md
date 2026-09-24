@@ -83,7 +83,9 @@ top of `tests/mkimage.c`).  The scripts:
   side of a double-sided image reads with `info`, `ls`, `cat`,
   `extract`, `tar` and `fsck_minixfs` as the file system itself, and
   `fsck_minixfs -y -T` repairs it as `-y` repairs the file system and
-  leaves the other side alone; bad `-T` values are usage errors.
+  leaves the other side alone; bad `-T` values are usage errors.  `info`
+  gives the sizes and the runs of 0xe5 of the spread image, and none
+  with `-T`.
 - `t_fuse.sh` - where `mount_minixfs` is built and mounting is allowed:
   the tree read through the kernel in four formats, with its names,
   contents, modes, owners, inode numbers and device numbers.  Skipped

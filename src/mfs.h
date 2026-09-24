@@ -162,6 +162,12 @@ int	mfs_parse_tracks(const char *, struct mfs_tracks *);
 void	mfs_close(struct mfs *);
 
 /*
+ * Read len bytes of the device at byte offset off, through the tracks
+ * of -T if any.  Returns 0, or -EIO past the end of the image.
+ */
+int	mfs_read_device(struct mfs *, void *, size_t, off_t);
+
+/*
  * Read block number block of the file system into buf, which holds
  * block_size bytes.  Returns 0, or -EIO for a block outside the file
  * system or the image.

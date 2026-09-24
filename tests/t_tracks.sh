@@ -77,6 +77,22 @@ check_true "the spread image is twice the size" \
 run "$FSCK_MINIXFS" "$T/two"
 check_status "without -T the spread image is damaged" 1
 
+# info tells what is odd about the spread image, and nothing with -T.
+size=$((track * tracks))
+check_info "info gives the size of the image" "$T/two" "image size" \
+    $((2 * size))
+check_info "info notes a file system smaller than the image" "$T/two" \
+    "file system size" "$size (50% of the image)"
+check_info "info counts the tracks of 0xe5" "$T/two" "fill sectors" \
+    "$size bytes, 50% of the image, in $tracks runs"
+check_info "info gives the commonest length of them" "$T/two" \
+    "commonest fill run" "$track bytes, $tracks times"
+run "$MINIXFS" -T "$track:2:0" info "$T/two"
+check_out_has "with -T the file system fills the image" \
+    "^file system size: $size\$"
+check_out_has "with -T there is no fill" \
+    "^fill sectors: 0 bytes, 0% of the image, in 0 runs\$"
+
 for side in 0 1; do
 	T_OPT="$track:2:$side"
 	spread "$T/img" "$T/two" "$side"

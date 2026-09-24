@@ -228,6 +228,117 @@ entry_inode(struct cmd *c, const struct mfs_dirent *de, const char *path,
 
 /* info */
 
+#define SECTOR		512		/* the unit of the fill scan */
+#define FILL_E5		0xe5		/* what formats leave in sectors */
+#define FILL_A5		0xa5
+
+/* Whether a sector holds nothing but what a format leaves in it. */
+static int
+is_fill(const unsigned char *p)
+{
+	size_t i;
+
+	if (p[0] != FILL_E5 && p[0] != FILL_A5)
+		return 0;
+	for (i = 1; i < SECTOR; i++)
+		if (p[i] != p[0])
+			return 0;
+	return 1;
+}
+
+/* A run length of fill sectors, and how often it came. */
+struct run {
+	uint64_t	len;
+	uint64_t	count;
+};
+
+static void
+count_run(struct run **runs, size_t *nruns, uint64_t len)
+{
+	struct run *r;
+	size_t i;
+
+	for (i = 0; i < *nruns; i++) {
+		if ((*runs)[i].len == len) {
+			(*runs)[i].count++;
+			return;
+		}
+	}
+	if ((r = realloc(*runs, (*nruns + 1) * sizeof(*r))) == NULL)
+		err(1, NULL);
+	*runs = r;
+	r[*nruns].len = len;
+	r[*nruns].count = 1;
+	(*nruns)++;
+}
+
+/*
+ * The sectors of the image that hold nothing but 0xe5 or 0xa5, what
+ * formats write and nothing else does: a disk read with more sides than
+ * it was written on, or a copy cut short, shows up as runs of them.
+ */
+static void
+print_fill(struct cmd *c)
+{
+	static unsigned char buf[SECTOR];
+	struct run *runs, *best;
+	uint64_t bytes, len, nrun;
+	size_t i, nruns;
+	off_t off;
+
+	runs = NULL;
+	nruns = 0;
+	bytes = 0;
+	len = 0;
+	for (off = 0; off + SECTOR <= c->fs.image_size; off += SECTOR) {
+		if (mfs_read_device(&c->fs, buf, SECTOR, off) < 0)
+			break;
+		if (is_fill(buf)) {
+			len += SECTOR;
+			continue;
+		}
+		if (len > 0)
+			count_run(&runs, &nruns, len);
+		bytes += len;
+		len = 0;
+	}
+	if (len > 0)
+		count_run(&runs, &nruns, len);
+	bytes += len;
+	nrun = 0;
+	best = NULL;
+	for (i = 0; i < nruns; i++) {
+		nrun += runs[i].count;
+		if (best == NULL || runs[i].count > best->count)
+			best = &runs[i];
+	}
+	(void)printf("fill sectors: %" PRIu64 " bytes, %" PRIu64 "%% of the "
+	    "image, in %" PRIu64 " runs\n", bytes,
+	    c->fs.image_size > 0 ? bytes * 100 / (uint64_t)c->fs.image_size :
+	    0, nrun);
+	if (best != NULL)
+		(void)printf("commonest fill run: %" PRIu64 " bytes, %" PRIu64
+		    " time%s\n", best->len, best->count,
+		    best->count == 1 ? "" : "s");
+	free(runs);
+}
+
+/* The size of the image against that of the file system. */
+static void
+print_sizes(const struct cmd *c)
+{
+	uint64_t fsbytes, image;
+
+	image = (uint64_t)c->fs.image_size;
+	fsbytes = (uint64_t)c->fs.nblocks * c->fs.block_size;
+	(void)printf("image size: %" PRIu64 "\n", image);
+	(void)printf("file system size: %" PRIu64, fsbytes);
+	if (image > 0 && fsbytes != image)
+		(void)printf(" (%" PRIu64 "%% of the image)",
+		    fsbytes * 100 / image);
+	(void)putchar('\n');
+}
+
 static int
 cmd_info(int argc, char **argv)
 {
@@ -254,6 +365,8 @@ cmd_info(int argc, char **argv)
 	(void)printf("log zone size: %" PRIu32 "\n", fs->log_zone_size);
 	(void)printf("max file size: %" PRIu32 "\n", fs->max_size);
 	(void)printf("clean: %s\n", mfs_is_clean(fs) ? "yes" : "no");
+	print_sizes(&c);
+	print_fill(&c);
 	if ((r = mfs_count_free(&c.fs, &inodes, &zones)) < 0) {
 		problem(&c, "%s: bit maps: %s", c.image, strerror(-r));
 	} else {
