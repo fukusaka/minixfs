@@ -380,53 +380,96 @@ clean_value(const struct mfs *fs, uint16_t state)
 	return mfs_is_clean(&t) ? "clean" : "dirty";
 }
 
-/* -s: grow or shrink the file system, or say why not. */
+/*
+ * Why -s cannot be done, from what mfs_grow() or mfs_shrink() returned,
+ * and what was changed before it; exits.
+ */
 static void
-resize(struct mfs *fs, const struct options *o, int write)
+resize_error(const struct mfs *fs, const struct options *o, int r,
+    const char *done)
 {
 	uint64_t size;
 	uint32_t newz;
-	int r, shrink;
 
 	newz = o->nblocks >> fs->log_zone_size;
-	if (o->tracks.size != 0)
-		errx(1, "%s: an image of one side of a disk cannot change "
-		    "size", o->image);
-	shrink = newz < fs->nzones;
-	/* A device, or an image kept as it is, has to hold the zones. */
 	size = ((uint64_t)newz << fs->log_zone_size) * fs->block_size;
-	if (!shrink && (!fs->regular || o->keep)) {
-		if (fs->image_size < 0)
-			errx(1, "%s: the size of the device is not known; "
-			    "nothing changed", o->image);
-		if ((uint64_t)fs->image_size < size)
-			errx(1, "%s: the image holds %jd bytes, fewer than "
-			    "the %" PRIu64 " asked for; nothing changed",
-			    o->image, (intmax_t)fs->image_size, size);
-	}
-	(void)printf("blocks: %" PRIu32 " -> %" PRIu32 "\n", fs->nblocks,
-	    newz << fs->log_zone_size);
-	if (!write)
-		return;
-	r = shrink ? mfs_shrink(fs, o->nblocks, o->keep) :
-	    mfs_grow(fs, o->nblocks, o->keep);
 	switch (r) {
-	case 0:
-		return;
 	case -EFBIG:
-		errx(1, "%s: too many zones for V%d", o->image, fs->version);
+		errx(1, "%s: too many zones for V%d; %s", o->image,
+		    fs->version, done);
 	case -ENOSPC:
-		if (shrink)
+		if (newz < fs->nzones)
 			errx(1, "%s: what is in use does not fit in %" PRIu32
-			    " blocks; nothing changed", o->image,
-			    o->nblocks);
+			    " blocks; %s", o->image, o->nblocks, done);
 		errx(1, "%s: the zone map needs more blocks, and the zones "
-		    "that move up to make room need a larger size", o->image);
+		    "that move up to make room need a larger size; %s",
+		    o->image, done);
 	case -ENXIO:
-		errx(1, "%s: the image does not hold the new size; nothing "
-		    "changed", o->image);
+		if (fs->image_size < 0)
+			errx(1, "%s: the size of the device is not known; %s",
+			    o->image, done);
+		errx(1, "%s: the image holds %jd bytes, fewer than the %"
+		    PRIu64 " asked for; %s", o->image,
+		    (intmax_t)fs->image_size, size, done);
 	default:
-		errx(1, "%s: size: %s", o->image, strerror(-r));
+		errx(1, "%s: size: %s; %s", o->image, strerror(-r), done);
+	}
+}
+
+/* -s: grow or shrink the file system, or only find out whether it can. */
+static void
+resize(struct mfs *fs, const struct options *o, int flags, const char *done)
+{
+	uint32_t newz;
+	int r;
+
+	newz = o->nblocks >> fs->log_zone_size;
+	if (o->keep)
+		flags |= MFS_RESIZE_KEEP;
+	r = newz < fs->nzones ? mfs_shrink(fs, o->nblocks, flags) :
+	    mfs_grow(fs, o->nblocks, flags);
+	if (r < 0)
+		resize_error(fs, o, r, done);
+}
+
+/*
+ * Whatever of the options can be refused is refused before anything is
+ * written, so that nothing changes then.  Only what an earlier change
+ * alters escapes: -s after -l, whose directories take other zones.
+ */
+static void
+check_all(struct mfs *fs, const struct options *o, int write)
+{
+	int r;
+
+	if (fs->vmd && o->order != -1)
+		errx(1, "%s: -B does not know the super block and flex "
+		    "directories of Minix-vmd", o->image);
+	if (fs->vmd && o->namelen != 0)
+		errx(1, "%s: -l does not apply to Minix-vmd, whose flex "
+		    "directories take names of up to 60 characters", o->image);
+	/* What rewrites more than the super block wants it unmounted. */
+	if (write && !o->force && !mfs_is_clean(fs) &&
+	    (o->order != -1 || o->namelen != 0 || o->nblocks != 0))
+		errx(1, "%s: not marked clean, so it may be mounted; unmount "
+		    "it and run fsck_minixfs -y, or give -f", o->image);
+	if (o->namelen != 0) {
+		if (fs->version == 3)
+			errx(1, "%s: V3 names are always 60 characters",
+			    o->image);
+		if (long_names(fs, o->namelen) > 0)
+			errx(1, "%s: names too long; nothing changed", o->image);
+		if ((r = mfs_change_namelen(fs, o->namelen, 1)) < 0)
+			errx(1, "%s: name length: %s; nothing changed",
+			    o->image, strerror(-r));
+	}
+	if (o->max != NULL)
+		(void)max_size(fs, o->max);
+	if (o->nblocks != 0) {
+		if (o->tracks.size != 0)
+			errx(1, "%s: an image of one side of a disk cannot "
+			    "change size", o->image);
+		resize(fs, o, MFS_RESIZE_CHECK, "nothing changed");
 	}
 }
 
@@ -436,10 +479,10 @@ main(int argc, char **argv)
 	struct map_end maps[2];
 	struct options o;
 	struct mfs fs;
-	uint32_t max;
+	uint32_t len, max;
 	uint16_t state;
 	uint64_t bit;
-	const char *old;
+	const char *done, *from, *old;
 	int i, r, status, write;
 
 	parse(argc, argv, &o);
@@ -450,36 +493,34 @@ main(int argc, char **argv)
 		errx(1, "%s: %s", o.image, strerror(-r));
 	}
 	status = 0;
-	if (fs.vmd && o.order != -1)
-		errx(1, "%s: -B does not know the super block and flex "
-		    "directories of Minix-vmd", o.image);
-	if (fs.vmd && o.namelen != 0)
-		errx(1, "%s: -l does not apply to Minix-vmd, whose flex "
-		    "directories take names of up to 60 characters", o.image);
-	/* What rewrites more than the super block wants it unmounted. */
-	if (write && !o.force && !mfs_is_clean(&fs) &&
-	    (o.order != -1 || o.namelen != 0 || o.nblocks != 0))
-		errx(1, "%s: not marked clean, so it may be mounted; unmount "
-		    "it and run fsck_minixfs -y, or give -f", o.image);
+	check_all(&fs, &o, write);
+	done = "nothing changed";
 	if (o.order != -1) {
-		(void)printf("byte order: %s -> %s\n", order_name(fs.order),
-		    order_name(o.order));
+		from = order_name(fs.order);
 		if (write && (r = mfs_convert_order(&fs, o.order)) < 0)
 			errx(1, "%s: byte order: %s", o.image, strerror(-r));
+		(void)printf("byte order: %s -> %s\n", from,
+		    order_name(o.order));
+		done = "the byte order was changed, nothing else";
 	}
 	if (o.namelen != 0) {
-		if (fs.version == 3)
-			errx(1, "%s: V3 names are always 60 characters",
-			    o.image);
+		len = fs.namelen;
+		if (write && (r = mfs_change_namelen(&fs, o.namelen, 0)) < 0)
+			errx(1, "%s: name length: %s; %s", o.image,
+			    strerror(-r), done);
 		(void)printf("name length: %" PRIu32 " -> %" PRIu32 "\n",
-		    fs.namelen, o.namelen);
-		if (long_names(&fs, o.namelen) > 0)
-			errx(1, "%s: names too long; nothing changed", o.image);
-		if (write && (r = mfs_change_namelen(&fs, o.namelen)) < 0)
-			errx(1, "%s: name length: %s", o.image, strerror(-r));
+		    len, o.namelen);
+		done = o.order != -1 ? "the byte order and the name length "
+		    "were changed, nothing else" :
+		    "the name length was changed, nothing else";
 	}
-	if (o.nblocks != 0)
-		resize(&fs, &o, write);
+	if (o.nblocks != 0) {
+		len = fs.nblocks;
+		if (write)
+			resize(&fs, &o, 0, done);
+		(void)printf("blocks: %" PRIu32 " -> %" PRIu32 "\n", len,
+		    o.nblocks >> fs.log_zone_size << fs.log_zone_size);
+	}
 	for (i = 0; i < 2; i++) {
 		if ((r = load_end(&fs, i == 0 ? MFS_IMAP : MFS_ZMAP,
 		    &maps[i])) < 0)

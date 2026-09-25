@@ -142,6 +142,13 @@ marks a file system clean that it finds consistent, which also serves
 for V1 and V2 file systems made by MINIX, where the mark is never set.
 Neither MINIX nor Linux can change the size of a mounted file system.
 .Pp
+Whatever of the options can be refused is refused before anything is
+written, and nothing changes then; but whether
+.Fl s
+fits can change with the directories that
+.Fl l
+writes, and it then fails saying what was changed before it.
+.Pp
 .Fl B
 and
 .Fl l

@@ -543,18 +543,25 @@ int	mfs_convert_order(struct mfs *, enum mfs_order);
  * Give a V1 or V2 file system names of namelen (14 or 30) characters:
  * the magic number changes, and every directory is written anew with
  * entries of the new size, in zones that may differ from the old ones.
- * Returns 0; -EINVAL for V3 or another length; -ENOTSUP for Minix-vmd;
- * -ENAMETOOLONG if a name
- * is longer than namelen; -ENOSPC if the directories would not fit;
- * -EFBIG if a directory would outgrow its double indirect zone; or
- * another negative errno value.  Only the last can follow a write.
+ * With check set, only find out whether it can be done, writing nothing,
+ * on an image open for reading too.  Returns 0; -EINVAL for V3 or another
+ * length; -ENOTSUP for Minix-vmd; -ENAMETOOLONG if a name is longer than
+ * namelen; -ENOSPC if the directories would not fit; -EFBIG if a
+ * directory would outgrow its double indirect zone; or another negative
+ * errno value.  Only the last can follow a write.
  */
-int	mfs_change_namelen(struct mfs *, uint32_t);
+int	mfs_change_namelen(struct mfs *, uint32_t, int);
+
+/* Flags of mfs_grow() and mfs_shrink(). */
+#define MFS_RESIZE_KEEP		1	/* keep the size of the image */
+#define MFS_RESIZE_CHECK	2	/* only whether it can be done */
 
 /*
  * Grow the file system to nblocks blocks, cut down to whole zones, and
- * the image file with it, unless keep is set or the image is not a
- * regular file; the image must then hold them already.  When the zone map
+ * the image file with it, unless flags has MFS_RESIZE_KEEP or the image is
+ * not a regular file; the image must then hold them already.  With
+ * MFS_RESIZE_CHECK, only find out whether it can be done, writing nothing,
+ * on an image open for reading too.  When the zone map
  * has no room for the new zones, it gets more blocks: the inode table and
  * every data zone in use move up, and every zone number is changed to
  * match.  Returns 0; -EINVAL to shrink or with -M tracks; -EFBIG for more
@@ -566,8 +573,9 @@ int	mfs_grow(struct mfs *, uint32_t, int);
 
 /*
  * Shrink the file system to nblocks blocks, cut down to whole zones, and
- * the image file with it, unless keep is set or the image is not a
- * regular file, which then keeps what is past the end.  The zones in use past the new end move to
+ * the image file with it, unless flags has MFS_RESIZE_KEEP or the image is
+ * not a regular file, which then keeps what is past the end; flags as for
+ * mfs_grow().  The zones in use past the new end move to
  * free zones before it, and the zone numbers in inodes and indirect
  * zones follow them; the zone map keeps its blocks.  Returns 0; -EINVAL
  * to grow or with -M tracks; -ENOSPC if what is in use does not fit; or

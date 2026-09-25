@@ -546,7 +546,7 @@ write_dir(struct rename_state *rs, const struct dir_copy *d,
 }
 
 int
-mfs_change_namelen(struct mfs *fs, uint32_t namelen)
+mfs_change_namelen(struct mfs *fs, uint32_t namelen, int check)
 {
 	struct rename_state rs;
 	unsigned char sb[SUPER_SIZE], *buf, *zmap;
@@ -556,7 +556,7 @@ mfs_change_namelen(struct mfs *fs, uint32_t namelen)
 	size_t i, j;
 	int r;
 
-	if (!fs->writable)
+	if (!fs->writable && !check)
 		return -EROFS;
 	if (fs->version == 3 || (namelen != 14 && namelen != 30))
 		return -EINVAL;
@@ -592,6 +592,8 @@ mfs_change_namelen(struct mfs *fs, uint32_t namelen)
 		r = -ENOSPC;
 		goto out;
 	}
+	if (check)
+		goto out;
 
 	for (i = 0; i < rs.ndirs && r == 0; i++) {
 		for (j = 0; j < rs.dirs[i].nzones; j++)
@@ -729,7 +731,7 @@ grow_super(struct mfs *fs, uint32_t nzones, uint32_t zmap_blocks,
 }
 
 int
-mfs_grow(struct mfs *fs, uint32_t nblocks, int keep)
+mfs_grow(struct mfs *fs, uint32_t nblocks, int flags)
 {
 	struct mfs_inode ip;
 	struct grow g;
@@ -739,7 +741,7 @@ mfs_grow(struct mfs *fs, uint32_t nblocks, int keep)
 	uint32_t oldfirst, oldz;
 	int pad, r, resize;
 
-	if (!fs->writable)
+	if (!fs->writable && (flags & MFS_RESIZE_CHECK) == 0)
 		return -EROFS;
 	if (fs->tracks.size != 0)
 		return -EINVAL;
@@ -752,7 +754,7 @@ mfs_grow(struct mfs *fs, uint32_t nblocks, int keep)
 		return -EFBIG;
 	/* A device, or an image kept as it is, has to hold the zones. */
 	size = ((uint64_t)newz << fs->log_zone_size) * fs->block_size;
-	resize = fs->regular && !keep;
+	resize = fs->regular && (flags & MFS_RESIZE_KEEP) == 0;
 	if (!resize && (fs->image_size < 0 ||
 	    (uint64_t)fs->image_size < size))
 		return -ENXIO;
@@ -815,6 +817,8 @@ mfs_grow(struct mfs *fs, uint32_t nblocks, int keep)
 	    mfs_map_bit(fs, oldmap, (uint32_t)oldbits + 1) : 1;
 	for (i = (uint32_t)oldbits + 1; i < k * bits; i++)
 		mfs_set_map_bit(fs, zmap, i, i > newbits ? pad : 0);
+	if (flags & MFS_RESIZE_CHECK)
+		goto out;
 
 	/* Write: the file grows, then the zones and the inode table move. */
 	if (resize) {
@@ -924,7 +928,7 @@ note_tail(uint32_t zone, int level, const struct mfs_zref *ref, void *arg)
 }
 
 int
-mfs_shrink(struct mfs *fs, uint32_t nblocks, int keep)
+mfs_shrink(struct mfs *fs, uint32_t nblocks, int flags)
 {
 	struct mfs_inode ip;
 	struct shrink s;
@@ -933,7 +937,7 @@ mfs_shrink(struct mfs *fs, uint32_t nblocks, int keep)
 	uint32_t *newloc, bit, cursor, i, ino, n, ntail, z, zb;
 	int pad, r;
 
-	if (!fs->writable)
+	if (!fs->writable && (flags & MFS_RESIZE_CHECK) == 0)
 		return -EROFS;
 	if (fs->tracks.size != 0)
 		return -EINVAL;
@@ -983,6 +987,8 @@ mfs_shrink(struct mfs *fs, uint32_t nblocks, int keep)
 		mfs_set_map_bit(fs, zmap, cursor, 1);
 		newloc[z] = fs->firstdatazone + cursor - 1;
 	}
+	if (flags & MFS_RESIZE_CHECK)
+		goto out;
 
 	/* Write: the zones move down, then the numbers follow them. */
 	for (z = 0; z < ntail; z++) {
@@ -1027,7 +1033,7 @@ mfs_shrink(struct mfs *fs, uint32_t nblocks, int keep)
 		goto out;
 	fs->nzones = s.newz;
 	fs->nblocks = s.newz << fs->log_zone_size;
-	if (fs->regular && !keep) {
+	if (fs->regular && (flags & MFS_RESIZE_KEEP) == 0) {
 		if (ftruncate(fs->fd, (off_t)fs->nblocks * fs->block_size) ==
 		    -1) {
 			r = -errno;

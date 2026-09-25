@@ -366,6 +366,31 @@ for opt in "-k" "-N -k"; do
 done
 check_same_file "-k changes nothing then" "$T/before" "$T/img"
 
+# What can be refused is refused before anything is written: a change
+# asked for with one that cannot be done does not happen either.
+v="refused"
+rm -f "$T/img"
+"$NEWFS_MINIXFS" -V 2 -s 1000 "$T/img"
+cp "$T/img" "$T/before"
+for opt in "-B be -s 1" "-l 30 -s 1" "-B be -l 30 -s 1"; do
+	cp "$T/before" "$T/img"
+	# The options are split on purpose.
+	# shellcheck disable=SC2086
+	run "$TUNEFS_MINIXFS" $opt "$T/img"
+	check_err "$opt is refused" "; nothing changed\$"
+	check_same_file "$opt changes nothing" "$T/before" "$T/img"
+done
+cp "$T/before" "$T/img"
+run "$TUNEFS_MINIXFS" -B be -m big "$T/img"
+check_status "-B be -m big is a usage error" 2
+check_same_file "-B be -m big changes nothing" "$T/before" "$T/img"
+rm -f "$T/img"
+"$NEWFS_MINIXFS" -V 3 -s 1000 "$T/img"
+cp "$T/img" "$T/before"
+run "$TUNEFS_MINIXFS" -B be -l 30 "$T/img"
+check_err "V3: -B be -l 30 is refused" "always 60 characters"
+check_same_file "V3: -B be -l 30 changes nothing" "$T/before" "$T/img"
+
 for bad in "-B middle" "-c maybe" "-e 2" "-m 0" "-m 2147483648" \
     "-m big" "-M 0:2:0" "-l 20" "-s 0" "-s x" "-k"; do
 	# The option and its value are split on purpose.
