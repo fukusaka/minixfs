@@ -11,9 +11,14 @@
  *	minixfs [-M ...] extract [-dv] IMAGE DEST [PATH]
  *	minixfs [-M ...] tar IMAGE [PATH] > ARCHIVE
  *
+ * and, in minixfs_write.c, put, mkdir, rm, mv, ln, chmod and chown, which
+ * change the image.
+ *
  * -M reads an image that holds the file system in the tracks of one side
  * only, such as a single-sided disk read as double-sided: tracks of SIZE
- * bytes, HEADS to a cylinder, of which side SIDE (from 0) is used.
+ * bytes, HEADS to a cylinder, of which side SIDE (from 0) is used.  -f
+ * lets the commands that write change a file system that is not marked
+ * clean.
  *
  * Each command reports every problem it meets and goes on where it can.
  * The exit status is 0 on success, 1 if anything failed and 2 for a
@@ -37,56 +42,39 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "mfs.h"
+#include "minixfs.h"
 
 #ifndef O_NOFOLLOW
 #define O_NOFOLLOW	0
 #endif
 
-#define MAX_DEPTH	256		/* deepest directory entered */
 #define COPY_SIZE	65536		/* bytes copied at a time */
 
-/* How the image file holds the file system: -M. */
-static struct mfs_tracks tracks;
+struct mfs_tracks tracks;
+int force;
 
-/* One command on one image. */
-struct cmd {
-	struct mfs	fs;
-	const char	*image;
-	int		status;		/* exit status so far */
-};
-
-/*
- * The directories on the path of a walk.  A damaged image can make a
- * directory contain itself; a walk refuses to enter one twice.
- */
-struct walk {
-	uint32_t	stack[MAX_DEPTH];
-	int		depth;
-};
-
-/* The entries of a directory other than "." and "..". */
-struct dirlist {
-	struct mfs_dirent	*ent;
-	size_t			max;
-	size_t			n;
-};
-
-static void
+void
 usage(void)
 {
 	(void)fprintf(stderr,
-	    "usage: minixfs [-M SIZE:HEADS:SIDE] info IMAGE\n"
-	    "       minixfs [-M ...] ls [-lR] IMAGE [PATH]\n"
-	    "       minixfs [-M ...] cat IMAGE PATH\n"
-	    "       minixfs [-M ...] blocks [-r] IMAGE PATH\n"
-	    "       minixfs [-M ...] extract [-dv] IMAGE DEST [PATH]\n"
-	    "       minixfs [-M ...] tar IMAGE [PATH] > ARCHIVE\n");
+	    "usage: minixfs [-M SIZE:HEADS:SIDE] [-f] COMMAND ...\n"
+	    "       minixfs info IMAGE\n"
+	    "       minixfs ls [-lR] IMAGE [PATH]\n"
+	    "       minixfs cat IMAGE PATH\n"
+	    "       minixfs blocks [-r] IMAGE PATH\n"
+	    "       minixfs extract [-dv] IMAGE DEST [PATH]\n"
+	    "       minixfs tar IMAGE [PATH] > ARCHIVE\n"
+	    "       minixfs put [-Rdin] [-o uid:gid] IMAGE HOST... PATH\n"
+	    "       minixfs mkdir [-p] [-m mode] [-o uid:gid] IMAGE PATH...\n"
+	    "       minixfs rm [-r] IMAGE PATH...\n"
+	    "       minixfs mv IMAGE OLD NEW\n"
+	    "       minixfs ln [-s] IMAGE TARGET PATH\n"
+	    "       minixfs chmod IMAGE MODE PATH...\n"
+	    "       minixfs chown IMAGE UID:GID PATH...\n");
 	exit(2);
 }
 
-/* Report a problem and remember that the command failed. */
-static void
+void
 problem(struct cmd *c, const char *fmt, ...)
 {
 	va_list ap;
@@ -97,8 +85,7 @@ problem(struct cmd *c, const char *fmt, ...)
 	c->status = 1;
 }
 
-/* Open the image, or report why not and exit. */
-static void
+void
 open_image(struct cmd *c, const char *image)
 {
 	int r;
@@ -112,8 +99,7 @@ open_image(struct cmd *c, const char *image)
 	errx(1, "%s: %s", image, strerror(-r));
 }
 
-/* Look up path in the image; report and return -1 if that fails. */
-static int
+int
 lookup(struct cmd *c, const char *path, struct mfs_inode *ip)
 {
 	int r;
@@ -125,8 +111,7 @@ lookup(struct cmd *c, const char *path, struct mfs_inode *ip)
 	return 0;
 }
 
-/* dir/name in new memory, or name alone if dir is empty. */
-static char *
+char *
 join(struct cmd *c, const char *dir, const char *name)
 {
 	size_t dlen, nlen;
@@ -147,7 +132,7 @@ join(struct cmd *c, const char *dir, const char *name)
 	return s;
 }
 
-static int
+int
 walk_enter(struct cmd *c, struct walk *w, uint32_t ino, const char *path)
 {
 	int i;
@@ -167,7 +152,7 @@ walk_enter(struct cmd *c, struct walk *w, uint32_t ino, const char *path)
 	return 0;
 }
 
-static void
+void
 walk_leave(struct walk *w)
 {
 	w->depth--;
@@ -192,11 +177,7 @@ collect_fn(const struct mfs_dirent *de, void *arg)
 	return 0;
 }
 
-/*
- * Collect the entries of a directory, since a walk cannot recurse from
- * inside mfs_readdir().  Returns -1 after reporting a failure.
- */
-static int
+int
 read_dir(struct cmd *c, const struct mfs_inode *dp, const char *path,
     struct dirlist *dl)
 {
@@ -215,8 +196,7 @@ read_dir(struct cmd *c, const struct mfs_inode *dp, const char *path,
 	return 0;
 }
 
-/* Read the inode of a directory entry; report and return -1 on failure. */
-static int
+int
 entry_inode(struct cmd *c, const struct mfs_dirent *de, const char *path,
     struct mfs_inode *ip)
 {
@@ -1480,16 +1460,31 @@ main(int argc, char **argv)
 		{ "cat", cmd_cat },
 		{ "blocks", cmd_blocks },
 		{ "extract", cmd_extract },
-		{ "tar", cmd_tar }
+		{ "tar", cmd_tar },
+		{ "put", cmd_put },
+		{ "mkdir", cmd_mkdir },
+		{ "rm", cmd_rm },
+		{ "mv", cmd_mv },
+		{ "ln", cmd_ln },
+		{ "chmod", cmd_chmod },
+		{ "chown", cmd_chown }
 	};
 	size_t i;
 
-	/* -M comes before the command, whose options getopt() reads. */
-	if (argc > 2 && strcmp(argv[1], "-M") == 0) {
-		if (mfs_parse_tracks(argv[2], &tracks) < 0)
+	/* -M and -f come before the command, whose options getopt() reads. */
+	while (argc > 1 && argv[1][0] == '-') {
+		if (strcmp(argv[1], "-M") == 0 && argc > 2) {
+			if (mfs_parse_tracks(argv[2], &tracks) < 0)
+				usage();
+			argc -= 2;
+			argv += 2;
+		} else if (strcmp(argv[1], "-f") == 0) {
+			force = 1;
+			argc--;
+			argv++;
+		} else {
 			usage();
-		argc -= 2;
-		argv += 2;
+		}
 	}
 	if (argc < 2)
 		usage();

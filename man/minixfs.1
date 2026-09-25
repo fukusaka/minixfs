@@ -40,12 +40,69 @@
 .Cm tar
 .Ar image
 .Op Ar path
+.Nm
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl f
+.Cm put
+.Op Fl Rdin
+.Op Fl o Ar uid : Ns Ar gid
+.Ar image
+.Ar host ...
+.Ar path
+.Nm
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl f
+.Cm mkdir
+.Op Fl p
+.Op Fl m Ar mode
+.Op Fl o Ar uid : Ns Ar gid
+.Ar image
+.Ar path ...
+.Nm
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl f
+.Cm rm
+.Op Fl r
+.Ar image
+.Ar path ...
+.Nm
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl f
+.Cm mv
+.Ar image
+.Ar old
+.Ar new
+.Nm
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl f
+.Cm ln
+.Op Fl s
+.Ar image
+.Ar target
+.Ar path
+.Nm
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl f
+.Cm chmod
+.Ar image
+.Ar mode
+.Ar path ...
+.Nm
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl f
+.Cm chown
+.Ar image
+.Ar uid : Ns Ar gid
+.Ar path ...
 .Sh DESCRIPTION
 .Nm
 reads a MINIX file system image of any version, V1, V2 or V3, in either
 byte order, and of Minix-vmd; see
 .Xr minixfs 5 .
-It never writes to the image.
+The commands from
+.Cm put
+on change the image, as the mtools change an MS-DOS image, without
+mounting it; the others never write to it.
 Paths inside the image are taken from its root directory whether or not
 they start with
 .Ql / .
@@ -154,7 +211,95 @@ lists without privileges and makes when run as root.
 Names and link targets longer than ustar holds go into pax extended
 headers.
 Sockets cannot be stored and are counted as left out.
+.It Cm put Oo Fl Rdin Oc Oo Fl o Ar uid : Ns Ar gid Oc Ar image Ar host ... Ar path
+Copy files of the host into the image, as
+.Cm extract
+copies them out: into the directory
+.Ar path
+under their own names, or as
+.Ar path
+if that is not a directory yet.
+Regular files, symbolic links and pipes go in with their modes and
+mtimes; directories with
+.Fl R ,
+and what is in them; devices with
+.Fl d
+only.
+Sockets cannot go in, and are counted in a warning at the end with the
+devices left out.
+A name in the way is replaced, unless
+.Fl n
+keeps it, or
+.Fl i
+asks first, on standard error, and takes an answer from standard input;
+a directory in the way of a directory is entered.
+A file that runs out of room is removed again.
+.It Cm mkdir Oo Fl p Oc Oo Fl m Ar mode Oc Oo Fl o Ar uid : Ns Ar gid Oc Ar image Ar path ...
+Make directories, of mode 0755 unless
+.Fl m
+gives one in octal; with
+.Fl p ,
+each missing directory on the way as well, of mode 0755, and no
+complaint about one that is there.
+.It Cm rm Oo Fl r Oc Ar image Ar path ...
+Remove files, and with
+.Fl r
+directories and everything in them.
+.It Cm mv Ar image Ar old Ar new
+Rename
+.Ar old
+to
+.Ar new ,
+or move it into
+.Ar new
+if that is a directory, in place of a file of that name, or of an empty
+directory in place of a directory.
+.It Cm ln Oo Fl s Oc Ar image Ar target Ar path
+Give the file
+.Ar target
+another name,
+.Ar path ,
+or with
+.Fl s
+make
+.Ar path
+a symbolic link to the text
+.Ar target ;
+into the directory
+.Ar path
+under the last component of
+.Ar target
+if
+.Ar path
+is one.
+.It Cm chmod Ar image Ar mode Ar path ...
+Set the permission bits, in octal.
+.It Cm chown Ar image Ar uid : Ns Ar gid Ar path ...
+Set the owner, the group, or both, as numbers:
+.Ar uid ,
+.Ar uid : Ns Ar gid
+or
+.Cm \&: Ns Ar gid ;
+the image knows no names.
 .El
+.Pp
+What the commands make belongs to the directory it is made in, since the
+owner of a file in an image is a matter of the system that will use the
+image, not of who runs
+.Nm ;
+.Fl o
+gives another owner, with numbers that the inodes can hold (a group of
+a byte in V1).
+The image is locked while a command has it open, as
+.Nm mount_minixfs Fl w
+locks it, and its clean mark is away until the command is done, so that
+one cut short leaves it for
+.Nm fsck_minixfs .
+A file system that is not marked clean may be mounted elsewhere and is
+refused, unless
+.Fl f
+is given; the flex directories of Minix-vmd, which cannot be written,
+are refused always.
 .Sh OPTIONS
 .Bl -tag -width Ds
 .It Fl M Ar size : Ns Ar heads : Ns Ar side
@@ -174,6 +319,9 @@ The super block of such an image is still in place, so
 .Cm info
 looks right while the rest reads as damage; its fill count shows half of
 the image as runs of 4608 bytes.
+.It Fl f
+Let the commands that write change a file system that is not marked
+clean, which is left as it is.
 .El
 .Sh EXIT STATUS
 .Nm
@@ -190,6 +338,13 @@ Find where the boot program lies, as installboot of MINIX writes it into
 the boot block:
 .Bd -literal -offset indent
 $ minixfs blocks -r root.img /boot
+.Ed
+.Pp
+Put a tree into an image, and a file over one that is there, asking
+first:
+.Bd -literal -offset indent
+$ minixfs put -R usr.img src /usr
+$ minixfs put -i usr.img passwd /etc/passwd
 .Ed
 .Pp
 Move the whole tree, devices and hard links included, onto a new image:

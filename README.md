@@ -74,6 +74,13 @@ for older librefuse).
     minixfs [-M ...] blocks [-r] IMAGE PATH
     minixfs [-M ...] extract [-dv] IMAGE DEST [PATH]
     minixfs [-M ...] tar IMAGE [PATH] > ARCHIVE
+    minixfs [-M ...] [-f] put [-Rdin] [-o uid:gid] IMAGE HOST... PATH
+    minixfs [-M ...] [-f] mkdir [-p] [-m mode] [-o uid:gid] IMAGE PATH...
+    minixfs [-M ...] [-f] rm [-r] IMAGE PATH...
+    minixfs [-M ...] [-f] mv IMAGE OLD NEW
+    minixfs [-M ...] [-f] ln [-s] IMAGE TARGET PATH
+    minixfs [-M ...] [-f] chmod IMAGE MODE PATH...
+    minixfs [-M ...] [-f] chown IMAGE UID:GID PATH...
 
 `info` prints the super block, the size of the image against that of
 the file system, and how much of the image is sectors of nothing but
@@ -112,6 +119,18 @@ MINIX 1.5 disks, is `-M 4608:2:0`: every other track is empty.  The
 super block is then still in place, so `info` looks right, while the
 rest reads as damage.  `fsck_minixfs -y -M` repairs such an image in
 place and leaves the other side alone.
+
+The commands from `put` on change the image without mounting it, as the
+mtools change an MS-DOS image.  `put` copies files of the host in, as
+`extract` copies them out: into the directory `PATH` under their own
+names, or as `PATH`; directories with `-R`, devices with `-d`; a name in
+the way is replaced, unless `-n` keeps it or `-i` asks first.  `mkdir`,
+`rm`, `mv`, `ln` and `ln -s`, `chmod` (octal) and `chown` (numbers) do
+what their namesakes do.  What is made belongs to the directory it is
+made in, since the owner of a file in an image is a matter of the system
+that will use it, not of who runs `minixfs`; `-o uid:gid` gives another
+owner.  The image is locked and its clean mark is away while a command
+runs; a file system not marked clean is refused unless `-f` is given.
 
     mount_minixfs [-w [-u always|sync|seconds]] [-M SIZE:HEADS:SIDE]
         [FUSE options] IMAGE MOUNTPOINT
@@ -310,7 +329,10 @@ sanitizers, other shells and JUnit output.
 
     src/mfs.h, src/mfs.c    library: super block, inodes, zone mapping,
                             file data, directories, path lookup
-    src/minixfs.c           the minixfs command
+    src/minixfs.h, src/minixfs.c
+                            the minixfs command: what it shares, and
+                            the commands that read
+    src/minixfs_write.c     the commands of minixfs that write
     src/mount_minixfs.c     the FUSE file system
     src/newfs_minixfs.c     the newfs_minixfs command
     src/fsck_minixfs.c      the fsck_minixfs command

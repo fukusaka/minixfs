@@ -65,8 +65,9 @@ $(MKDUMP): tests/mkdump.c
 $(MFSOP): tests/mfsop.c $(LIBOBJS)
 	$(CC) $(CFLAGS) $(WARNFLAGS) -o $(MFSOP) tests/mfsop.c $(LIBOBJS)
 
-$(PROG): src/minixfs.o $(LIBOBJS)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $(PROG) src/minixfs.o $(LIBOBJS)
+$(PROG): src/minixfs.o src/minixfs_write.o $(LIBOBJS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $(PROG) src/minixfs.o \
+	    src/minixfs_write.o $(LIBOBJS)
 
 $(NEWFS): src/newfs_minixfs.o src/tree.o src/spec.o $(LIBOBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $(NEWFS) src/newfs_minixfs.o src/tree.o \
@@ -95,7 +96,8 @@ src/mfs_format.o: src/mfs.h src/layout.h
 src/mfs_tune.o: src/mfs.h src/layout.h
 src/mfs_ops.o: src/mfs.h src/layout.h
 src/mfs_write.o: src/mfs.h src/layout.h
-src/minixfs.o: src/compat.h src/mfs.h
+src/minixfs.o: src/compat.h src/mfs.h src/minixfs.h
+src/minixfs_write.o: src/compat.h src/mfs.h src/minixfs.h
 src/newfs_minixfs.o: src/mfs.h src/spec.h src/tree.h
 src/tree.o: src/compat.h src/mfs.h src/spec.h src/tree.h
 src/spec.o: src/compat.h src/mfs.h src/spec.h
@@ -131,7 +133,7 @@ check: all $(MKIMAGE) $(MKDUMP) $(MFSOP)
 check-sanitize: $(MKIMAGE) $(MKDUMP)
 	rm -rf build-san && mkdir build-san
 	$(CC) $(SANFLAGS) $(WARNFLAGS) -o build-san/$(PROG) \
-	    src/minixfs.c $(LIBSRCS)
+	    src/minixfs.c src/minixfs_write.c $(LIBSRCS)
 	$(CC) $(SANFLAGS) $(WARNFLAGS) -o build-san/$(NEWFS) \
 	    src/newfs_minixfs.c src/tree.c src/spec.c $(LIBSRCS)
 	$(CC) $(SANFLAGS) $(WARNFLAGS) -o build-san/$(FSCK) \

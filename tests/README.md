@@ -165,6 +165,21 @@ top of `tests/mkimage.c`).  The scripts:
   put past the end of the file, which then grows over zeros; a writer killed after a change leaves the maps right
   with `-a` and behind the inodes without; and a writer holds a lock that
   `tunefs_minixfs` and `newfs_minixfs` meet, but not a reader.
+- `t_put.sh` - the commands of `minixfs` that write an image without
+  mounting it, `put`, `mkdir`, `rm`, `mv`, `ln`, `chmod` and `chown`,
+  make the same changes as their namesakes make on a directory of the
+  host, and the image then extracts as that directory and passes
+  `fsck_minixfs`, in every version and byte order and with zones of two
+  blocks; `put` keeps mtimes and `chmod` sets the set-user-ID bit; what
+  is made belongs to the directory it is made in, or to `-o`, and a
+  group V1 cannot hold is refused; a name in the way is replaced, kept
+  with `-n` or asked about with `-i`, a directory needs `-R` and does
+  not replace a file; names too long, the root, a directory below
+  itself, a link to a directory, bad modes and owners are refused; a
+  file that runs out of room leaves nothing; a file system not marked
+  clean is refused without `-f` and keeps its mark with it, flex
+  directories are refused, a writer holding the lock is met, and `-M`
+  writes through the tracks.
 - `t_fuse.sh` - where `mount_minixfs` is built and mounting is allowed:
   the tree read through the kernel in four formats, with its names,
   contents, modes, owners, inode numbers and device numbers; and with

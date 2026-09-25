@@ -70,6 +70,13 @@ librefuse 向け）でビルドできます。
     minixfs [-M ...] blocks [-r] IMAGE PATH
     minixfs [-M ...] extract [-dv] IMAGE DEST [PATH]
     minixfs [-M ...] tar IMAGE [PATH] > ARCHIVE
+    minixfs [-M ...] [-f] put [-Rdin] [-o uid:gid] IMAGE HOST... PATH
+    minixfs [-M ...] [-f] mkdir [-p] [-m mode] [-o uid:gid] IMAGE PATH...
+    minixfs [-M ...] [-f] rm [-r] IMAGE PATH...
+    minixfs [-M ...] [-f] mv IMAGE OLD NEW
+    minixfs [-M ...] [-f] ln [-s] IMAGE TARGET PATH
+    minixfs [-M ...] [-f] chmod IMAGE MODE PATH...
+    minixfs [-M ...] [-f] chown IMAGE UID:GID PATH...
 
 `info` は、superblock、イメージとファイルシステムの大きさ、イメージのうち 0xe5 か 0xa5 だけの
 セクタがどれだけあるかを、その連なりの最も多い長さとともに表示します。これらの値はフォーマットが
@@ -103,6 +110,17 @@ sticky ビットを除く）と時刻を保ち、リンクが 2 つ以上ある�
 MINIX 1.5 のディスクは `-M 4608:2:0` で、トラックは 1 つおきに空です。こうしたイメージでも
 superblock は正しい位置にあるので、`info` は正しく見えますが、残りは壊れているように読めます。
 `fsck_minixfs -y -M` は、そうしたイメージをその場で修復し、もう片方の面には手を付けません。
+
+`put` から後のコマンドは、mtools が MS-DOS のイメージを変えるのと同じように、マウントせずに
+イメージを変えます。`put` は `extract` の逆向きで、ホストのファイルをイメージに写します。`PATH` が
+ディレクトリならその中に元の名前で、そうでなければ `PATH` という名前で入れます。ディレクトリは
+`-R`、デバイスは `-d` のときだけ入れます。既存の名前があれば置き換えますが、`-n` なら残し、`-i` なら
+先に尋ねます。`mkdir`、`rm`、`mv`、`ln` と `ln -s`、`chmod`（8 進数）、`chown`（数）は、同じ名前の
+コマンドと同じことをします。作ったものは、それを作ったディレクトリの所有者のものになります。
+イメージの中のファイルの所有者は、そのイメージを使うシステムの側の事柄であって、`minixfs` を
+動かした人とは関係がないからです。`-o uid:gid` で別の所有者を与えられます。コマンドの実行中、
+イメージはロックされ、clean の印は外れます。clean の印のないファイルシステムは、`-f` がなければ
+拒みます。
 
     mount_minixfs [-w [-u always|sync|seconds]] [-M SIZE:HEADS:SIDE]
         [FUSE options] IMAGE MOUNTPOINT
@@ -269,7 +287,9 @@ dump_minixfs(8)、restore_minixfs(8)、ファイルシステムの形式につ�
 
     src/mfs.h, src/mfs.c    ライブラリ: superblock、inode、zone の対応、
                             ファイルのデータ、ディレクトリ、パスの検索
-    src/minixfs.c           minixfs コマンド
+    src/minixfs.h, src/minixfs.c
+                            minixfs コマンド: 共通部分と、読むコマンド
+    src/minixfs_write.c     minixfs の書くコマンド
     src/mount_minixfs.c     FUSE ファイルシステム
     src/newfs_minixfs.c     newfs_minixfs コマンド
     src/fsck_minixfs.c      fsck_minixfs コマンド

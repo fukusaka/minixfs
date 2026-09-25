@@ -46,6 +46,60 @@
 .Cm tar
 .Ar image
 .Op Ar path
+.Nm
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl f
+.Cm put
+.Op Fl Rdin
+.Op Fl o Ar uid : Ns Ar gid
+.Ar image
+.Ar host ...
+.Ar path
+.Nm
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl f
+.Cm mkdir
+.Op Fl p
+.Op Fl m Ar mode
+.Op Fl o Ar uid : Ns Ar gid
+.Ar image
+.Ar path ...
+.Nm
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl f
+.Cm rm
+.Op Fl r
+.Ar image
+.Ar path ...
+.Nm
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl f
+.Cm mv
+.Ar image
+.Ar old
+.Ar new
+.Nm
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl f
+.Cm ln
+.Op Fl s
+.Ar image
+.Ar target
+.Ar path
+.Nm
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl f
+.Cm chmod
+.Ar image
+.Ar mode
+.Ar path ...
+.Nm
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl f
+.Cm chown
+.Ar image
+.Ar uid : Ns Ar gid
+.Ar path ...
 .Sh DESCRIPTION
 .Nm
 は、\:V1・V2・V3 のどの版の MINIX ファイルシステムのイメージも、\:どちらのバイト順でも読みます。
@@ -53,7 +107,9 @@ Minix-vmd のものも読みます。
 形式は
 .Xr minixfs 5
 を参照してください。
-イメージに書き込むことはありません。
+.Cm put
+から後のコマンドは、\:mtools が MS-DOS のイメージを変えるのと同じように、\:マウントせずにイメージを変えます。
+ほかのコマンドは\:イメージに書き込むことはありません。
 イメージの中のパスは、\:
 .Ql /
 で始まっていてもいなくても、\:ルートディレクトリから数えます。
@@ -155,7 +211,92 @@ FIFO とハードリンクに加えて、\:
 は特権なしでこれを一覧でき、\:root で実行すればデバイスも作ります。
 ustar に収まらない長い名前やリンク先は、\:pax の拡張ヘッダに入れます。
 ソケットは入れられないので、\:除いたものとして数えます。
+.It Cm put Oo Fl Rdin Oc Oo Fl o Ar uid : Ns Ar gid Oc Ar image Ar host ... Ar path
+ホストのファイルをイメージに写します。
+.Cm extract
+の逆向きです。
+.Ar path
+がディレクトリならその中に元の名前で、\:まだなければ
+.Ar path
+という名前で入れます。
+通常ファイル、\:シンボリックリンク、\:FIFO は、\:モードと mtime を保って入ります。
+ディレクトリとその中身は
+.Fl R
+のときだけ、\:デバイスは
+.Fl d
+のときだけ入れます。
+ソケットは入れられず、\:入れなかったデバイスと一緒に\:最後に警告で数えます。
+既存の名前があれば置き換えます。
+.Fl n
+なら残し、\:
+.Fl i
+なら標準エラーに尋ねて\:標準入力の答えに従います。
+ディレクトリの上にディレクトリを写すときは、\:その中に入ります。
+空きが尽きたファイルは、\:途中まで入った分も消します。
+.It Cm mkdir Oo Fl p Oc Oo Fl m Ar mode Oc Oo Fl o Ar uid : Ns Ar gid Oc Ar image Ar path ...
+ディレクトリを作ります。
+モードは 0755 で、\:
+.Fl m
+に 8 進数で与えれば\:それにします。
+.Fl p
+なら、\:途中の足りないディレクトリも\:モード 0755 で作り、\:すでにあっても\:とがめません。
+.It Cm rm Oo Fl r Oc Ar image Ar path ...
+ファイルを消します。
+.Fl r
+ならディレクトリとその中身も消します。
+.It Cm mv Ar image Ar old Ar new
+.Ar old
+を
+.Ar new
+に改名します。
+.Ar new
+がディレクトリなら\:その中へ移します。
+同じ名前のファイルや、\:ディレクトリに対する空のディレクトリは\:置き換えます。
+.It Cm ln Oo Fl s Oc Ar image Ar target Ar path
+ファイル
+.Ar target
+に
+.Ar path
+という別の名前を付けます。
+.Fl s
+なら、\:文字列
+.Ar target
+を指すシンボリックリンク
+.Ar path
+を作ります。
+.Ar path
+がディレクトリなら、\:その中に
+.Ar target
+の最後の要素の名前で作ります。
+.It Cm chmod Ar image Ar mode Ar path ...
+アクセス許可のビットを 8 進数で設定します。
+.It Cm chown Ar image Ar uid : Ns Ar gid Ar path ...
+所有者、\:グループ、\:またはその両方を数で設定します。
+形は
+.Ar uid ,
+.Ar uid : Ns Ar gid ,
+.Cm \&: Ns Ar gid
+です。
+イメージは名前を知りません。
 .El
+.Pp
+コマンドが作るものは、\:それを作ったディレクトリの所有者のものになります。
+イメージの中のファイルの所有者は、\:そのイメージを使うシステムの側の事柄であって、\:
+.Nm
+を動かした人とは関係がないからです。
+.Fl o
+で別の所有者を与えられます。
+数は inode に収まるもの（V1 のグループは 1 バイト）\:に限ります。
+コマンドがイメージを開いている間、\:
+.Nm mount_minixfs Fl w
+と同じくイメージをロックし、\:終わるまで clean の印を外します。
+途中で止まれば、\:
+.Nm fsck_minixfs
+に任せる形で残ります。
+clean の印のないファイルシステムは\:どこかにマウントされているかもしれないので、\:
+.Fl f
+がなければ拒みます。
+書けない Minix-vmd の flex ディレクトリは\:常に拒みます。
 .Sh OPTIONS
 .Bl -tag -width Ds
 .It Fl M Ar size : Ns Ar heads : Ns Ar side
@@ -176,6 +317,9 @@ ustar に収まらない長い名前やリンク先は、\:pax の拡張ヘッ�
 は正しく見えますが、\:残りは壊れているように読めます。
 .Cm info
 の埋め草の数え上げでは、\:イメージの半分が 4608 バイトの連なりとして現れます。
+.It Fl f
+書き込むコマンドに、\:clean の印のないファイルシステムも変えさせます。
+印はそのままにします。
 .El
 .Sh EXIT STATUS
 .Nm
@@ -191,6 +335,12 @@ $ minixfs cat root.img /etc/passwd > passwd
 MINIX の installboot がブートブロックに書き込むように、\:ブートプログラムの置き場所を調べます。
 .Bd -literal -offset indent
 $ minixfs blocks -r root.img /boot
+.Ed
+.Pp
+ツリーをイメージに入れ、\:既存のファイルの上に\:確認してから\:ファイルを入れます。
+.Bd -literal -offset indent
+$ minixfs put -R usr.img src /usr
+$ minixfs put -i usr.img passwd /etc/passwd
 .Ed
 .Pp
 デバイスとハードリンクも含めて、\:木全体を新しいイメージに移します。
