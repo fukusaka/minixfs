@@ -42,19 +42,21 @@ load_maps(struct mfs *fs)
 
 /*
  * Find a clear bit among bits 1 to n of map, from *next on and then from
- * the start; set it and return it, or 0 if there is none.
+ * the start; set it and return it, or 0 if there is none.  The sum is
+ * taken in 64 bits, as *next - 1 + i passes 2^32 where n is above 2^31.
  */
 static uint32_t
 take_bit(const struct mfs *fs, unsigned char *map, uint32_t n,
     uint32_t *next)
 {
-	uint32_t bit, i;
+	uint64_t i;
+	uint32_t bit;
 
 	for (i = 0; i < n; i++) {
-		bit = (*next - 1 + i) % n + 1;
+		bit = (uint32_t)(((uint64_t)*next - 1 + i) % n + 1);
 		if (!mfs_map_bit(fs, map, bit)) {
 			mfs_set_map_bit(fs, map, bit, 1);
-			*next = bit % n + 1;
+			*next = (uint32_t)((uint64_t)bit % n + 1);
 			return bit;
 		}
 	}
