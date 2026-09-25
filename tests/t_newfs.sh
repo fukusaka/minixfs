@@ -261,6 +261,22 @@ tree_kinds() {
 	check_true "nothing is made for names too long" test ! -e "$T/img"
 	rmdir "$T/t/a_name_of_twenty_c"
 
+	# MINIX reads a symbolic link from its first block: one of a block
+	# or more is refused.  Some hosts cannot make it (MINIX 3 takes 253
+	# bytes at most).
+	long=$(LC_ALL=C awk 'BEGIN { for (i = 0; i < 1100; i++) printf "x" }')
+	if ln -s "$long" "$T/t/longlink" 2>/dev/null &&
+	    [ "$(link_target "$T/t/longlink")" = "$long" ]; then
+		rm -f "$T/img"
+		run "$NEWFS_MINIXFS" -V 2 -d "$T/t" -o 0:0 "$T/img"
+		check_err "a symbolic link of a block is refused" \
+		    "longlink: a symbolic link of 1100 bytes"
+	else
+		skip "a symbolic link of a block is refused" \
+		    "this system cannot make one"
+	fi
+	rm -f "$T/t/longlink"
+
 	if [ "$(id -g)" -gt 255 ]; then
 		# The BSDs give a new file the group of its directory.
 		chgrp -R "$(id -g)" "$T/t"
@@ -368,7 +384,8 @@ EOF
 	    "./bin/\\056\\056 type=dir mode=0755 uname=root gname=wheel" \
 	    "\\056\\056 type=dir mode=0755 uname=root gname=wheel" \
 	    "./bin/../x type=file mode=0644 uname=root gname=wheel" \
-	    "./bin//x type=file mode=0644 uname=root gname=wheel"; do
+	    "./bin//x type=file mode=0644 uname=root gname=wheel" \
+	    "./l type=link mode=0777 uname=root gname=wheel link="; do
 		printf '. type=dir mode=0755\n%s\n' "$bad" >"$T/bad"
 		rm -f "$T/img"
 		run "$NEWFS_MINIXFS" -V 3 -d "$T/t" -F "$T/bad" -P "$T/db" \

@@ -223,6 +223,16 @@ run sh -c "\"$RESTORE_MINIXFS\" -r -s \"$T/symtab\" -f - \"$T/img\" \
 check_err "V1, standard input: the group is found as the file comes" \
     "d/f: group 300 does not fit in V1"
 
+# MINIX reads a symbolic link from its first block: one of a block or
+# more is refused.
+long=$(LC_ALL=C awk 'BEGIN { for (i = 0; i < 1100; i++) printf "x" }')
+echo "link /l $long 0 0 644198400" >"$T/link.spec"
+must "$MKDUMP" "$T/link.spec" "$T/dump"
+fresh
+run "$RESTORE_MINIXFS" -r -s "$T/symtab" -f "$T/dump" "$T/img"
+check_err "a symbolic link of a block is refused" \
+    "a symbolic link of 1100 bytes"
+
 cat >"$T/dev.spec" <<EOF
 dev  /big c 300 1 0600 0 0 644198400
 dev  /ok c 4 1 0600 0 0 644198400

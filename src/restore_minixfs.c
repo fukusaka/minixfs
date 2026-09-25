@@ -1048,11 +1048,19 @@ check_file(struct restore *r, const struct dump_header *h,
 	n = check_attrs(r, h, path);
 	switch (h->mode & MFS_S_IFMT) {
 	case MFS_S_IFREG:
-	case MFS_S_IFLNK:
 		if (h->size > r->fs.max_file || h->size > UINT32_MAX) {
 			problem(r, "%s: %ju bytes are more than a file of "
 			    "V%d holds", path, (uintmax_t)h->size,
 			    r->fs.version);
+			n++;
+		}
+		break;
+	case MFS_S_IFLNK:
+		/* MINIX reads a link from its first block, with a NUL. */
+		if (h->size == 0 || h->size >= r->fs.block_size) {
+			problem(r, "%s: a symbolic link of %ju bytes, where "
+			    "MINIX takes 1 to %" PRIu32, path,
+			    (uintmax_t)h->size, r->fs.block_size - 1);
 			n++;
 		}
 		break;

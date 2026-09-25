@@ -523,6 +523,12 @@ scan_entry(struct scan *s, struct node *n, const char *name,
 		if (size > max_file(f))
 			problem(s, where(n), "%ju bytes are more than a file "
 			    "of V%d holds", (uintmax_t)size, f->version);
+		/* MINIX reads a link from its first block, with a NUL. */
+		else if (n->type == MFS_S_IFLNK &&
+		    (size == 0 || size >= f->block_size))
+			problem(s, where(n), "a symbolic link of %ju bytes, "
+			    "where MINIX takes 1 to %" PRIu32, (uintmax_t)size,
+			    f->block_size - 1);
 		else
 			s->need->zones += file_zones(f, size);
 	} else if (is_dev(n)) {
