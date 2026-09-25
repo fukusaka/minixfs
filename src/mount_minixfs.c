@@ -383,12 +383,16 @@ parent_of(const char *path, uint32_t *dir, char *name)
 }
 
 /*
- * The owner of a new file in directory dir: the caller.  A group that
- * the inode cannot hold, as most are in V1, where it is a byte, gives
- * way to that of the directory, as BSD gives every new file.
+ * The owner and mode of a new file of mode in directory dir, as System V
+ * and Linux have them: the caller owns it, but in a set-group-ID
+ * directory it takes the group of the directory, and a new directory
+ * the set-group-ID bit too.  (Linux takes that bit away from a file
+ * whose maker is not in the group before it asks for the file.)  A group
+ * that the inode cannot hold, as most are in V1, where it is a byte,
+ * gives way to that of the directory, as BSD gives every new file.
  */
 static int
-new_owner(uint32_t dir, struct mfs_new *n)
+new_owner(uint32_t dir, mode_t mode, struct mfs_new *n)
 {
 	struct fuse_context *ctx;
 	struct mfs_inode dp;
@@ -397,14 +401,20 @@ new_owner(uint32_t dir, struct mfs_new *n)
 	ctx = fuse_get_context();
 	if (ctx->uid > MAX_UID)
 		return -EINVAL;
-	n->uid = (uint16_t)ctx->uid;
-	if (ctx->gid <= (image()->version == 1 ? MAX_GID_V1 : MAX_GID)) {
-		n->gid = (uint16_t)ctx->gid;
-		return 0;
-	}
 	if ((r = mfs_read_inode(image(), dir, &dp)) < 0)
 		return r;
-	n->gid = dp.gid;
+	n->uid = (uint16_t)ctx->uid;
+	n->mode = (uint16_t)mode;
+	if (dp.mode & S_ISGID) {
+		n->gid = dp.gid;
+		if (S_ISDIR(mode))
+			n->mode |= S_ISGID;
+	} else if (ctx->gid <= (image()->version == 1 ? MAX_GID_V1 :
+	    MAX_GID)) {
+		n->gid = (uint16_t)ctx->gid;
+	} else {
+		n->gid = dp.gid;
+	}
 	return 0;
 }
 
@@ -419,9 +429,8 @@ make(const char *path, mode_t mode, uint32_t rdev, struct mfs_inode *ip)
 
 	(void)memset(&n, 0, sizeof(n));
 	if ((r = parent_of(path, &dir, name)) < 0 ||
-	    (r = new_owner(dir, &n)) < 0)
+	    (r = new_owner(dir, mode, &n)) < 0)
 		return r;
-	n.mode = (uint16_t)mode;
 	n.rdev = rdev;
 	n.time = (uint32_t)now();
 	return changed(mfs_make(image(), dir, name, &n, ip));
@@ -473,7 +482,7 @@ mfs_make_symlink(const char *target, const char *path)
 
 	(void)memset(&n, 0, sizeof(n));
 	if ((r = parent_of(path, &dir, name)) < 0 ||
-	    (r = new_owner(dir, &n)) < 0)
+	    (r = new_owner(dir, S_IFLNK | 0777, &n)) < 0)
 		return r;
 	n.time = (uint32_t)now();
 	return changed(mfs_symlink(image(), dir, name, target, &n, &ip));

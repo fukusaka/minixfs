@@ -346,10 +346,32 @@ else
 	mkdir "$T/empty"
 	"$NEWFS_MINIXFS" -V 2 -s 1000 -d "$T/empty" -o "$(id -u):$(id -g)" \
 	    "$T/bg.img" >/dev/null
+	# A set-group-ID directory of another group.
+	group=1
+	if [ "$(id -g)" -eq 1 ]; then
+		group=2
+	fi
+	printf 'mkdir /d 0777\nchown /d %s %s\nchmod /d 2777\n' \
+	    "$(id -u)" "$group" | "$MFSOP" "$T/bg.img" >/dev/null
 	run as_mounter "$MINIXFS_FUSE" -w "$T/bg.img" "$mnt"
 	check_status "-w in the background: mount_minixfs returns" 0
 	check_true "-w in the background: the mount can be written" \
 	    can_write "$mnt/new"
+	as_mounter mkdir "$mnt/d/sub"
+	check_true "-w, set-group-ID directory: a file takes its group" \
+	    test "$(can_write "$mnt/d/f" && field_of "$mnt/d/f" 5)" = "$group"
+	check_true "-w, set-group-ID directory: so does a directory" \
+	    test "$(field_of "$mnt/d/sub" 5)" = "$group"
+	# librefuse of NetBSD sets the mode that the kernel gave again.
+	if [ "$(uname -s)" = NetBSD ]; then
+		skip "-w, set-group-ID directory: which is set-group-ID too" \
+		    "librefuse of NetBSD takes the bit away"
+	else
+		check_true \
+		    "-w, set-group-ID directory: which is set-group-ID too" \
+		    test "$(as_mounter ls -ld "$mnt/d/sub" | cut -c7 |
+		    tr S s)" = s
+	fi
 	run "$TUNEFS_MINIXFS" -c clean "$T/bg.img"
 	check_err "-w in the background: another writer is refused" "busy"
 	fuse_pid=

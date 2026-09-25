@@ -120,8 +120,8 @@ mounts the image, read-only unless `-w` is given.  Inode numbers,
 modes, owners, times and device numbers are those of the image.  With
 `-w`, files, directories and links can be made, removed, renamed and
 changed; the kernel checks permissions, and new files belong to the
-caller, with the group of their directory where the inode cannot hold
-that of the caller (a byte in V1).  While mounted for writing, the
+caller, with the group of their directory where that is set-group-ID
+or the inode cannot hold that of the caller (a byte in V1).  While mounted for writing, the
 image is locked against other writers and not marked clean; unmounting
 marks it clean again.  An image that is not marked clean, or has flex
 directories, is mounted read-only with a warning.  `-u` says when the

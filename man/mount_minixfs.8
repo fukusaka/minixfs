@@ -59,6 +59,7 @@ Files, directories, symbolic links, hard links, pipes and devices can be
 made, removed, renamed and changed.
 The kernel checks permissions against the modes and owners in the image.
 A new file belongs to the caller, but takes the group of its directory
+where that is set-group-ID, as a new directory takes the bit too, or
 where the inode cannot hold the group of the caller, as in V1, whose
 inodes keep the group in a byte.
 The mtime and ctime of what changes are set; atimes are not.
@@ -184,6 +185,12 @@ On MINIX 3, writing is not reliable, as libpuffs gets the new nodes
 wrong: a symbolic link made through the mount loses its target, a pipe
 is made with no valid type, and a character device is made a block
 device.
+.Pp
+On
+.Nx ,
+a directory made in a set-group-ID directory takes its group but not
+the set-group-ID bit, as librefuse sets the mode that the kernel gave
+once the directory is made.
 .Pp
 On
 .Nx
