@@ -194,7 +194,10 @@ once the directory is made.
 .Pp
 On
 .Nx
-10.1, looking up
+10.0 and later, looking up
 .Ql \&..
-in a directory right below the root makes librefuse free the node of the
-root, after which lookups fail, so the mount is of little use there.
+in a directory right below the root fails, and the mount misbehaves
+from then on, as it does for every file system served through
+librefuse; see
+.Pa docs/netbsd-refuse-dotdot.md
+in the source.

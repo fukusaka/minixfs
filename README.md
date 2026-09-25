@@ -333,6 +333,7 @@ sanitizers, other shells and JUnit output.
     src/layout.h            the on-disk layout
     src/compat.h            the differences between systems
     tests/                  the test suite; see tests/README.md
+    docs/                   notes on the systems the tools run on
 
 ## References
 

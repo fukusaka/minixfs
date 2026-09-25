@@ -291,6 +291,7 @@ dump_minixfs(8)、restore_minixfs(8)、ファイルシステムの形式につ�
     src/layout.h            ディスク上の配置
     src/compat.h            システムごとの違い
     tests/                  テスト。tests/README.md を参照
+    docs/                   道具が動くシステムについての覚え書き
 
 ## 参考
 
