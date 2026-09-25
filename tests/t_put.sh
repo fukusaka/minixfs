@@ -370,6 +370,23 @@ check_true "$v: and says the mark stays away" \
     grep -q "left marked not clean" "$T/err"
 check_true "$v: which it does" test "$(info_field "$T/img" clean)" = no
 
+# So does a write that does not reach the disk: fsync(2) fails, here by
+# strace(1), where it can make it fail (Linux).
+if strace -qq -e trace=fsync -e inject=fsync:error=EIO -o /dev/null \
+    true >/dev/null 2>&1; then
+	rm -f "$T/img"
+	must "$NEWFS_MINIXFS" -V 2 -s 400 "$T/img"
+	# LeakSanitizer does not work under ptrace(2).
+	run env ASAN_OPTIONS="$ASAN_OPTIONS:detect_leaks=0" \
+	    strace -qq -e trace=fsync -e inject=fsync:error=EIO -o /dev/null \
+	    "$MINIXFS" mkdir "$T/img" /d
+	check_err "$v: fsync fails" "Input/output error"
+	check_true "$v: the mark stays away after it" \
+	    test "$(info_field "$T/img" clean)" = no
+else
+	skip "$v: fsync fails" "strace cannot make fsync(2) fail here"
+fi
+
 # The lock: a command is refused while another writer holds the image.
 rm -f "$T/img" "$T/fifo" "$T/kout"
 must "$NEWFS_MINIXFS" -V 2 -s 400 "$T/img"

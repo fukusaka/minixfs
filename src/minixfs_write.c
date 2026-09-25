@@ -187,23 +187,28 @@ finish_writing(struct cmd *c)
 {
 	int r;
 
-	if ((r = mfs_sync(&c->fs)) < 0)
+	/* The mark comes back once the rest is on the disk. */
+	if ((r = mfs_sync(&c->fs)) == 0 && fsync(c->fs.fd) == -1)
+		r = -errno;
+	if (r < 0) {
+		problem(c, "%s: %s", c->image, strerror(-r));
 		c->broken = 1;
-	if (c->broken)
+	}
+	if (c->broken) {
 		warnx("warning: %s is left marked not clean; check it with "
 		    "fsck_minixfs -y", c->image);
-	if (r == 0 && !c->broken) {
+	} else {
 		if (was_clean) {
 			r = mfs_mark_clean(&c->fs, 1);
 		} else {
 			c->fs.state = state_before;
 			r = mfs_put_super(&c->fs);
 		}
+		if (r == 0 && fsync(c->fs.fd) == -1)
+			r = -errno;
+		if (r < 0)
+			problem(c, "%s: %s", c->image, strerror(-r));
 	}
-	if (r < 0)
-		problem(c, "%s: %s", c->image, strerror(-r));
-	else if (fsync(c->fs.fd) == -1)
-		problem(c, "%s: %s", c->image, strerror(errno));
 	mfs_close(&c->fs);
 	return c->status;
 }

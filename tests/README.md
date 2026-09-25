@@ -190,7 +190,8 @@ top of `tests/mkimage.c`).  The scripts:
   itself, a link to a directory, bad modes and owners are refused; a
   file that runs out of room leaves nothing; a refusal leaves the image
   marked clean, and a write that fails on a zone number outside the
-  data area does not; a file system not marked clean is refused without
+  data area, or whose fsync(2) fails (made to by strace(1) on Linux),
+  does not; a file system not marked clean is refused without
   `-f` and keeps its mark with it, flex
   directories are refused, a writer holding the lock is met, and `-M`
   writes through the tracks.
