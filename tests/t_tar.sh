@@ -93,6 +93,31 @@ check_true "a directory of the image is the top of the archive" \
 run "$MINIXFS" tar "$T/img" /bin/sh
 check_status "a file is not a directory to archive" 1
 
+# A path of more than 8 KB, 150 directories of 60-character names, goes
+# whole into its pax header: tar(1) lists 150 names, each its own.  The
+# host cannot make the tree to compare with.
+d=ddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+{
+	echo "fs version=3 order=le blocks=2048 inodes=200"
+	p=
+	n=100
+	while [ "$n" -lt 250 ]; do
+		p="$p/$d$n"
+		echo "dir $p 0755 0 0 0"
+		n=$((n + 1))
+	done
+} >"$T/deep.spec"
+mkimage "$T/deep.spec" "$T/deep.img"
+run "$MINIXFS" tar "$T/deep.img"
+check_status "tar stores a path of more than 8 KB" 0
+cp "$T/out" "$T/deep.tar"
+tar -tf "$T/deep.tar" 2>/dev/null | sed 's,/$,,' | sort -u >"$T/list"
+check_true "the names are listed whole, each its own" \
+    test "$(wc -l <"$T/list")" -eq 150
+check_true "the deepest is 9149 bytes long, without a leading /" \
+    test "$(awk '{ if (length($0) > m) m = length($0) } END { print m }' \
+    "$T/list")" -eq 9149
+
 # Names over 100 bytes go into the prefix, and over 255 bytes into a pax
 # header, as does a long symbolic link.  The tree to compare with needs
 # paths and a symbolic link of some 400 bytes, and is tried first:

@@ -1249,21 +1249,27 @@ tar_member(struct tar *t, const struct mfs_inode *ip, const char *name,
     char type, const char *target, uint32_t size)
 {
 	struct tar_header h, x;
-	char pax[2 * PATH_MAX + 64];
-	size_t n;
+	size_t max, n;
+	char *pax;
 
+	/* Room for both records, however long: a path has no limit here. */
+	max = strlen(name) + (target != NULL ? strlen(target) : 0) + 64;
+	if ((pax = malloc(max)) == NULL) {
+		problem(t->c, "%s", strerror(ENOMEM));
+		t->failed = 1;
+		return;
+	}
 	(void)memset(&h, 0, sizeof(h));
 	n = 0;
 	if (split_name(&h, name) == -1) {
 		(void)memcpy(h.name, name, TAR_NAME);
-		n += pax_record(pax + n, sizeof(pax) - n, "path", name);
+		n += pax_record(pax + n, max - n, "path", name);
 	}
 	if (target != NULL) {
 		if (strlen(target) <= TAR_NAME)
 			(void)memcpy(h.linkname, target, strlen(target));
 		else
-			n += pax_record(pax + n, sizeof(pax) - n, "linkpath",
-			    target);
+			n += pax_record(pax + n, max - n, "linkpath", target);
 	}
 	if (n > 0) {
 		(void)memset(&x, 0, sizeof(x));
@@ -1278,6 +1284,7 @@ tar_member(struct tar *t, const struct mfs_inode *ip, const char *name,
 		tar_write(t, pax, n);
 		tar_pad(t, TAR_BLOCK);
 	}
+	free(pax);
 	octal(h.mode, sizeof(h.mode), ip->mode & 07777);
 	octal(h.uid, sizeof(h.uid), ip->uid);
 	octal(h.gid, sizeof(h.gid), ip->gid);
