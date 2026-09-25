@@ -94,6 +94,14 @@ Devices left out and sockets, which cannot be copied, are counted in a
 warning at the end, and with
 .Fl v
 named one by one as all that is copied is.
+A name that is already in
+.Ar dest
+is replaced, as
+.Xr tar 1
+replaces it: what is there is removed first, unless it is a directory,
+so that nothing is written through another link, a pipe or a file
+without write permission.
+The disks of a set thus go one after the other into one tree.
 .Pp
 .Cm extract
 never writes outside
@@ -153,6 +161,13 @@ Move the whole tree, devices and hard links included, onto a new image:
 .Bd -literal -offset indent
 # mkdir tree && minixfs tar old.img | tar -xpf - -C tree
 # newfs_minixfs -V 3 -d tree new.img
+.Ed
+.Pp
+Unpack the two
+.Pa /usr
+disks of a set into one tree:
+.Bd -literal -offset indent
+$ minixfs extract usr1.img usr && minixfs extract usr2.img usr
 .Ed
 .Pp
 Read an Atari disk that was read as double-sided:

@@ -220,6 +220,55 @@ done
 done
 done
 
+# extract into a tree that is there: what is in the way goes, as with
+# tar(1), and nothing is written through it.  In the first image /a and
+# /b are one file, /s a symbolic link and /p a pipe; the second has
+# plain files by those names and a file without write permission, which
+# a second extract has to replace too.
+cat >"$T/first.spec" <<EOF
+fs version=2 order=le blocks=256 inodes=16
+file /a 0644 0 0 0 100 1
+hard /b /a
+link /s a 0 0 0
+fifo /p 0600 0 0 0
+dir  /d 0755 0 0 0
+EOF
+cat >"$T/second.spec" <<EOF
+fs version=2 order=le blocks=256 inodes=16
+file /b 0644 0 0 0 50 2
+hard /c /b
+file /s 0644 0 0 0 10 3
+file /p 0644 0 0 0 10 4
+file /x 0111 0 0 0 10 5
+EOF
+mkimage "$T/first.spec" "$T/first.img" "$T/first.exp"
+mkimage "$T/second.spec" "$T/second.img" "$T/second.exp"
+rm -rf "$T/x"
+run "$MINIXFS" extract "$T/first.img" "$T/x"
+check_status "a first image extracts" 0
+run "$MINIXFS" extract "$T/second.img" "$T/x"
+check_status "a second image extracts over the first" 0
+check_same_file "the other name of a replaced link keeps its contents" \
+    "$T/first.exp/a" "$T/x/a"
+check_same_file "a link of the first image is replaced by a file" \
+    "$T/second.exp/b" "$T/x/b"
+check_true "the new link is a link of the new file" \
+    test "$(ls -i "$T/x/b" | awk '{ print $1 }')" = \
+    "$(ls -i "$T/x/c" | awk '{ print $1 }')"
+check_same_file "a symbolic link is replaced by a file" \
+    "$T/second.exp/s" "$T/x/s"
+check_same_file "a pipe is replaced by a file" "$T/second.exp/p" "$T/x/p"
+run "$MINIXFS" extract "$T/second.img" "$T/x"
+check_status "a file without write permission is replaced" 0
+cat >"$T/third.spec" <<EOF
+fs version=2 order=le blocks=256 inodes=16
+file /d 0644 0 0 0 10 6
+EOF
+mkimage "$T/third.spec" "$T/third.img"
+run "$MINIXFS" extract "$T/third.img" "$T/x"
+check_err "a directory in the way is not removed" "d: Is a directory"
+check_true "and stays a directory" test -d "$T/x/d"
+
 # Names that fill the whole entry have no terminating NUL.
 n30=123456789012345678901234567890
 for spec in "version=1 namelen=30:$n30" "version=2 namelen=30:$n30" \

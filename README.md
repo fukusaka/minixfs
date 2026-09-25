@@ -84,7 +84,10 @@ permission bits (without set-uid, set-gid and sticky bits) and times,
 and the other names of a file with more than one link as links.
 It makes pipes, and devices only with `-d`, which takes root; devices
 left out and sockets, which cannot be copied, are reported in a warning
-at the end, and with `-v` one by one.  `tar` writes the tree to standard
+at the end, and with `-v` one by one.  A name already in `DEST` is
+replaced as tar(1) replaces it, removed first unless it is a directory,
+so that the disks of a set go one after the other into one tree.
+`tar` writes the tree to standard
 output as a POSIX ustar archive instead, devices and pipes included,
 with hard links as links and names longer than ustar holds in pax
 headers; tar(1) lists it without privileges and makes the devices when

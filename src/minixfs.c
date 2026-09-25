@@ -734,13 +734,44 @@ set_times(struct cmd *c, const char *path, const struct mfs_inode *ip)
 		problem(c, "%s: %s", path, strerror(errno));
 }
 
+/*
+ * Make room for something other than a directory at dest: remove what is
+ * there, unless it is a directory, as tar(1) does.  Writing through what
+ * is there instead would change the other names of a linked file, wait
+ * for a reader of a pipe, or fail on a symbolic link or a file without
+ * write permission.  Returns -1 after reporting a failure.
+ */
+static int
+clear_dest(struct extract *x, const char *dest)
+{
+	struct stat st;
+
+	if (lstat(dest, &st) == -1) {
+		if (errno == ENOENT)
+			return 0;
+		problem(x->c, "%s: %s", dest, strerror(errno));
+		return -1;
+	}
+	if (S_ISDIR(st.st_mode)) {
+		problem(x->c, "%s: %s", dest, strerror(EISDIR));
+		return -1;
+	}
+	if (unlink(dest) == -1) {
+		problem(x->c, "%s: %s", dest, strerror(errno));
+		return -1;
+	}
+	return 0;
+}
+
 static void
 extract_file(struct extract *x, const struct mfs_inode *ip,
     const char *dest)
 {
 	int fd;
 
-	fd = open(dest, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0600);
+	if (clear_dest(x, dest) == -1)
+		return;
+	fd = open(dest, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600);
 	if (fd == -1) {
 		problem(x->c, "%s: %s", dest, strerror(errno));
 		return;
@@ -777,6 +808,8 @@ extract_link(struct extract *x, const struct mfs_inode *ip,
 		return;
 	}
 	target[n] = '\0';
+	if (clear_dest(x, dest) == -1)
+		return;
 	if (symlink(target, dest) == -1) {
 		problem(x->c, "%s: %s", dest, strerror(errno));
 		return;
@@ -801,6 +834,8 @@ extract_special(struct extract *x, const struct mfs_inode *ip,
 		x->devs_skipped++;
 		return;
 	}
+	if (clear_dest(x, dest) == -1)
+		return;
 	if (mfs_is_dev(ip)) {
 		type = (ip->mode & MFS_S_IFMT) == MFS_S_IFCHR ? S_IFCHR :
 		    S_IFBLK;
@@ -853,6 +888,8 @@ extract_entry(struct extract *x, const struct mfs_inode *ip,
 	/* Another name of a file already made: a link to it. */
 	if (!mfs_is_dir(ip) && ip->nlinks > 1 &&
 	    (first = names_find(&x->names, ip->num)) != NULL) {
+		if (clear_dest(x, dest) == -1)
+			return;
 		if (link(first, dest) == -1)
 			problem(x->c, "%s: %s", dest, strerror(errno));
 		else

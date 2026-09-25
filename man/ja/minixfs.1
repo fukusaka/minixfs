@@ -97,6 +97,12 @@ superblock を表示します。
 作らなかったデバイスと、\:写せないソケットは、\:最後に警告として数を示します。
 .Fl v
 を付けると、\:写したものと同じく 1 件ずつ名前を示します。
+.Ar dest
+に既にある名前は、\:
+.Xr tar 1
+と同じく置き換えます。
+ディレクトリでなければ\:先に消すので、\:別のリンク、\:FIFO、\:書き込み許可のないファイルを\:通して書くことはありません。
+そのため、\:複数枚組のディスクを\:順に 1 つのツリーに\:展開できます。
 .Pp
 .Cm extract
 は
@@ -158,6 +164,13 @@ $ minixfs cat root.img /etc/passwd > passwd
 .Bd -literal -offset indent
 # mkdir tree && minixfs tar old.img | tar -xpf - -C tree
 # newfs_minixfs -V 3 -d tree new.img
+.Ed
+.Pp
+2 枚組の
+.Pa /usr
+のディスクを、\:1 つのツリーに展開します。
+.Bd -literal -offset indent
+$ minixfs extract usr1.img usr && minixfs extract usr2.img usr
 .Ed
 .Pp
 両面として読み取った Atari のディスクを読みます。
