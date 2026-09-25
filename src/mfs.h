@@ -414,7 +414,9 @@ int	mfs_alloc_zone(struct mfs *, uint32_t *);
  * Write len bytes of buf at offset off of the file *ip, taking zones and
  * indirect zones as it needs them; a block of zeros that falls into a
  * hole stays a hole.  The size grows to the end of what was written.
- * *ip changes in memory only, for the caller to write back with
+ * Should it fail, what it wrote past the old end is taken back, with the
+ * zones it took for that; what it wrote before the old end stays.  *ip
+ * changes in memory only, for the caller to write back with
  * mfs_put_inode().  Returns 0, -EFBIG past the reach of the zones, -ENOSPC
  * or another negative errno value.
  */
@@ -457,12 +459,13 @@ int	mfs_truncate(struct mfs *, struct mfs_inode *);
 void	mfs_maps_through(struct mfs *, int);
 
 /*
- * Make the file *ip size bytes long: the zones past the new end are
- * freed, indirect zones that list nothing more with them, and the rest
- * of the last zone is cleared, so that the file reads as zeros where it
- * grows.  *ip changes in memory only, for the caller to write back with
- * mfs_put_inode().  Returns 0, -EINVAL for a device, -EFBIG past the reach
- * of the zones, or another negative errno value.
+ * Make the file *ip size bytes long: the zones past the new end, or past
+ * the old end when it grows, are freed, indirect zones that list nothing
+ * more with them, and the rest of the last zone is cleared, so that the
+ * file reads as zeros where it grows.  *ip changes in memory only, for
+ * the caller to write back with mfs_put_inode().  Returns 0, -EINVAL for
+ * a device, -EFBIG past the reach of the zones, or another negative errno
+ * value.
  */
 int	mfs_resize(struct mfs *, struct mfs_inode *, uint32_t);
 

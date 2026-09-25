@@ -235,6 +235,26 @@ check_out_has "a file past the inodes fails" \
 run "$FSCK_MINIXFS" "$T/img"
 check_status "a full file system passes fsck" 0
 
+# A write that runs out of zones leaves nothing past the end of the file:
+# in 6 free zones, the first 4096 bytes of 8192 go in, and the rest, with
+# the 2 zones it took, goes back; the file then grows over zeros.
+rm -f "$T/img"
+must "$NEWFS_MINIXFS" -V 2 -s 12 -i 16 "$T/img"
+data 8 5 >"$T/eight"
+printf 'mknod /f f 0644\nwrite /f 0 %s\ntruncate /f 6144\n' "$T/eight" \
+    >"$T/script"
+printf '1 ok\n2 error: No space left on device\n3 ok\n' >"$T/expected"
+run "$MFSOP" "$T/img" <"$T/script"
+check_out "a write past the zones fails, the first 4096 bytes in" \
+    "$T/expected"
+run "$FSCK_MINIXFS" "$T/img"
+check_status "the zones of the failed write are free again" 0
+check_info "the file holds 4 of the 6 zones" "$T/img" "free zones" 2
+dd if="$T/eight" bs=4096 count=1 2>/dev/null >"$T/want"
+dd if=/dev/zero bs=2048 count=1 2>/dev/null >>"$T/want"
+run "$MINIXFS" cat "$T/img" /f
+check_out "the file grows over zeros, not the failed write" "$T/want"
+
 # The maps: kept in memory until the end, or written as they change
 # (-a).  A writer killed after a change leaves the maps behind the
 # inodes in the first case only.

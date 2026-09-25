@@ -421,10 +421,27 @@ zero_tail(struct mfs *fs, struct mfs_inode *ip, uint32_t from)
 	return 0;
 }
 
+/*
+ * Leave nothing of the file *ip past byte size: free the zones after the
+ * one that holds it, and clear the rest of that one.  A file grows over
+ * zeros then, whatever was there: data of a write that failed, or zones
+ * past the end that another system left.
+ */
+static int
+cut_back(struct mfs *fs, struct mfs_inode *ip, uint32_t size)
+{
+	uint64_t zbytes;
+	int r;
+
+	zbytes = (uint64_t)fs->block_size << fs->log_zone_size;
+	if ((r = free_from(fs, ip, (size + zbytes - 1) / zbytes)) < 0)
+		return r;
+	return zero_tail(fs, ip, size);
+}
+
 int
 mfs_resize(struct mfs *fs, struct mfs_inode *ip, uint32_t size)
 {
-	uint64_t zbytes;
 	int r;
 
 	if ((r = load_maps(fs)) < 0)
@@ -433,14 +450,9 @@ mfs_resize(struct mfs *fs, struct mfs_inode *ip, uint32_t size)
 		return -EINVAL;
 	if (size > fs->max_file)
 		return -EFBIG;
-	zbytes = (uint64_t)fs->block_size << fs->log_zone_size;
-	if (size < ip->size) {
-		if ((r = free_from(fs, ip, (size + zbytes - 1) / zbytes)) < 0 ||
-		    (r = zero_tail(fs, ip, size)) < 0)
-			return r;
-	} else if (size > ip->size && (r = zero_tail(fs, ip, ip->size)) < 0) {
+	if (size != ip->size &&
+	    (r = cut_back(fs, ip, size < ip->size ? size : ip->size)) < 0)
 		return r;
-	}
 	ip->size = size;
 	return 0;
 }
@@ -462,7 +474,7 @@ mfs_pwrite(struct mfs *fs, struct mfs_inode *ip, const void *buf,
 {
 	const unsigned char *p;
 	uint64_t end, pos;
-	uint32_t block, in, n, zone;
+	uint32_t block, in, n, old, zone;
 	int r;
 
 	if ((r = load_maps(fs)) < 0)
@@ -470,6 +482,7 @@ mfs_pwrite(struct mfs *fs, struct mfs_inode *ip, const void *buf,
 	end = (uint64_t)off + len;
 	if (end > fs->max_file || end > UINT32_MAX)
 		return -EFBIG;
+	old = ip->size;
 	p = buf;
 	for (pos = off; pos < end; pos += n, p += n) {
 		in = (uint32_t)(pos % fs->block_size);
@@ -481,21 +494,26 @@ mfs_pwrite(struct mfs *fs, struct mfs_inode *ip, const void *buf,
 		r = file_zone(fs, ip, block >> fs->log_zone_size,
 		    !all_zero(p, n), &zone);
 		if (r < 0)
-			return r;
+			goto fail;
 		if (zone == 0)
 			continue;
 		block = (zone << fs->log_zone_size) +
 		    (block & ((1U << fs->log_zone_size) - 1));
 		if (n < fs->block_size &&
 		    (r = mfs_read_block(fs, block, fs->dbuf)) < 0)
-			return r;
+			goto fail;
 		(void)memcpy(fs->dbuf + in, p, n);
 		if ((r = mfs_write_block(fs, block, fs->dbuf)) < 0)
-			return r;
+			goto fail;
 	}
 	if (end > ip->size)
 		ip->size = (uint32_t)end;
 	return 0;
+fail:
+	/* What went past the end goes, with the zones taken for it. */
+	if (end > old)
+		(void)cut_back(fs, ip, old);
+	return r;
 }
 
 /* The offset of the first entry not in use, or of the end. */
