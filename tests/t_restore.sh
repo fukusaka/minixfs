@@ -109,8 +109,11 @@ check_err "a file that is no dump is refused" "not a dump"
 must "$MKDUMP" "$T/spec" "$T/dump"
 dd if="$T/dump" of="$T/short" bs=1024 count=40 2>/dev/null
 fresh
+cp "$T/img" "$T/before"
 run "$RESTORE_MINIXFS" -r -s "$T/symtab" -f "$T/short" "$T/img"
 check_err "a dump cut short fails" "ends before TS_END"
+check_same_file "cut short: from a file, nothing is written" \
+    "$T/before" "$T/img"
 run "$FSCK_MINIXFS" "$T/img"
 check_status "cut short: what was written is in order" 0
 check_true "cut short: no table is written" test ! -e "$T/symtab"

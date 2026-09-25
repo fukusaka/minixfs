@@ -58,8 +58,9 @@ top of `tests/mkimage.c`).  The scripts:
   `tests/mkimage` makes from an empty tree; defaults, sizes, `-N`, the
   boot block, and the options it must refuse.  With `-d`, the test tree
   goes into every format and comes back out with its modes, sizes and
-  times; hard and symbolic links, pipes, `-o`, the size made to fit,
-  `-N`, sizes too small and names too long; and, where fakeroot(1) is
+  times; hard and symbolic links, pipes, `-o`, owners of `-o` that are
+  no numbers or past their range, the size made to fit, `-N`, sizes too
+  small and names too long; and, where fakeroot(1) is
   installed, devices.  With `-F`, a specification in both forms sets
   modes, owners (by name, from `-P`) and times, adds devices, links,
   pipes, empty files and escaped names, skips optional entries, `-x`
@@ -96,8 +97,12 @@ top of `tests/mkimage.c`).  The scripts:
   shrink back; it shrinks an image whose files lie past the new end
   (mkimage `skip=`) by moving them down, changes nothing for a size too
   small, and refuses to outgrow V1 and to resize one side of a disk;
+  with `-k` the image file keeps its size, the file system shrinks
+  inside it and grows back as far as it holds, but no further;
   `-B`, `-l` and `-s` refuse a file system not marked clean without
-  `-f`, and work after `fsck_minixfs -y`; bad values are usage errors.
+  `-f`, and work after `fsck_minixfs -y`; a change asked for with one
+  that is refused, such as `-B be -s 1`, `-B be -m big` or `-l` on V3,
+  does not happen either; bad values are usage errors.
 - `t_utillinux.sh` - where util-linux is installed: `fsck.minix` accepts
   the test images and those of `newfs_minixfs`, images from `mkfs.minix`
   are readable and pass `fsck_minixfs`, and `fsck_minixfs` and
@@ -131,8 +136,9 @@ top of `tests/mkimage.c`).  The scripts:
   that is not empty, a compressed dump, a file that is no dump, names
   too long, a group too large for V1 (unless `-o`), a device number
   that does not fit, a file system not marked clean and flex
-  directories are refused, with nothing written; a dump cut short
-  leaves the file system in order and no table; `-N` writes nothing;
+  directories are refused, with nothing written; a dump in a file that
+  is cut short is refused before anything is written, and leaves no
+  table; `-N` writes nothing;
   sockets are left out.
 - `t_dump.sh` - `dump_minixfs` of the test tree in V1, V2 with 30
   characters, V3 with blocks of 4096 bytes, zones of two blocks and
@@ -142,7 +148,11 @@ top of `tests/mkimage.c`).  The scripts:
   0, 1 and 2, noted with `-u` in a dumpdates file, hold what changed
   and restore one after the other as the second image, with files
   removed, added, changed, renamed and turned from a directory into a
-  file, while a dump restored twice or out of order is refused.
+  file, while a dump restored twice or out of order is refused.  A level
+  1 that runs out of room fails, leaves the file system in order and the
+  table following level 0, and restores once the file system has grown;
+  and in a file system of 16 inodes, fifteen files give way to fifteen
+  others with inodes of their own.
 - `t_ops.sh` - the library changes names and files as mount_minixfs -w
   does, driven by `tests/mfsop`: the same commands run on a directory of
   the host (mkdir, mknod, ln, ln -s, mv, rm, rmdir, writes and truncates
@@ -151,7 +161,8 @@ top of `tests/mkimage.c`).  The scripts:
   `fsck_minixfs`, in every version and byte order, empty and on the test
   tree, and with zones of two blocks.  Each refusal gives the error of
   the system call; a file system that fills up with zones or inodes
-  stays consistent; a writer killed after a change leaves the maps right
+  stays consistent; a write that runs out of zones gives back what it
+  put past the end of the file, which then grows over zeros; a writer killed after a change leaves the maps right
   with `-a` and behind the inodes without; and a writer holds a lock that
   `tunefs_minixfs` and `newfs_minixfs` meet, but not a reader.
 - `t_fuse.sh` - where `mount_minixfs` is built and mounting is allowed:
@@ -161,10 +172,22 @@ top of `tests/mkimage.c`).  The scripts:
   on the host is changed, the image not marked clean and locked while
   mounted, the maps behind with `-u sync` and written with `always` or
   seconds, and afterwards marked clean, passing `fsck_minixfs` and
-  holding what the host does; a file system not marked clean is mounted
-  read-only.  Skipped otherwise.  `MINIXFS_FUSE` names the program; `FUSE_SUDO` is a
+  holding what the host does; mounted in the background, without `-f`,
+  the image stays locked, and in a set-group-ID directory new files and
+  directories take its group, and new directories the bit (not on
+  NetBSD, whose librefuse takes it away); a file system not marked clean
+  is mounted read-only.  On MINIX 3, where it is a service of mount(8)
+  on a vnd device, the reading, run by hand it shows how to mount, and
+  writing is left out.  Skipped otherwise.  `MINIXFS_FUSE` names the program; `FUSE_SUDO` is a
   command to mount and read with where users cannot mount, such as
   `sudo` on NetBSD.
+- `t_device.sh` - where an image can be put on a device, a loop device
+  on Linux and a vnd device on NetBSD and MINIX 3, as root or through
+  `DEV_SUDO` (such as `sudo`): `info` and `fsck_minixfs` take the size
+  of the device from the system, not from stat(2); `tunefs_minixfs -s`
+  shrinks the file system on the device and grows it back, the device
+  keeping its size, and refuses to grow it past the end of the device.
+  `DEV_VND` names the vnd device (default `vnd0`).  Skipped otherwise.
 
 ## Files
 
