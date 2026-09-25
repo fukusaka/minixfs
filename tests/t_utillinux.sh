@@ -13,14 +13,46 @@
 #    fsck.minix must accept what fsck_minixfs -y repaired.
 #
 # FSCK_MINIX and MKFS_MINIX name the tools (default: from PATH).
+#
+# fsck.minix calls sync(2) three times each run, which waits for every
+# file system of the host, and takes most of the time of this test.
+# UTILLINUX_NOSYNC=yes has strace(1) turn those calls into ones that
+# succeed at once, where it can (Linux): the images are files of the
+# host that the tools here wrote, which fsck.minix reads through the same
+# cache, so what it reads is the same.  fsck.minix only checks here; a
+# repair by it, which is to reach the disk, is not to go through
+# fsck_minix.
 
 . ./tests/lib.sh
 
 : "${FSCK_MINIX:=fsck.minix}"
 : "${MKFS_MINIX:=mkfs.minix}"
+: "${UTILLINUX_NOSYNC:=no}"
 
 have() {
 	command -v "$1" >/dev/null 2>&1
+}
+
+nosync=no
+if [ "$UTILLINUX_NOSYNC" = yes ] && have "$FSCK_MINIX"; then
+	if strace -qq -e trace=sync -e inject=sync:retval=0 -o /dev/null \
+	    true >/dev/null 2>&1; then
+		nosync=yes
+	else
+		echo "# UTILLINUX_NOSYNC: strace cannot skip sync(2) here;" \
+		    "fsck.minix runs as it is"
+	fi
+fi
+
+# fsck_minix ARGS... - run fsck.minix, without its sync(2) calls if
+# UTILLINUX_NOSYNC asks and strace can.
+fsck_minix() {
+	if [ "$nosync" = yes ]; then
+		strace -qq -e trace=sync -e inject=sync:retval=0 \
+		    -o /dev/null "$FSCK_MINIX" "$@"
+	else
+		"$FSCK_MINIX" "$@"
+	fi
 }
 
 # fsck_accepts: fsck.minix accepts the test tree in every format it
@@ -31,14 +63,14 @@ fsck_accepts() {
 		sed -e "s/@FS@/$fs/" -e "s/@ORDER@/le/" -e "s/@BLOCKS@/4096/" \
 		    -e "s/@LOGZONE@/0/" tests/tree.spec >"$T/spec"
 		mkimage "$T/spec" "$T/img"
-		run "$FSCK_MINIX" -f "$T/img"
+		run fsck_minix -f "$T/img"
 		check_status "fsck.minix accepts the test tree ($fs)" 0
 	done
 
 	# fsck.minix must notice damage, or the checks above say nothing.
 	cp "$T/img" "$T/bad"
 	poke "$T/bad" $((3 * 1024)) 000		# part of the zone map
-	run "$FSCK_MINIX" -f "$T/bad"
+	run fsck_minix -f "$T/bad"
 	check_true "fsck.minix notices a damaged zone map" \
 	    test "$status" -ne 0
 }
@@ -52,13 +84,13 @@ fs $fs order=le blocks=2048 inodes=16
 file /tind 0644 0 0 0 67400000 7 0:67380000
 EOF
 		mkimage "$T/spec" "$T/img"
-		run "$FSCK_MINIX" -f "$T/img"
+		run fsck_minix -f "$T/img"
 		check_status "fsck.minix accepts a triple indirect file ($fs)" 0
 
 		# Inode 2 is the file.
 		cp "$T/img" "$T/bad"
 		set_inode "$T/bad" 2 zone9 0
-		run "$FSCK_MINIX" -f "$T/bad"
+		run fsck_minix -f "$T/bad"
 		check_true "fsck.minix notices a lost triple indirect ($fs)" \
 		    test "$status" -ne 0
 	done
@@ -73,7 +105,7 @@ fsck_newfs() {
 		# The options are split on purpose.
 		# shellcheck disable=SC2086
 		"$NEWFS_MINIXFS" $opts -s 2048 "$T/img"
-		run "$FSCK_MINIX" -f "$T/img"
+		run fsck_minix -f "$T/img"
 		check_status "fsck.minix accepts newfs_minixfs $opts" 0
 	done
 }
@@ -114,13 +146,13 @@ EOF
 				set_inode "$T/img" 4 "$1" "$2"
 				;;
 			esac
-			run "$FSCK_MINIX" -f "$T/img"
+			run fsck_minix -f "$T/img"
 			check_true "$fs: fsck.minix finds \"$damage\"" \
 			    test "$status" -ne 0
 			run "$FSCK_MINIXFS" "$T/img"
 			check_status "$fs: fsck_minixfs finds \"$damage\"" 1
 			run "$FSCK_MINIXFS" -y "$T/img"
-			run "$FSCK_MINIX" -f "$T/img"
+			run fsck_minix -f "$T/img"
 			what="fsck.minix accepts the repair of \"$damage\""
 			check_status "$fs: $what" 0
 		done
@@ -136,7 +168,7 @@ EOF
 		    $(($(get_inode "$T/good" 1 zone0) * 1024 + 2 * dsize)) \
 		    "$width" 0
 		run "$FSCK_MINIXFS" -y -l "$T/img"
-		run "$FSCK_MINIX" -f "$T/img"
+		run fsck_minix -f "$T/img"
 		check_status "$fs: fsck.minix accepts /lost+found from -y -l" 0
 	done
 }

@@ -29,6 +29,10 @@ print TAP.  Variables:
 - `TEST_SHELL` - the shell for the scripts (default `sh`)
 - `JUNIT_XML=FILE` - also write the results as JUnit XML
 - `FUZZ_COUNT`, `FUZZ_SEED` - size and seed of the random damage test
+- `UTILLINUX_NOSYNC=yes` - `t_utillinux.sh` has strace(1) skip the
+  sync(2) calls of `fsck.minix`, three a run, which wait for every file
+  system of the host; where strace cannot (it is Linux only), the test
+  says so and runs as it is
 
 Test images are made by `tests/mkimage`, a separate writer that shares no
 code with `src/`, from small text specifications (see the comment at the
