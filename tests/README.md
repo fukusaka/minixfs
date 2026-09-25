@@ -113,7 +113,9 @@ top of `tests/mkimage.c`).  The scripts:
 - `t_tar.sh` - where tar(1) is installed: `minixfs tar` of the test tree
   in several formats is read back by tar(1): contents, modes, owners and
   times, devices with their numbers, pipes, hard and symbolic links, a
-  directory as the top, and names too long for a plain ustar header.
+  directory as the top, names too long for a plain ustar header, and a
+  path of more than 8 KB, where tar(1) reads pax headers (that of
+  MINIX 3 does not).
 - `t_tracks.sh` - `-M`: a file system spread over the tracks of either
   side of a double-sided image reads with `info`, `ls`, `cat`,
   `extract`, `tar` and `fsck_minixfs` as the file system itself, and

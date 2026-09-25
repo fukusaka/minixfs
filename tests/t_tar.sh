@@ -95,8 +95,10 @@ check_status "a file is not a directory to archive" 1
 
 # A path of more than 8 KB, 150 directories of 60-character names, goes
 # whole into its pax header: tar(1) lists 150 names, each its own.  The
-# host cannot make the tree to compare with.
-d=ddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+# host cannot make the tree to compare with.  A tar(1) that reads no pax
+# header, as that of MINIX 3, which lists the ustar names cut short, is
+# found first with a path of 304 bytes.
+d=$(LC_ALL=C awk 'BEGIN { for (i = 0; i < 57; i++) printf "d" }')
 {
 	echo "fs version=3 order=le blocks=2048 inodes=200"
 	p=
@@ -107,16 +109,26 @@ d=ddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 		n=$((n + 1))
 	done
 } >"$T/deep.spec"
-mkimage "$T/deep.spec" "$T/deep.img"
-run "$MINIXFS" tar "$T/deep.img"
-check_status "tar stores a path of more than 8 KB" 0
-cp "$T/out" "$T/deep.tar"
-tar -tf "$T/deep.tar" 2>/dev/null | sed 's,/$,,' | sort -u >"$T/list"
-check_true "the names are listed whole, each its own" \
-    test "$(wc -l <"$T/list")" -eq 150
-check_true "the deepest is 9149 bytes long, without a leading /" \
-    test "$(awk '{ if (length($0) > m) m = length($0) } END { print m }' \
-    "$T/list")" -eq 9149
+head -6 "$T/deep.spec" >"$T/pax.spec"
+mkimage "$T/pax.spec" "$T/pax.img"
+"$MINIXFS" tar "$T/pax.img" >"$T/pax.tar" 2>/dev/null
+if [ "$(tar -tf "$T/pax.tar" 2>/dev/null | sed 's,/$,,' |
+    awk '{ if (length($0) > m) m = length($0) } END { print m + 0 }')" \
+    -ne 304 ]; then
+	skip "tar stores a path of more than 8 KB" \
+	    "tar(1) here reads no pax header"
+else
+	mkimage "$T/deep.spec" "$T/deep.img"
+	run "$MINIXFS" tar "$T/deep.img"
+	check_status "tar stores a path of more than 8 KB" 0
+	cp "$T/out" "$T/deep.tar"
+	tar -tf "$T/deep.tar" 2>/dev/null | sed 's,/$,,' | sort -u >"$T/list"
+	check_true "the names are listed whole, each its own" \
+	    test "$(wc -l <"$T/list")" -eq 150
+	check_true "the deepest is 9149 bytes long, without a leading /" \
+	    test "$(awk '{ if (length($0) > m) m = length($0) }
+	    END { print m }' "$T/list")" -eq 9149
+fi
 
 # Names over 100 bytes go into the prefix, and over 255 bytes into a pax
 # header, as does a long symbolic link.  The tree to compare with needs
