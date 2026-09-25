@@ -331,6 +331,12 @@ run "$MINIXFS" -f mkdir "$T/img" /d
 check_status "$v: -f writes all the same" 0
 check_true "$v: the mark stays away, as it was" \
     test "$(info_field "$T/img" clean)" = no
+# The state of V1 and V2 that Linux keeps, with errors recorded, is left
+# as it was, not only not clean.
+set_super "$T/img" state 3
+run "$MINIXFS" -f mkdir "$T/img" /e
+check_true "$v: -f leaves the state word as it was" \
+    test "$(get_number "$T/img" $((1024 + 18)) 16)" -eq 3
 run "$FSCK_MINIXFS" -y "$T/img"
 check_status "$v: fsck -y passes it and marks it clean" 0
 cat >"$T/spec" <<EOF

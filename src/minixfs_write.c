@@ -69,8 +69,12 @@ struct owner {
 	uint32_t	gid;
 };
 
-/* Whether the image was marked clean when it was opened. */
+/*
+ * Whether the image was marked clean when it was opened, and the state
+ * of its super block then, which -f gives back to one that was not.
+ */
 static int was_clean;
+static uint16_t state_before;
 
 /* The options of put. */
 struct put {
@@ -168,6 +172,7 @@ open_for_writing(struct cmd *c, const char *image)
 		errx(1, "%s: the flex directories of Minix-vmd cannot be "
 		    "written", image);
 	was_clean = mfs_is_clean(&c->fs);
+	state_before = c->fs.state;
 	if (!force && !was_clean)
 		errx(1, "%s: not marked clean, so it may be mounted; unmount "
 		    "it and run fsck_minixfs -y, or give -f", image);
@@ -176,16 +181,24 @@ open_for_writing(struct cmd *c, const char *image)
 }
 
 /*
- * Write the bit maps, put the clean mark back if the image had it, and
- * close the image.  Returns the exit status of the command.
+ * Write the bit maps, put the clean mark back if the image had it, or
+ * else the state it had, and close the image.  Returns the exit status
+ * of the command.
  */
 static int
 finish_writing(struct cmd *c)
 {
 	int r;
 
-	if ((r = mfs_sync(&c->fs)) < 0 ||
-	    (was_clean && (r = mfs_mark_clean(&c->fs, 1)) < 0))
+	if ((r = mfs_sync(&c->fs)) == 0) {
+		if (was_clean) {
+			r = mfs_mark_clean(&c->fs, 1);
+		} else {
+			c->fs.state = state_before;
+			r = mfs_put_super(&c->fs);
+		}
+	}
+	if (r < 0)
 		problem(c, "%s: %s", c->image, strerror(-r));
 	else if (fsync(c->fs.fd) == -1)
 		problem(c, "%s: %s", c->image, strerror(errno));
