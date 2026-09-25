@@ -71,11 +71,6 @@
 #define SYMTAB		"restoresymtable"	/* default of -s */
 #define SYMTAB_MAGIC	"minixfs-restoresymtable 1"
 #define MAX_DIR		(64 * 1024 * 1024)	/* bytes of a directory */
-#define MAX_UID		65535
-#define MAX_GID_V1	255		/* the gid of a V1 inode is a byte */
-#define MAX_GID		65535
-#define MAX_LINKS_V1	255		/* and so is its link count */
-#define MAX_LINKS	65535
 #define MAX_DEV		0xffff		/* major * 256 + minor */
 #define MAX_TIME	UINT32_MAX
 #define MAX_DEPTH	1024		/* deepest directory followed */
@@ -999,13 +994,13 @@ check_attrs(struct restore *r, const struct dump_header *h,
 	int n;
 
 	n = 0;
-	if (!r->o->owned && h->uid > MAX_UID) {
+	if (!r->o->owned && h->uid > MFS_MAX_UID) {
 		problem(r, "%s: owner %" PRIu32 " does not fit; see -o",
 		    path, h->uid);
 		n++;
 	}
 	if (!r->o->owned &&
-	    h->gid > (r->fs.version == 1 ? MAX_GID_V1 : MAX_GID)) {
+	    h->gid > (r->fs.version == 1 ? MFS_MAX_GID_V1 : MFS_MAX_GID)) {
 		problem(r, "%s: group %" PRIu32 " does not fit in V%d; "
 		    "see -o", path, h->gid, r->fs.version);
 		n++;
@@ -1205,8 +1200,8 @@ check(struct restore *r)
 	size_t i;
 	int e;
 
-	if (r->o->owned && (r->o->uid > MAX_UID ||
-	    r->o->gid > (r->fs.version == 1 ? MAX_GID_V1 : MAX_GID)))
+	if (r->o->owned && (r->o->uid > MFS_MAX_UID ||
+	    r->o->gid > (r->fs.version == 1 ? MFS_MAX_GID_V1 : MFS_MAX_GID)))
 		problem(r, "%s: -o %" PRIu32 ":%" PRIu32 " does not fit in "
 		    "V%d", r->o->image, r->o->uid, r->o->gid, r->fs.version);
 	(void)memset(&seen, 0, sizeof(seen));
@@ -1711,7 +1706,7 @@ settle(struct restore *r, struct walk *wk, uint32_t m)
 		return;
 	}
 	if (wk->reached[m]) {
-		max = r->fs.version == 1 ? MAX_LINKS_V1 : MAX_LINKS;
+		max = r->fs.version == 1 ? MFS_MAX_LINKS_V1 : MFS_MAX_LINKS;
 		if (wk->count[m] > max)
 			problem(r, "%s: inode %" PRIu32 " has %" PRIu32
 			    " names, more than V%d counts", r->o->image, m,

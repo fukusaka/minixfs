@@ -107,18 +107,15 @@ problem(struct dump *d, const char *fmt, ...)
 	d->status = 1;
 }
 
-/*
- * The time now.  time(3), as mktime(3), returns nonsense under the
- * AddressSanitizer of NetBSD/i386, and clock_gettime(2) does not.
- */
+/* The time now; a dump cannot be dated without it. */
 static int64_t
 now(void)
 {
-	struct timespec ts;
+	int64_t t;
 
-	if (clock_gettime(CLOCK_REALTIME, &ts) == -1)
+	if ((t = compat_now()) < 0)
 		err(1, "clock_gettime");
-	return (int64_t)ts.tv_sec;
+	return t;
 }
 
 /* Seconds from the epoch to a time of the Gregorian calendar, in UTC. */

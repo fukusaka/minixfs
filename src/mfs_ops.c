@@ -20,9 +20,6 @@
 #include "layout.h"
 #include "mfs.h"
 
-#define MAX_LINKS_V1	255		/* the link count of V1 is a byte */
-#define MAX_LINKS	65535
-#define MAX_GID_V1	255		/* and so is its group */
 
 /* The entry of a name in a directory. */
 struct find {
@@ -114,7 +111,7 @@ get_dir(struct mfs *fs, uint32_t dir, struct mfs_inode *dp)
 static uint32_t
 max_links(const struct mfs *fs)
 {
-	return fs->version == 1 ? MAX_LINKS_V1 : MAX_LINKS;
+	return fs->version == 1 ? MFS_MAX_LINKS_V1 : MFS_MAX_LINKS;
 }
 
 /* Add delta to the link count of inode ino and set its ctime. */
@@ -227,7 +224,7 @@ make_node(struct mfs *fs, uint32_t dir, const char *name,
 
 	if ((r = check_new(fs, dir, name, &dp)) < 0)
 		return r;
-	if (fs->version == 1 && n->gid > MAX_GID_V1)
+	if (fs->version == 1 && n->gid > MFS_MAX_GID_V1)
 		return -EINVAL;
 	dirs = (n->mode & MFS_S_IFMT) == MFS_S_IFDIR;
 	if (dirs && dp.nlinks >= max_links(fs))

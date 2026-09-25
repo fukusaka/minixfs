@@ -57,6 +57,22 @@
 #endif
 
 #include <stdint.h>
+#include <time.h>
+
+/*
+ * The time now, in seconds, or -1 if it cannot be told.  time(3), as
+ * mktime(3), returns nonsense under the AddressSanitizer of NetBSD/i386,
+ * and clock_gettime(2) does not.
+ */
+static inline int64_t
+compat_now(void)
+{
+	struct timespec ts;
+
+	if (clock_gettime(CLOCK_REALTIME, &ts) == -1)
+		return -1;
+	return (int64_t)ts.tv_sec;
+}
 
 /* The size in bytes of the disk device open on fd, or -1 if not known. */
 static inline off_t

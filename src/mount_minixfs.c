@@ -602,23 +602,14 @@ mfs_statfs(const char *path, struct statvfs *sv)
  * Writing, with -w.
  */
 
-#define MAX_DEV_PART	255		/* major and minor numbers of MINIX */
-#define MAX_UID		65535
-#define MAX_GID_V1	255		/* the gid of a V1 inode is a byte */
-#define MAX_GID		65535
 
-/*
- * The time now.  time(3) returns nonsense under the AddressSanitizer of
- * NetBSD/i386, and clock_gettime(2) does not.
- */
+/* The time now, or 0 if it cannot be told. */
 static int64_t
 now(void)
 {
-	struct timespec ts;
+	int64_t t;
 
-	if (clock_gettime(CLOCK_REALTIME, &ts) == -1)
-		return 0;
-	return (int64_t)ts.tv_sec;
+	return (t = compat_now()) < 0 ? 0 : t;
 }
 
 /*
@@ -694,7 +685,7 @@ new_owner(uint32_t dir, mode_t mode, struct mfs_new *n)
 	int r;
 
 	ctx = fuse_get_context();
-	if (ctx->uid > MAX_UID)
+	if (ctx->uid > MFS_MAX_UID)
 		return -EINVAL;
 	if ((r = mfs_read_inode(image(), dir, &dp)) < 0)
 		return r;
@@ -704,8 +695,8 @@ new_owner(uint32_t dir, mode_t mode, struct mfs_new *n)
 		n->gid = dp.gid;
 		if (S_ISDIR(mode))
 			n->mode |= S_ISGID;
-	} else if (ctx->gid <= (image()->version == 1 ? MAX_GID_V1 :
-	    MAX_GID)) {
+	} else if (ctx->gid <= (image()->version == 1 ? MFS_MAX_GID_V1 :
+	    MFS_MAX_GID)) {
 		n->gid = (uint16_t)ctx->gid;
 	} else {
 		n->gid = dp.gid;
@@ -783,7 +774,8 @@ mfs_make_node(const char *path, mode_t mode, dev_t rdev)
 
 	dev = 0;
 	if (S_ISCHR(mode) || S_ISBLK(mode)) {
-		if (major(rdev) > MAX_DEV_PART || minor(rdev) > MAX_DEV_PART)
+		if (major(rdev) > MFS_MAX_DEV_PART ||
+		    minor(rdev) > MFS_MAX_DEV_PART)
 			return -EINVAL;
 		dev = (uint32_t)(major(rdev) << 8 | minor(rdev));
 	}
@@ -989,10 +981,10 @@ set_owner(const char *path, uid_t uid, gid_t gid, struct fuse_file_info *fi)
 
 	if ((r = inode_of(path, fi, &ip)) < 0)
 		return r;
-	if (uid != (uid_t)-1 && uid > MAX_UID)
+	if (uid != (uid_t)-1 && uid > MFS_MAX_UID)
 		return -EINVAL;
 	if (gid != (gid_t)-1 &&
-	    gid > (image()->version == 1 ? MAX_GID_V1 : MAX_GID))
+	    gid > (image()->version == 1 ? MFS_MAX_GID_V1 : MFS_MAX_GID))
 		return -EINVAL;
 	if (uid != (uid_t)-1)
 		ip.uid = (uint16_t)uid;

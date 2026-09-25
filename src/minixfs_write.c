@@ -59,10 +59,6 @@
 #include "minixfs.h"
 
 #define COPY_SIZE	65536		/* bytes copied at a time */
-#define MAX_DEV_PART	255		/* major and minor numbers of MINIX */
-#define MAX_UID		65535
-#define MAX_GID_V1	255		/* the gid of a V1 inode is a byte */
-#define MAX_GID		65535
 
 /* -o uid:gid */
 struct owner {
@@ -89,18 +85,15 @@ struct put {
 	unsigned long	left_out;	/* devices without -d, and sockets */
 };
 
-/*
- * The time now.  time(3) returns nonsense under the AddressSanitizer of
- * NetBSD/i386, and clock_gettime(2) does not.
- */
+/* The time now, as an inode holds it. */
 static uint32_t
 now(void)
 {
-	struct timespec ts;
+	int64_t t;
 
-	if (clock_gettime(CLOCK_REALTIME, &ts) == -1 || ts.tv_sec < 0)
+	if ((t = compat_now()) < 0)
 		return 0;
-	return ts.tv_sec > UINT32_MAX ? UINT32_MAX : (uint32_t)ts.tv_sec;
+	return t > UINT32_MAX ? UINT32_MAX : (uint32_t)t;
 }
 
 /* A time of the host as an inode holds it. */
@@ -116,7 +109,7 @@ time32(time_t t)
 static uint32_t
 max_gid(const struct cmd *c)
 {
-	return c->fs.version == 1 ? MAX_GID_V1 : MAX_GID;
+	return c->fs.version == 1 ? MFS_MAX_GID_V1 : MFS_MAX_GID;
 }
 
 /* -o: two numbers with a colon between; a usage error otherwise. */
@@ -134,7 +127,7 @@ parse_owner(const char *s, struct owner *o)
 	gid = strtoul(s, &end, 10);
 	if (errno != 0 || end == s || *end != '\0' || s[0] < '0' || s[0] > '9')
 		errx(2, "%s: give the owner as uid:gid", s);
-	if (uid > MAX_UID || gid > MAX_GID)
+	if (uid > MFS_MAX_UID || gid > MFS_MAX_GID)
 		errx(2, "%lu:%lu: bad owner", uid, gid);
 	o->set = 1;
 	o->uid = (uint32_t)uid;
@@ -145,7 +138,7 @@ parse_owner(const char *s, struct owner *o)
 static int
 owner_fits(struct cmd *c, uint32_t uid, uint32_t gid)
 {
-	if (uid <= MAX_UID && gid <= max_gid(c))
+	if (uid <= MFS_MAX_UID && gid <= max_gid(c))
 		return 1;
 	problem(c, "%s: owner %" PRIu32 ":%" PRIu32 " does not fit in V%d",
 	    c->image, uid, gid, c->fs.version);
@@ -494,8 +487,8 @@ put_node(struct put *p, const struct stat *st, uint32_t dir,
 		mode |= MFS_S_IFIFO;
 	} else {
 		mode |= S_ISCHR(st->st_mode) ? MFS_S_IFCHR : MFS_S_IFBLK;
-		if (major(st->st_rdev) > MAX_DEV_PART ||
-		    minor(st->st_rdev) > MAX_DEV_PART) {
+		if (major(st->st_rdev) > MFS_MAX_DEV_PART ||
+		    minor(st->st_rdev) > MFS_MAX_DEV_PART) {
 			problem(p->c, "%s: device numbers %u,%u do not fit",
 			    path, (unsigned)major(st->st_rdev),
 			    (unsigned)minor(st->st_rdev));
@@ -1021,7 +1014,7 @@ parse_change(const char *s, long *uid, long *gid)
 		errno = 0;
 		v = strtoul(s, &end, 10);
 		if (errno != 0 || end == s || (*end != '\0' && *end != ':') ||
-		    *s < '0' || *s > '9' || v > MAX_UID)
+		    *s < '0' || *s > '9' || v > MFS_MAX_UID)
 			errx(2, "%s: give the owner as uid, uid:gid or :gid", s);
 		*uid = (long)v;
 		s = end;
@@ -1031,7 +1024,7 @@ parse_change(const char *s, long *uid, long *gid)
 		errno = 0;
 		v = strtoul(s, &end, 10);
 		if (errno != 0 || end == s || *end != '\0' || *s < '0' ||
-		    *s > '9' || v > MAX_GID)
+		    *s > '9' || v > MFS_MAX_GID)
 			errx(2, "%s: give the owner as uid, uid:gid or :gid", s);
 		*gid = (long)v;
 	}

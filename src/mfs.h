@@ -24,6 +24,14 @@
 #define MFS_MAX_NAME	60		/* longest name of any version */
 #define MFS_NR_ZONES	10		/* zone slots in the largest inode */
 
+/* What the fields of an inode hold. */
+#define MFS_MAX_UID	65535
+#define MFS_MAX_GID	65535
+#define MFS_MAX_GID_V1	255		/* the gid of a V1 inode is a byte */
+#define MFS_MAX_LINKS	65535
+#define MFS_MAX_LINKS_V1 255		/* and so is its link count */
+#define MFS_MAX_DEV_PART 255		/* major and minor device numbers */
+
 /* Super block magic numbers, in the byte order of the image. */
 #define MFS_MAGIC_V1	0x137f		/* V1, 14-character names */
 #define MFS_MAGIC_V1L	0x138f		/* V1, 30-character names (Linux) */

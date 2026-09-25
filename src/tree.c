@@ -41,12 +41,6 @@
 
 #define COPY_SIZE	65536		/* bytes copied at a time */
 #define NR_DZONES	7		/* direct zones in an inode */
-#define MAX_DEV_PART	255		/* major and minor numbers of MINIX */
-#define MAX_UID		65535
-#define MAX_GID_V1	255		/* the gid of a V1 inode is a byte */
-#define MAX_GID		65535
-#define MAX_LINKS_V1	255		/* and so is its link count */
-#define MAX_LINKS	65535
 
 /* A file with more than one link, by its identity on the host. */
 struct link {
@@ -497,11 +491,11 @@ scan_entry(struct scan *s, struct node *n, const char *name,
 		}
 		return 0;
 	}
-	if (n->uid > MAX_UID) {
+	if (n->uid > MFS_MAX_UID) {
 		problem(s, where(n), "owner %" PRIu32 " does not fit", n->uid);
 		s->need->owners++;
 	}
-	if (n->gid > (f->version == 1 ? MAX_GID_V1 : MAX_GID)) {
+	if (n->gid > (f->version == 1 ? MFS_MAX_GID_V1 : MFS_MAX_GID)) {
 		problem(s, where(n), "group %" PRIu32 " does not fit in V%d",
 		    n->gid, f->version);
 		s->need->owners++;
@@ -532,7 +526,7 @@ scan_entry(struct scan *s, struct node *n, const char *name,
 		else
 			s->need->zones += file_zones(f, size);
 	} else if (is_dev(n)) {
-		if (n->major > MAX_DEV_PART || n->minor > MAX_DEV_PART)
+		if (n->major > MFS_MAX_DEV_PART || n->minor > MFS_MAX_DEV_PART)
 			problem(s, where(n), "device %" PRIu32 ",%" PRIu32
 			    " does not fit", n->major, n->minor);
 	} else if (n->type != MFS_S_IFIFO) {
@@ -565,7 +559,8 @@ scan_dir(struct scan *s, const char *host, const char *rel)
 	free_names(names, count);
 	if (r == -1)
 		return -1;
-	if (subdirs + 2 > (s->f->version == 1 ? MAX_LINKS_V1 : MAX_LINKS))
+	if (subdirs + 2 > (s->f->version == 1 ? MFS_MAX_LINKS_V1 :
+	    MFS_MAX_LINKS))
 		problem(s, host != NULL ? host : rel, "%" PRIu32 " directories "
 		    "below it are more than a link count holds", subdirs);
 	s->need->zones += file_zones(s->f,
@@ -585,8 +580,8 @@ tree_scan(const char *dir, const struct tree_fs *f, struct tree_need *need)
 	(void)memset(&s, 0, sizeof(s));
 	s.f = f;
 	s.need = need;
-	if (f->owned && (f->uid > MAX_UID ||
-	    f->gid > (f->version == 1 ? MAX_GID_V1 : MAX_GID))) {
+	if (f->owned && (f->uid > MFS_MAX_UID ||
+	    f->gid > (f->version == 1 ? MFS_MAX_GID_V1 : MFS_MAX_GID))) {
 		warnx("owner %" PRIu32 ":%" PRIu32 " does not fit in V%d",
 		    f->uid, f->gid, f->version);
 		need->problems++;
@@ -603,7 +598,7 @@ tree_scan(const char *dir, const struct tree_fs *f, struct tree_need *need)
 	r = scan_dir(&s, dir, "");
 	for (i = 0; i < s.links.max; i++) {
 		if (s.links.tab[i].used && s.links.tab[i].names >
-		    (f->version == 1 ? MAX_LINKS_V1 : MAX_LINKS)) {
+		    (f->version == 1 ? MFS_MAX_LINKS_V1 : MFS_MAX_LINKS)) {
 			need->problems++;
 			warnx("a file with %" PRIu32 " names in the tree has "
 			    "more than a link count holds",

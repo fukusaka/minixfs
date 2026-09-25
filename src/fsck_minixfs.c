@@ -84,7 +84,6 @@
 #define EXIT_PROBLEMS	1
 #define EXIT_USAGE	2
 #define EXIT_CANNOT	3
-#define V1_MAX_LINKS	255		/* the link count of V1 is 8 bits */
 #define MAX_SYMLINK	4095		/* longest link text Linux writes */
 #define MAX_SIZE	0x7fffffff	/* s_max_size is signed in MINIX */
 #define NEED_DOT	1		/* "." is missing */
@@ -1096,7 +1095,7 @@ check_links(struct check *c, uint32_t ino, struct mfs_inode *ip)
 	if (ip->nlinks == c->refs[ino])
 		return;
 	nlinks = ip->nlinks;
-	if (c->fs.version == 1 && c->refs[ino] > V1_MAX_LINKS) {
+	if (c->fs.version == 1 && c->refs[ino] > MFS_MAX_LINKS_V1) {
 		problem(c, 1, "inode %" PRIu32 ": link count %" PRIu32 ", but %"
 		    PRIu32 " entries", ino, nlinks, c->refs[ino]);
 		return;
