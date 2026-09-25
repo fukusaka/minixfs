@@ -1,5 +1,7 @@
 # minixfs
 
+[日本語](README.ja.md)
+
 Tools for MINIX file system images, written from scratch in portable C.
 
 The aim is a FUSE file system and a set of management tools for the MINIX
