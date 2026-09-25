@@ -102,7 +102,8 @@ kill_mount() {
 	fi
 }
 
-# unmount_image DIR - unmount and wait for mount_minixfs to exit.  Sets
+# unmount_image DIR - unmount and wait for mount_minixfs to exit, if it
+# was started in the foreground (fuse_pid).  Sets
 # status to the exit status of the unmount command, and fuse_status to
 # that of mount_minixfs.
 unmount_image() {
@@ -120,8 +121,12 @@ unmount_image() {
 	else
 		run as_mounter umount "$1"
 	fi
-	wait "$fuse_pid"
-	fuse_status=$?
+	# In the background mount_minixfs is no child of the test.
+	fuse_status=0
+	if [ -n "$fuse_pid" ]; then
+		wait "$fuse_pid"
+		fuse_status=$?
+	fi
 }
 
 # field_of FILE N - field N of "ls -lin FILE".
@@ -334,6 +339,32 @@ else
 	writable "V1/le" "-V 1 -o $(id -u):0" sync 1
 	writable "V2/be, 30-character names" "-V 2 -l 30 -B be" always 0
 	writable "V3/le" "-V 3" 1 0
+
+	# In the background, as without -f, mount_minixfs returns once the
+	# file system is mounted, and still holds the lock.
+	rm -rf "$T/bg.img" "$T/empty"
+	mkdir "$T/empty"
+	"$NEWFS_MINIXFS" -V 2 -s 1000 -d "$T/empty" -o "$(id -u):$(id -g)" \
+	    "$T/bg.img" >/dev/null
+	run as_mounter "$MINIXFS_FUSE" -w "$T/bg.img" "$mnt"
+	check_status "-w in the background: mount_minixfs returns" 0
+	check_true "-w in the background: the mount can be written" \
+	    can_write "$mnt/new"
+	run "$TUNEFS_MINIXFS" -c clean "$T/bg.img"
+	check_err "-w in the background: another writer is refused" "busy"
+	fuse_pid=
+	unmount_image "$mnt"
+	check_status "-w in the background: the mount is unmounted" 0
+	# The unmount does not wait for mount_minixfs to write the image.
+	n=0
+	while [ "$(info_field "$T/bg.img" clean)" != yes ] && [ "$n" -lt 10 ]; do
+		sleep 1
+		n=$((n + 1))
+	done
+	run "$FSCK_MINIXFS" "$T/bg.img"
+	check_status "-w in the background: fsck finds nothing wrong" 0
+	check_true "-w in the background: the new file is there" \
+	    "$MINIXFS" cat "$T/bg.img" /new
 fi
 
 # A file system not marked clean is mounted read-only.

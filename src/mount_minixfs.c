@@ -41,6 +41,7 @@
 
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+#include <sys/wait.h>
 
 #include <err.h>
 #include <errno.h>
@@ -74,6 +75,9 @@
 
 /* The options every mount gets; FUSE wants them writable. */
 static char opt_single[] = "-s";
+#ifndef PUFFS_SERVICE
+static char opt_foreground[] = "-f";
+#endif
 static char opt_o[] = "-o";
 #if FUSE_USE_VERSION >= 30
 static char opt_ro[] = "ro";
@@ -99,6 +103,9 @@ struct mount {
  * struct fuse in place of the private data.
  */
 static struct mount *the_mount;
+
+/* In the background: the pipe on which the parent waits, or -1. */
+static int ready_fd = -1;
 
 static struct mount *
 mount_of(void)
@@ -722,6 +729,32 @@ mfs_sync_file(const char *path, int datasync, struct fuse_file_info *fi)
 	return fsync(m->fs.fd) == -1 ? -errno : 0;
 }
 
+/*
+ * Mounted, in the background: let go of the terminal and the directory,
+ * and tell the parent, which then exits.
+ */
+static void
+mounted(void)
+{
+	int fd;
+
+	if (ready_fd == -1)
+		return;
+	if (chdir("/") == -1)
+		warn("/");
+	if (write(ready_fd, "", 1) == -1)
+		warn("cannot tell the parent that the mount is made");
+	(void)close(ready_fd);
+	if ((fd = open("/dev/null", O_RDWR)) != -1) {
+		(void)dup2(fd, STDIN_FILENO);
+		(void)dup2(fd, STDOUT_FILENO);
+		(void)dup2(fd, STDERR_FILENO);
+		if (fd > STDERR_FILENO)
+			(void)close(fd);
+	}
+	ready_fd = -1;
+}
+
 #if FUSE_USE_VERSION >= 30
 static void *
 mfs_init(struct fuse_conn_info *conn, struct fuse_config *cfg)
@@ -729,6 +762,7 @@ mfs_init(struct fuse_conn_info *conn, struct fuse_config *cfg)
 	(void)conn;
 	cfg->use_ino = 1;
 	cfg->readdir_ino = 1;
+	mounted();
 	return mount_of();
 }
 #else
@@ -736,6 +770,7 @@ static void *
 mfs_init(struct fuse_conn_info *conn)
 {
 	(void)conn;
+	mounted();
 	return mount_of();
 }
 #endif
@@ -757,6 +792,7 @@ struct options {
 	int		write;		/* -w */
 	int		always;		/* -u always */
 	long		every;		/* -u seconds */
+	int		foreground;	/* -f or -d, or -o debug, for FUSE */
 };
 
 /* -u: always, sync, or a number of seconds. */
@@ -803,6 +839,8 @@ mount_opts(char *list, struct options *o)
 			if (mfs_parse_tracks(p + 7, &o->tracks) < 0)
 				usage();
 		} else if (*p != '\0') {
+			if (strcmp(p, "debug") == 0)
+				o->foreground = 1;
 			if (w != list)
 				*w++ = ',';
 			(void)memmove(w, p, strlen(p) + 1);
@@ -833,6 +871,10 @@ split_args(int argc, char **argv, char **fargv, int *fargc,
 	fargv[n++] = opt_single;
 	fargv[n++] = opt_o;
 	fargv[n++] = opt_ro;
+#ifndef PUFFS_SERVICE
+	/* FUSE stays where it is; see background(). */
+	fargv[n++] = opt_foreground;
+#endif
 	for (i = 1; i < argc; i++) {
 		if (n >= MAX_ARGS - 1)
 			usage();
@@ -851,6 +893,9 @@ split_args(int argc, char **argv, char **fargv, int *fargc,
 				fargv[n++] = argv[i];
 			}
 		} else if (argv[i][0] == '-' || o->image != NULL) {
+			if (strcmp(argv[i], "-f") == 0 ||
+			    strcmp(argv[i], "-d") == 0)
+				o->foreground = 1;
 			fargv[n++] = argv[i];
 		} else {
 			o->image = argv[i];
@@ -863,6 +908,44 @@ split_args(int argc, char **argv, char **fargv, int *fargc,
 	fargv[n] = NULL;
 	*fargc = n;
 }
+
+#ifndef PUFFS_SERVICE
+/*
+ * Go into the background, before the image is opened and locked, and not
+ * after, as FUSE would: a lock of fcntl(2) belongs to the process, and
+ * would go with the parent that FUSE lets exit.  The parent waits until
+ * the child has mounted, and exits with 0, or has failed, and exits as it
+ * did.
+ */
+static void
+background(void)
+{
+	ssize_t n;
+	pid_t pid;
+	int fd[2], status;
+	char c;
+
+	if (pipe(fd) == -1)
+		err(1, "pipe");
+	if ((pid = fork()) == -1)
+		err(1, "fork");
+	if (pid == 0) {
+		(void)close(fd[0]);
+		ready_fd = fd[1];
+		if (setsid() == -1)
+			err(1, "setsid");
+		return;
+	}
+	(void)close(fd[1]);
+	while ((n = read(fd[0], &c, 1)) == -1 && errno == EINTR)
+		continue;
+	if (n == 1)
+		_exit(0);
+	if (waitpid(pid, &status, 0) == -1)
+		err(1, "waitpid");
+	exit(WIFEXITED(status) ? WEXITSTATUS(status) : 1);
+}
+#endif
 
 /* Open the image, for writing if -w asks and the image allows. */
 static void
@@ -1004,6 +1087,10 @@ main(int argc, char **argv)
 	split_args(argc, argv, fargv, &fargc, &o);
 	if (o.image == NULL)
 		usage();
+#ifndef PUFFS_SERVICE
+	if (!o.foreground)
+		background();
+#endif
 	open_image(&m, &o);
 	m.path = o.image;
 	the_mount = &m;
