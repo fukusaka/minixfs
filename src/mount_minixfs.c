@@ -19,7 +19,9 @@
  * not marked clean, or has the flex directories of Minix-vmd, is mounted
  * read-only all the same, with a warning.  While it is mounted for
  * writing, the image is locked against other writers and its clean mark
- * is away; unmounting puts the mark back.  The kernel checks permissions
+ * is away; unmounting puts the mark back, unless a change failed in a
+ * way that may have left the image out of order, such as an error of
+ * the device (mfs_failure_breaks()).  The kernel checks permissions
  * (default_permissions), and new files belong to the caller, or to the
  * group of their directory where the inode cannot hold that of the
  * caller.  -u says
@@ -152,6 +154,9 @@ struct mount {
 	const char	*path;		/* of the image */
 	int		closed;		/* by close_image() */
 	int		failed;		/* close_image() could not write */
+	int		broken;		/* a change may have left the image
+					   out of order: see
+					   mfs_failure_breaks() */
 };
 
 /*
@@ -629,14 +634,19 @@ changed(int r)
 	int e;
 
 	m = mount_of();
+	if (r < 0 && mfs_failure_breaks(r))
+		m->broken = 1;
 	if (m->every == 0)
 		return r;
 	t = now();
 	if (t - m->flushed < m->every)
 		return r;
 	m->flushed = t;
-	if ((e = mfs_sync(&m->fs)) < 0 && r >= 0)
-		return e;
+	if ((e = mfs_sync(&m->fs)) < 0) {
+		m->broken = 1;
+		if (r >= 0)
+			return e;
+	}
 	return r;
 }
 
@@ -1006,7 +1016,7 @@ set_size(const char *path, off_t size, struct fuse_file_info *fi)
 	if (mfs_is_dir(&ip))
 		return -EISDIR;
 	if ((r = mfs_resize(image(), &ip, (uint32_t)size)) < 0)
-		return r;
+		return changed(r);
 	ip.mtime = (uint32_t)now();
 	return put_changed(&ip);
 }
@@ -1100,7 +1110,7 @@ mfs_write_file(const char *path, const char *buf, size_t size, off_t off,
 		return -EFBIG;
 	if ((r = inode_of(path, fi, &ip)) < 0)
 		return r;
-	r = mfs_pwrite(image(), &ip, buf, size, (uint32_t)off);
+	r = changed(mfs_pwrite(image(), &ip, buf, size, (uint32_t)off));
 	/* What was written before a failure stays, with its zones. */
 	ip.mtime = (uint32_t)now();
 	if ((e = put_changed(&ip)) < 0 && r >= 0)
@@ -1405,8 +1415,9 @@ free_orphans(struct mount *m)
 
 /*
  * After the unmount: the files removed while open freed, the maps out,
- * the clean mark back, and the image closed, once.  Returns 1 if they
- * could not be written.
+ * the clean mark back unless a change may have left the image out of
+ * order, and the image closed, once.  Returns 1 if they could not be
+ * written.
  */
 static int
 close_image(struct mount *m)
@@ -1423,8 +1434,15 @@ close_image(struct mount *m)
 	m->hidden = NULL;
 	m->nhidden = m->maxhidden = 0;
 	if (m->rw && r == 0 && (r = mfs_sync(&m->fs)) == 0 &&
+	    fsync(m->fs.fd) == -1)
+		r = -errno;
+	/* The mark comes back once the rest is on the disk. */
+	if (m->rw && r == 0 && !m->broken &&
 	    (r = mfs_mark_clean(&m->fs, 1)) == 0 && fsync(m->fs.fd) == -1)
 		r = -errno;
+	if (m->rw && m->broken)
+		warnx("warning: %s is left marked not clean; check it with "
+		    "fsck_minixfs -y", m->path);
 	mfs_close(&m->fs);
 	if (r < 0) {
 		warnx("%s: %s", m->path, strerror(-r));

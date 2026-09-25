@@ -27,6 +27,8 @@ struct cmd {
 	struct mfs	fs;
 	const char	*image;
 	int		status;		/* exit status so far */
+	int		broken;		/* a write may have left it out of
+					   order: see mfs_failure_breaks() */
 };
 
 /*

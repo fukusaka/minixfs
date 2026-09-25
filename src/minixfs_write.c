@@ -28,7 +28,9 @@
  * numeric owner, group, or both.
  *
  * The image is locked while it is open, as mount_minixfs -w locks it, and
- * its clean mark is away until the command is done.  A file system that
+ * its clean mark is away until the command is done; it stays away if a
+ * write failed in a way that may have left the image out of order, such
+ * as an error of the device (mfs_failure_breaks()).  A file system that
  * is not marked clean may be mounted elsewhere, so it is refused unless
  * -f is given; so are the flex directories of Minix-vmd, which cannot be
  * written.  The bit maps go to the image at the end.
@@ -163,6 +165,7 @@ open_for_writing(struct cmd *c, const char *image)
 
 	c->image = image;
 	c->status = 0;
+	c->broken = 0;
 	if ((r = mfs_open_tracks(&c->fs, image, 1, &tracks)) < 0) {
 		if (r == -EINVAL)
 			errx(1, "%s: not a MINIX file system", image);
@@ -182,15 +185,21 @@ open_for_writing(struct cmd *c, const char *image)
 
 /*
  * Write the bit maps, put the clean mark back if the image had it, or
- * else the state it had, and close the image.  Returns the exit status
- * of the command.
+ * else the state it had, and close the image.  A write that may have
+ * left the image out of order leaves the mark away.  Returns the exit
+ * status of the command.
  */
 static int
 finish_writing(struct cmd *c)
 {
 	int r;
 
-	if ((r = mfs_sync(&c->fs)) == 0) {
+	if ((r = mfs_sync(&c->fs)) < 0)
+		c->broken = 1;
+	if (c->broken)
+		warnx("warning: %s is left marked not clean; check it with "
+		    "fsck_minixfs -y", c->image);
+	if (r == 0 && !c->broken) {
 		if (was_clean) {
 			r = mfs_mark_clean(&c->fs, 1);
 		} else {
@@ -317,6 +326,8 @@ static int
 failed(struct cmd *c, const char *path, int e)
 {
 	problem(c, "%s:%s: %s", c->image, path, strerror(-e));
+	if (mfs_failure_breaks(e))
+		c->broken = 1;
 	return -1;
 }
 
@@ -406,6 +417,8 @@ copy_in(struct put *p, const char *host, struct mfs_inode *ip)
 		r = -1;
 	} else if (r < 0) {
 		problem(p->c, "%s: %s", host, strerror(-r));
+		if (mfs_failure_breaks(r))
+			p->c->broken = 1;
 		r = -1;
 	}
 	free(buf);

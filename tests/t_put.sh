@@ -347,6 +347,29 @@ mkimage "$T/spec" "$T/vmd.img"
 run "$MINIXFS" mkdir "$T/vmd.img" /e
 check_err "flex directories cannot be written" "flex directories"
 
+# After a refusal made before anything is written the mark comes back;
+# after a write that may have left the image out of order, here into a
+# zone number outside the data area that the root lists past its first
+# block, it stays away.
+v="the mark after a failure"
+rm -f "$T/img"
+must "$NEWFS_MINIXFS" -V 2 -l 30 -s 400 "$T/img"
+i=0
+while [ "$i" -lt 30 ]; do
+	echo "mknod /f$i f 0644"
+	i=$((i + 1))
+done | "$MFSOP" "$T/img" >/dev/null
+run "$MINIXFS" mkdir "$T/img" /f0
+check_err "$v: a name in use is refused" "File exists"
+check_true "$v: and the mark comes back" \
+    test "$(info_field "$T/img" clean)" = yes
+set_inode "$T/img" 1 zone1 $(($(info_field "$T/img" "first data zone") - 1))
+run "$MINIXFS" mkdir "$T/img" /d
+check_err "$v: a write through a bad zone fails" "Input/output error"
+check_true "$v: and says the mark stays away" \
+    grep -q "left marked not clean" "$T/err"
+check_true "$v: which it does" test "$(info_field "$T/img" clean)" = no
+
 # The lock: a command is refused while another writer holds the image.
 rm -f "$T/img" "$T/fifo" "$T/kout"
 must "$NEWFS_MINIXFS" -V 2 -s 400 "$T/img"

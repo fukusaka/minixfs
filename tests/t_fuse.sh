@@ -702,6 +702,37 @@ else
 	fi
 fi
 
+# A change that fails in a way that may leave the image out of order,
+# here a directory made in one that lists a zone number outside the data
+# area, keeps the mark away at the unmount.  The root holds /bin, which
+# mount_image waits for, and 29 files, a block of entries.
+if [ "$minix" = no ]; then
+	rm -f "$T/bad.img"
+	"$NEWFS_MINIXFS" -V 2 -l 30 -s 400 -d "$T/empty" \
+	    -o "$(id -u):$(id -g)" "$T/bad.img" >/dev/null
+	{
+		echo "mkdir /bin 0755"
+		i=0
+		while [ "$i" -lt 29 ]; do
+			echo "mknod /f$i f 0644"
+			i=$((i + 1))
+		done
+	} | "$MFSOP" "$T/bad.img" >/dev/null
+	set_inode "$T/bad.img" 1 zone1 \
+	    $(($(info_field "$T/bad.img" "first data zone") - 1))
+	if mount_image "$T/bad.img" "$mnt" -w; then
+		run as_mounter mkdir "$mnt/d"
+		check_status "-w, a bad zone: making a directory fails" 1
+		unmount_image "$mnt"
+		check_true "-w, a bad zone: the mark stays away" \
+		    test "$(info_field "$T/bad.img" clean)" = no
+	else
+		kill_mount
+		fail "-w, a bad zone: the image is mounted" \
+		    "$(head -5 "$T/fuse.err")"
+	fi
+fi
+
 # A file system not marked clean is mounted read-only.
 run "$TUNEFS_MINIXFS" -c dirty "$T/img"
 if mount_image "$T/img" "$mnt" -w; then

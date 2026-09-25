@@ -319,6 +319,29 @@ drop_name(struct mfs *fs, struct mfs_inode *ip, uint32_t now)
 }
 
 int
+mfs_failure_breaks(int e)
+{
+	switch (e) {
+	case -ENOENT:
+	case -EEXIST:
+	case -ENOTDIR:
+	case -EISDIR:
+	case -ENOTEMPTY:
+	case -EINVAL:
+	case -EPERM:
+	case -EMLINK:
+	case -ENAMETOOLONG:
+	case -ENOTSUP:
+	case -EBUSY:
+	case -ENOSPC:
+	case -EFBIG:
+		return 0;
+	default:
+		return 1;
+	}
+}
+
+int
 mfs_free_orphan(struct mfs *fs, uint32_t ino)
 {
 	struct mfs_inode ip;

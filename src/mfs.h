@@ -530,6 +530,15 @@ int	mfs_unlink(struct mfs *, uint32_t, const char *, uint32_t);
  */
 int	mfs_free_orphan(struct mfs *, uint32_t);
 
+/*
+ * Whether a failure of the functions that change a file system, a
+ * negative errno value, may leave it out of order, so that it is not to
+ * be marked clean.  A refusal made before anything is written is not,
+ * nor a lack of room or a limit that gives back what was taken; an error
+ * of the device, or of memory, is.
+ */
+int	mfs_failure_breaks(int);
+
 /* Remove the empty directory name from dir. */
 int	mfs_rmdir(struct mfs *, uint32_t, const char *, uint32_t);
 

@@ -186,8 +186,10 @@ top of `tests/mkimage.c`).  The scripts:
   not replace a file; `put -R` and `ln` take a name without the slashes
   after it; names too long, the root, a directory below
   itself, a link to a directory, bad modes and owners are refused; a
-  file that runs out of room leaves nothing; a file system not marked
-  clean is refused without `-f` and keeps its mark with it, flex
+  file that runs out of room leaves nothing; a refusal leaves the image
+  marked clean, and a write that fails on a zone number outside the
+  data area does not; a file system not marked clean is refused without
+  `-f` and keeps its mark with it, flex
   directories are refused, a writer holding the lock is met, and `-M`
   writes through the tracks.
 - `t_fuse.sh` - where `mount_minixfs` is built and mounting is allowed:
@@ -211,13 +213,15 @@ top of `tests/mkimage.c`).  The scripts:
   under is not in the directory but where it is kept there, and a file
   renamed to such a name is renamed as to any other if it is not open,
   and kept till the unmount if it is; a file system not marked clean is
-  mounted read-only.  On FreeBSD no hard link is made through the mount.  On
-  NetBSD the list of every name, which looks up "..", after which
-  librefuse has freed the root, is left out.  On MINIX 3, where it is a
-  service of mount(8) on a vnd device, the reading, run by hand it shows
-  how to mount, and writing is left out.  Skipped otherwise.
-  `MINIXFS_FUSE` names the program; `FUSE_SUDO` is a command to mount
-  and read with where users cannot mount, such as `sudo` on NetBSD.
+  mounted read-only, and a change that fails on a zone number outside
+  the data area keeps the mark away at the unmount.  On FreeBSD no hard
+  link is made through the mount.  On NetBSD the list of every name,
+  which looks up "..", after which librefuse has freed the root, is
+  left out.  On MINIX 3, where it is a service of mount(8) on a vnd
+  device, the reading, run by hand it shows how to mount, and writing
+  is left out.  Skipped otherwise.  `MINIXFS_FUSE` names the program;
+  `FUSE_SUDO` is a command to mount and read with where users cannot
+  mount, such as `sudo` on NetBSD.
 - `t_device.sh` - where an image can be put on a device, a loop device
   on Linux, an md device on FreeBSD and a vnd device on NetBSD and
   MINIX 3, as root or through `DEV_SUDO` (such as `sudo`): `info` and

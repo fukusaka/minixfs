@@ -205,26 +205,6 @@ problem(struct restore *r, const char *fmt, ...)
 	r->status = 1;
 }
 
-/*
- * Whether the failure e of an operation on the image, a negative errno
- * value, may leave it out of order.  A lack of room or a limit of the
- * file system refuses before it writes, or gives back what it took; any
- * other failure, such as an error of the device, may leave anything.
- */
-static int
-breaks(int e)
-{
-	switch (e) {
-	case -ENOSPC:
-	case -EMLINK:
-	case -ENAMETOOLONG:
-	case -EFBIG:
-		return 0;
-	default:
-		return 1;
-	}
-}
-
 static void *
 xcalloc(size_t n, size_t size)
 {
@@ -434,7 +414,7 @@ take_record(struct restore *r, struct sink *s, const unsigned char *rec,
 	} else if (s->ip != NULL &&
 	    (e = mfs_pwrite(&r->fs, s->ip, rec, len, (uint32_t)pos)) < 0) {
 		problem(r, "%s: %s", s->path, strerror(-e));
-		if (breaks(e))
+		if (mfs_failure_breaks(e))
 			r->broken = 1;
 		s->failed = 1;
 	}
@@ -1265,7 +1245,7 @@ static int
 failed(struct restore *r, const char *path, int e)
 {
 	problem(r, "%s: %s", path, strerror(-e));
-	if (breaks(e))
+	if (mfs_failure_breaks(e))
 		r->broken = 1;
 	return -1;
 }
@@ -1924,7 +1904,8 @@ write_all(struct restore *r)
 	collect(r);
 	/*
 	 * The clean mark goes back once the rest is on the disk, unless an
-	 * operation on the image failed as breaks() tells: what the dump
+	 * operation on the image failed as mfs_failure_breaks() tells: what
+	 * the dump
 	 * lacked or the room refused is put in order, but an error of the
 	 * device may leave anything.
 	 */

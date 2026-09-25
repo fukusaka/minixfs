@@ -295,6 +295,9 @@ The image is locked while a command has it open, as
 locks it, and its clean mark is away until the command is done, so that
 one cut short leaves it for
 .Nm fsck_minixfs .
+So does a write that fails in a way that may leave the image out of
+order, such as an error of the device, as against a refusal made before
+anything is written or a lack of room.
 A file system that is not marked clean may be mounted elsewhere and is
 refused, unless
 .Fl f

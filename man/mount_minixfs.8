@@ -80,7 +80,8 @@ While the file system is mounted,
 is locked against other programs that write it, such as
 .Nm fsck_minixfs Fl y ,
 and its clean mark is away, as Linux and MINIX 3 take it away; unmounting
-puts it back.
+puts it back, unless a change failed in a way that may have left the
+image out of order, such as an error of the device.
 A file system that is not marked clean, or that has the flex directories
 of Minix-vmd, which this cannot write, is mounted read-only with a
 warning.
