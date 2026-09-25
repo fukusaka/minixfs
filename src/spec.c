@@ -430,6 +430,28 @@ apply(struct reader *rd, struct spec_entry *e, char *rest)
 	free(t.link);
 }
 
+/*
+ * Whether a path, as the escapes of a line give it, has a component
+ * that names no file of its own: empty, "." or "..".
+ */
+static int
+bad_path(const char *path)
+{
+	const char *p, *q;
+	size_t len;
+
+	for (p = path;; p = q + 1) {
+		if ((q = strchr(p, '/')) == NULL)
+			q = p + strlen(p);
+		len = (size_t)(q - p);
+		if (len == 0 || (len == 1 && p[0] == '.') ||
+		    (len == 2 && p[0] == '.' && p[1] == '.'))
+			return 1;
+		if (*q == '\0')
+			return 0;
+	}
+}
+
 /* The directory part of a path, in place: "" for a name alone. */
 static void
 up(char *path)
@@ -463,6 +485,7 @@ parse_line(struct reader *rd, char *p)
 {
 	struct spec_entry *e;
 	char *name, *path, *rest;
+	int full;
 
 	while (isspace((unsigned char)*p))
 		p++;
@@ -518,14 +541,19 @@ parse_line(struct reader *rd, char *p)
 		error(rd, "%s: bad escape", name);
 		return;
 	}
+	/* "./" starts a full path, from the root. */
+	full = strchr(name, '/') != NULL;
+	while (full && strncmp(name, "./", 2) == 0)
+		name += 2;
+	if (strcmp(name, ".") != 0 && bad_path(name)) {
+		error(rd, "%s: an empty, \".\" or \"..\" name in the path", name);
+		return;
+	}
 	if (strcmp(name, ".") == 0) {
 		path = xstrdup("");
 		free(rd->cur);
 		rd->cur = xstrdup("");
-	} else if (strchr(name, '/') != NULL) {
-		/* A full path, from the root. */
-		while (strncmp(name, "./", 2) == 0)
-			name += 2;
+	} else if (full) {
 		path = xstrdup(name);
 		free(rd->cur);
 		rd->cur = xstrdup(name);

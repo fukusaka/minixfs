@@ -364,7 +364,11 @@ EOF
 	    "./new type=file uname=root gname=wheel" \
 	    "./new/x type=file mode=0644 uname=root gname=wheel" \
 	    "./bin/sh colour=red" "./bin/sh mode=u+x" \
-	    "./bin/sh uname=nobody-at-all"; do
+	    "./bin/sh uname=nobody-at-all" \
+	    "./bin/\\056\\056 type=dir mode=0755 uname=root gname=wheel" \
+	    "\\056\\056 type=dir mode=0755 uname=root gname=wheel" \
+	    "./bin/../x type=file mode=0644 uname=root gname=wheel" \
+	    "./bin//x type=file mode=0644 uname=root gname=wheel"; do
 		printf '. type=dir mode=0755\n%s\n' "$bad" >"$T/bad"
 		rm -f "$T/img"
 		run "$NEWFS_MINIXFS" -V 3 -d "$T/t" -F "$T/bad" -P "$T/db" \
