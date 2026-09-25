@@ -210,7 +210,9 @@ fanoutfs work across `..`, and `mount_minixfs` passes all of
 
 ## Status
 
-No report of this was found in the NetBSD problem reports that reach
-the netbsd-bugs list, nor in the source history, as of September
-2026; GNATS itself could not be searched directly.  A problem report
-with the above has been drafted but not sent.
+No report of this was found, as of September 2026: not in GNATS,
+searched over every state for "librefuse", "refuse", "puffs" (lib and
+kern), "fuse" (lib), "dotdot", "VSIZENOTSET" and "EPROTO" (kern); not
+in the netbsd-bugs list from 2022 on, where every report arrives; and
+not in the source history.  A problem report with the above has been
+drafted but not sent.
