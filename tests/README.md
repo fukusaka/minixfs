@@ -217,7 +217,8 @@ top of `tests/mkimage.c`).  The scripts:
   renamed to such a name is renamed as to any other if it is not open,
   and kept till the unmount if it is; a file system not marked clean is
   mounted read-only, and a change that fails on a zone number outside
-  the data area keeps the mark away at the unmount.  On FreeBSD no hard
+  the data area, or a sync whose fsync(2) fails (made to by strace(1)
+  on Linux), keeps the mark away at the unmount.  On FreeBSD no hard
   link is made through the mount.  On NetBSD the list of every name,
   which looks up "..", after which librefuse has freed the root, is
   left out.  On MINIX 3, where it is a service of mount(8) on a vnd

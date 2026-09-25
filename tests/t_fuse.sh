@@ -733,6 +733,37 @@ if [ "$minix" = no ]; then
 	fi
 fi
 
+# A sync of the mount that fails, here the first fsync(2) of the program,
+# made to fail by strace(1) where it can (Linux), keeps the mark away at
+# the unmount, although the sync of the unmount works.  The children of
+# the program are not traced: fusermount3 is set-user-ID.
+inject="-qq -e trace=fsync -e inject=fsync:error=EIO:when=1"
+# $inject is several options, split on purpose.
+# shellcheck disable=SC2086
+if [ "$minix" = no ] && [ -z "$FUSE_SUDO" ] &&
+    strace $inject -o /dev/null true >/dev/null 2>&1; then
+	rm -f "$T/sync.img"
+	"$NEWFS_MINIXFS" -V 2 -s 400 -d "$T/empty" \
+	    -o "$(id -u):$(id -g)" "$T/sync.img" >/dev/null
+	echo "mkdir /bin 0755" | "$MFSOP" "$T/sync.img" >/dev/null
+	# shellcheck disable=SC2086
+	strace $inject -o /dev/null "$MINIXFS_FUSE" -f -w "$T/sync.img" \
+	    "$mnt" 2>"$T/fuse.err" &
+	fuse_pid=$!
+	n=0
+	while ! test -d "$mnt/bin" && [ "$n" -lt 10 ]; do
+		sleep 1
+		n=$((n + 1))
+	done
+	run dd if=/dev/zero of="$mnt/f" bs=512 count=1 conv=fsync
+	check_status "-w, fsync fails: the sync of a file fails" 1
+	unmount_image "$mnt"
+	check_true "-w, fsync fails: the mark stays away" \
+	    test "$(info_field "$T/sync.img" clean)" = no
+else
+	skip "-w, fsync fails" "strace cannot make fsync(2) fail here"
+fi
+
 # A file system not marked clean is mounted read-only.
 run "$TUNEFS_MINIXFS" -c dirty "$T/img"
 if mount_image "$T/img" "$mnt" -w; then

@@ -1121,10 +1121,15 @@ mfs_sync_file(const char *path, int datasync, struct fuse_file_info *fi)
 	(void)datasync;
 	(void)fi;
 	m = mount_of();
-	if ((r = mfs_sync(&m->fs)) < 0)
+	/* A failure here is not forgotten when a later sync works. */
+	if ((r = mfs_sync(&m->fs)) == 0 && fsync(m->fs.fd) == -1)
+		r = -errno;
+	if (r < 0) {
+		m->broken = 1;
 		return r;
+	}
 	m->flushed = now();
-	return fsync(m->fs.fd) == -1 ? -errno : 0;
+	return 0;
 }
 
 /*
