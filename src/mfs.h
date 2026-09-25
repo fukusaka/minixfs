@@ -74,8 +74,10 @@ struct mfs_tracks {
 /* An open file system image. */
 struct mfs {
 	struct mfs_tracks tracks;	/* how the file holds the device */
-	off_t		file_size;	/* bytes in the image file */
-	off_t		image_size;	/* bytes of the device in it */
+	off_t		file_size;	/* bytes in the image file; -1 for
+					   a device of a size not known */
+	off_t		image_size;	/* bytes of the device in it, or -1 */
+	int		regular;	/* the image is a regular file */
 	uint64_t	max_file;	/* bytes the zone slots can address */
 	unsigned char	*ibuf;		/* one block: inodes, indirects */
 	unsigned char	*dbuf;		/* one block, for file data */
@@ -548,25 +550,28 @@ int	mfs_change_namelen(struct mfs *, uint32_t);
 
 /*
  * Grow the file system to nblocks blocks, cut down to whole zones, and
- * the image file with it.  When the zone map has no room for the new
- * zones, it gets more blocks: the inode table and every data zone in use
- * move up, and every zone number is changed to match.  Returns 0;
- * -EINVAL to shrink or with -M tracks; -EFBIG for more zones than the
- * version counts; -ENOSPC if the zones that move up would not fit; or
- * another negative errno value.
+ * the image file with it, unless keep is set or the image is not a
+ * regular file; the image must then hold them already.  When the zone map
+ * has no room for the new zones, it gets more blocks: the inode table and
+ * every data zone in use move up, and every zone number is changed to
+ * match.  Returns 0; -EINVAL to shrink or with -M tracks; -EFBIG for more
+ * zones than the version counts; -ENOSPC if the zones that move up would
+ * not fit; -ENXIO if the image does not hold the new size, or its size is
+ * not known; or another negative errno value.
  */
-int	mfs_grow(struct mfs *, uint32_t);
+int	mfs_grow(struct mfs *, uint32_t, int);
 
 /*
  * Shrink the file system to nblocks blocks, cut down to whole zones, and
- * the image file with it.  The zones in use past the new end move to
+ * the image file with it, unless keep is set or the image is not a
+ * regular file, which then keeps what is past the end.  The zones in use past the new end move to
  * free zones before it, and the zone numbers in inodes and indirect
  * zones follow them; the zone map keeps its blocks.  Returns 0; -EINVAL
  * to grow or with -M tracks; -ENOSPC if what is in use does not fit; or
  * another negative errno value, after which nothing has been written if
  * it came from reading.
  */
-int	mfs_shrink(struct mfs *, uint32_t);
+int	mfs_shrink(struct mfs *, uint32_t, int);
 
 /*
  * Making file systems (mfs_format.c).

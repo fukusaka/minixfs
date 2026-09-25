@@ -15,7 +15,7 @@
 .Op Fl l Cm 14 | 30
 .Op Fl m Cm minix | linux | Ar bytes
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
-.Op Fl s Ar blocks
+.Op Fl s Ar blocks Op Fl k
 .Ar image
 .Sh DESCRIPTION
 .Nm
@@ -48,7 +48,9 @@ Every directory is read, every name checked and the zones counted before
 anything is written; names too long for 14 characters are all listed,
 and then nothing changes, as when the larger directories would not fit.
 .It Fl s Ar blocks
-Grow or shrink the file system, and the image file with it, to
+Grow or shrink the file system, and the image file with it unless
+.Fl k
+is given or the image is a device, to
 .Ar blocks
 blocks, cut down to whole zones.
 To grow, the zone map takes more blocks if it has no room for the new
@@ -60,6 +62,15 @@ blocks, which
 .Nm fsck_minixfs Fl w
 notes.
 What is in use has to fit, or nothing changes.
+An image that keeps its size has to hold the new size already, or
+nothing changes; the size of a device is asked of the system, and one
+that cannot be told does not grow.
+.It Fl k
+With
+.Fl s ,
+keep the size of the image file: the file system shrinks inside it and
+leaves what is past its new end as it was, or grows as far as the file
+holds.
 .It Fl f
 Change a file system that is not marked clean with
 .Fl B ,

@@ -64,6 +64,9 @@ A disk read with more sides than it was written on shows as runs of one
 track making up half of the image; a copy cut short, or a file system
 smaller than its disk, shows too.
 None of this is an error in itself.
+The size of a device is asked of the system, and shown as unknown where
+it cannot be told; a device is read for such sectors only as far as the
+file system.
 Last come the free inodes and zones that the bit maps count.
 .It Cm ls Oo Fl lR Oc Ar image Op Ar path
 List the directory

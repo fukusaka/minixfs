@@ -10,8 +10,9 @@
  * compares what it found with the inode table and the bit maps:
  *
  *	- the super block: a maximum file size that makes sense, an image
- *	  that holds the whole file system, and errors that Linux recorded
- *	  in the state word of V1 and V2;
+ *	  that holds the whole file system where the size of a device can
+ *	  be told, and errors that Linux recorded in the state word of V1
+ *	  and V2;
  *	- directory entries: inode numbers in range, entries that name a
  *	  free inode or one of no valid type, empty names or names with
  *	  '/', "." and ".." first and pointing to the directory and its
@@ -1316,8 +1317,9 @@ check_super(struct check *c)
 		problem(c, put_super(c), "the super block gives a maximum file "
 		    "size of %" PRIu32, size);
 	}
+	/* The size of a device may not be known. */
 	need = (uint64_t)fs->nblocks * fs->block_size;
-	if ((uint64_t)fs->image_size < need)
+	if (fs->image_size >= 0 && (uint64_t)fs->image_size < need)
 		problem(c, 1, "the image holds %jd bytes of the %" PRIu64
 		    " that the file system needs", (intmax_t)fs->image_size,
 		    need);

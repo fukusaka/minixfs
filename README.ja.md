@@ -186,7 +186,7 @@ clean でないファイルシステムを読み出し専用でマウントし�
 
     tunefs_minixfs [-fN] [-B le|be] [-c clean|dirty] [-e 0|1]
         [-l 14|30] [-m minix|linux|bytes]
-        [-M SIZE:HEADS:SIDE] [-s blocks] image
+        [-M SIZE:HEADS:SIDE] [-s blocks [-k]] image
 
 ファイルシステムの設定を変えます。オプションがなければ、または `-N` を付ければ、設定を表示する
 だけで何も書きません。`-N` はほかのオプションで何が変わるかを示します。
@@ -203,7 +203,9 @@ clean でないファイルシステムを読み出し専用でマウントし�
   すべて後ろへ移して、zone 番号をすべて合わせて書き換えます。縮めるとき、新しい末尾より後ろに
   ある使用中の zone をその前の空き zone へ移し、それを指す zone 番号を書き換えます。zone マップの
   ブロック数は変えないので、`fsck_minixfs -w` がそれを示します。使用中のものが収まらなければ、
-  何も変えません。
+  何も変えません。`-k` を付けたとき、およびデバイスでは常に、イメージは大きさを保ち、新しい大きさを
+  すでに収めていなければなりません。stat(2) はデバイスの大きさを示さないので、システムに問い合わせ
+  ます（BLKGETSIZE64、DIOCGMEDIASIZE、DIOCGETP）。
 - `-c` は、Linux と MINIX 3 が印を持つ場所に、clean か dirty の印を付けます。
 - `-e` は、ビットマップの最後の inode や zone より後ろのビットを、MINIX の mkfs と同じ 0 か、
   Linux の mkfs と同じ 1 にします。

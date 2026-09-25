@@ -7,6 +7,8 @@
  * The layout is described in layout.h.
  */
 
+#include "compat.h"
+
 #include <sys/stat.h>
 
 #include <errno.h>
@@ -294,13 +296,29 @@ dev_write(struct mfs *fs, const void *buf, size_t len, off_t off)
 	return 0;
 }
 
-/* The bytes of the device that the image file holds. */
+/*
+ * The bytes in a device that is not a regular file: what the system says,
+ * else where lseek(2) finds the end, if anywhere; or -1.
+ */
+static off_t
+file_bytes(int fd)
+{
+	off_t n;
+
+	if ((n = compat_disk_size(fd)) > 0)
+		return n;
+	if ((n = lseek(fd, 0, SEEK_END)) > 0)
+		return n;
+	return -1;
+}
+
+/* The bytes of the device that the image file holds, or -1. */
 static off_t
 device_size(const struct mfs *fs)
 {
 	uint64_t cyl, rem, size;
 
-	if (fs->tracks.size == 0)
+	if (fs->tracks.size == 0 || fs->file_size < 0)
 		return fs->file_size;
 	size = fs->tracks.size;
 	cyl = size * fs->tracks.heads;
@@ -396,7 +414,8 @@ mfs_open_tracks(struct mfs *fs, const char *path, int rw,
 		r = -errno;
 		goto fail;
 	}
-	fs->file_size = st.st_size;
+	fs->regular = S_ISREG(st.st_mode);
+	fs->file_size = fs->regular ? st.st_size : file_bytes(fs->fd);
 	fs->image_size = device_size(fs);
 	if ((r = dev_read(fs, sb, sizeof(sb), SUPER_OFFSET)) < 0) {
 		if (r == -EIO)

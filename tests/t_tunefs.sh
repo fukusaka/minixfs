@@ -342,8 +342,32 @@ check_out_has "fsck -y marks the consistent file system clean" \
 run "$TUNEFS_MINIXFS" -s 2000 "$T/img"
 check_status "-s works after fsck -y" 0
 
+# -k: the image file keeps its size.  The file system shrinks inside it,
+# and grows back as far as the file holds, but no further.
+v="-k"
+rm -f "$T/img"
+"$NEWFS_MINIXFS" -V 2 -s 2000 "$T/img"
+run "$TUNEFS_MINIXFS" -k -s 1000 "$T/img"
+tuned "-s 1000 shrinks the file system"
+check_true "-k: the image keeps its size" \
+    test "$(($(wc -c <"$T/img")))" -eq 2048000
+check_info "-k: the file system is half the image" "$T/img" \
+    "file system size" "1024000 (50% of the image)"
+run "$TUNEFS_MINIXFS" -k -s 2000 "$T/img"
+tuned "-s 2000 grows it back"
+check_info "-k: the file system fills the image again" "$T/img" zones 2000
+cp "$T/img" "$T/before"
+for opt in "-k" "-N -k"; do
+	# The options are split on purpose.
+	# shellcheck disable=SC2086
+	run "$TUNEFS_MINIXFS" $opt -s 3000 "$T/img"
+	check_err "$opt refuses to grow past the image" \
+	    "the image holds 2048000 bytes, fewer than the 3072000"
+done
+check_same_file "-k changes nothing then" "$T/before" "$T/img"
+
 for bad in "-B middle" "-c maybe" "-e 2" "-m 0" "-m 2147483648" \
-    "-m big" "-M 0:2:0" "-l 20" "-s 0" "-s x"; do
+    "-m big" "-M 0:2:0" "-l 20" "-s 0" "-s x" "-k"; do
 	# The option and its value are split on purpose.
 	# shellcheck disable=SC2086
 	run "$TUNEFS_MINIXFS" $bad "$T/img"

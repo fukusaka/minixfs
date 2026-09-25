@@ -90,12 +90,12 @@ $(RESTORE): src/restore_minixfs.o src/dumpfmt.o $(LIBOBJS)
 .c.o:
 	$(CC) $(CFLAGS) $(WARNFLAGS) -c -o $@ $<
 
-src/mfs.o: src/mfs.h src/layout.h
+src/mfs.o: src/compat.h src/mfs.h src/layout.h
 src/mfs_format.o: src/mfs.h src/layout.h
 src/mfs_tune.o: src/mfs.h src/layout.h
 src/mfs_ops.o: src/mfs.h src/layout.h
 src/mfs_write.o: src/mfs.h src/layout.h
-src/minixfs.o: src/mfs.h
+src/minixfs.o: src/compat.h src/mfs.h
 src/newfs_minixfs.o: src/mfs.h src/spec.h src/tree.h
 src/tree.o: src/compat.h src/mfs.h src/spec.h src/tree.h
 src/spec.o: src/compat.h src/mfs.h src/spec.h

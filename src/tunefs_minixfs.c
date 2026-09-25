@@ -6,7 +6,7 @@
  *
  *	tunefs_minixfs [-fN] [-B le|be] [-c clean|dirty] [-e 0|1]
  *	    [-l 14|30] [-m minix|linux|bytes]
- *	    [-M SIZE:HEADS:SIDE] [-s blocks] image
+ *	    [-M SIZE:HEADS:SIDE] [-s blocks [-k]] image
  *
  * Without options, or with -N, the settings are printed and nothing is
  * written; -N shows what the other options would change.
@@ -32,6 +32,8 @@
  *		the inode table and the data zones move up to make room;
  *		to shrink, the zones in use past the new end move to free
  *		zones before it, and the zone map keeps its blocks
+ *	-k	with -s, keep the size of the image file, which then has to
+ *		hold the new size; a device always keeps its size
  *	-M	an image that holds one side of a disk, as for minixfs(1);
  *		it cannot change size
  *
@@ -71,6 +73,7 @@ struct options {
 	int		end;		/* -e: 0 or 1, or -1 as is */
 	int		dry_run;	/* -N */
 	int		force;		/* -f */
+	int		keep;		/* -k */
 };
 
 static void
@@ -79,7 +82,7 @@ usage(void)
 	(void)fprintf(stderr,
 	    "usage: tunefs_minixfs [-fN] [-B le|be] [-c clean|dirty] [-e 0|1]\n"
 	    "           [-l 14|30] [-m minix|linux|bytes]\n"
-	    "           [-M SIZE:HEADS:SIDE] [-s blocks] image\n");
+	    "           [-M SIZE:HEADS:SIDE] [-s blocks [-k]] image\n");
 	exit(2);
 }
 
@@ -107,7 +110,7 @@ parse(int argc, char **argv, struct options *o)
 	o->clean = -1;
 	o->end = -1;
 	o->order = -1;
-	while ((ch = getopt(argc, argv, "B:c:e:fl:m:M:Ns:")) != -1) {
+	while ((ch = getopt(argc, argv, "B:c:e:fkl:m:M:Ns:")) != -1) {
 		switch (ch) {
 		case 'B':
 			if (strcmp(optarg, "le") == 0)
@@ -136,6 +139,9 @@ parse(int argc, char **argv, struct options *o)
 		case 'f':
 			o->force = 1;
 			break;
+		case 'k':
+			o->keep = 1;
+			break;
 		case 'l':
 			if (strcmp(optarg, "14") == 0)
 				o->namelen = 14;
@@ -161,7 +167,7 @@ parse(int argc, char **argv, struct options *o)
 			usage();
 		}
 	}
-	if (argc - optind != 1)
+	if (argc - optind != 1 || (o->keep && o->nblocks == 0))
 		usage();
 	o->image = argv[optind];
 }
@@ -378,6 +384,7 @@ clean_value(const struct mfs *fs, uint16_t state)
 static void
 resize(struct mfs *fs, const struct options *o, int write)
 {
+	uint64_t size;
 	uint32_t newz;
 	int r, shrink;
 
@@ -386,11 +393,23 @@ resize(struct mfs *fs, const struct options *o, int write)
 		errx(1, "%s: an image of one side of a disk cannot change "
 		    "size", o->image);
 	shrink = newz < fs->nzones;
+	/* A device, or an image kept as it is, has to hold the zones. */
+	size = ((uint64_t)newz << fs->log_zone_size) * fs->block_size;
+	if (!shrink && (!fs->regular || o->keep)) {
+		if (fs->image_size < 0)
+			errx(1, "%s: the size of the device is not known; "
+			    "nothing changed", o->image);
+		if ((uint64_t)fs->image_size < size)
+			errx(1, "%s: the image holds %jd bytes, fewer than "
+			    "the %" PRIu64 " asked for; nothing changed",
+			    o->image, (intmax_t)fs->image_size, size);
+	}
 	(void)printf("blocks: %" PRIu32 " -> %" PRIu32 "\n", fs->nblocks,
 	    newz << fs->log_zone_size);
 	if (!write)
 		return;
-	r = shrink ? mfs_shrink(fs, o->nblocks) : mfs_grow(fs, o->nblocks);
+	r = shrink ? mfs_shrink(fs, o->nblocks, o->keep) :
+	    mfs_grow(fs, o->nblocks, o->keep);
 	switch (r) {
 	case 0:
 		return;
@@ -403,6 +422,9 @@ resize(struct mfs *fs, const struct options *o, int write)
 			    o->nblocks);
 		errx(1, "%s: the zone map needs more blocks, and the zones "
 		    "that move up to make room need a larger size", o->image);
+	case -ENXIO:
+		errx(1, "%s: the image does not hold the new size; nothing "
+		    "changed", o->image);
 	default:
 		errx(1, "%s: size: %s", o->image, strerror(-r));
 	}

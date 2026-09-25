@@ -22,8 +22,8 @@ It checks:
 .Bl -bullet
 .It
 the super block: a maximum file size that makes sense, an image that
-holds the whole file system, and the errors that Linux records in the
-state word of V1 and V2;
+holds the whole file system, where the size of a device can be told,
+and the errors that Linux records in the state word of V1 and V2;
 .It
 directory entries: inode numbers in range, entries that name a free
 inode or one of no valid type, names that are empty or hold
@@ -132,9 +132,6 @@ $ fsck_minixfs -y -l usr.img
 .Sh AUTHORS
 .An Shoichi Fukusaka
 .Sh BUGS
-The size of the image is taken from the size of its file, so a device,
-whose file has none, reads as an image shorter than the file system.
-.Pp
 The flex directories of Minix-vmd are checked, but
 .Ql \&.
 and

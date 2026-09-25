@@ -215,7 +215,7 @@ not clean read-only; `newfs_minixfs` marks new file systems clean.
 
     tunefs_minixfs [-fN] [-B le|be] [-c clean|dirty] [-e 0|1]
         [-l 14|30] [-m minix|linux|bytes]
-        [-M SIZE:HEADS:SIDE] [-s blocks] image
+        [-M SIZE:HEADS:SIDE] [-s blocks [-k]] image
 
 changes the settings of a file system; without options, or with `-N`,
 it prints them and writes nothing, and `-N` shows what the options
@@ -235,7 +235,10 @@ room, with every zone number changed to match.  To shrink, the zones in
 use past the new end move to free zones before it, with the zone
 numbers that name them; the zone map keeps its blocks, which
 `fsck_minixfs -w` notes.  What is in use has to fit, or nothing
-changes.  `-c` marks the file
+changes.  With `-k`, and always on a device, the image keeps its size
+and has to hold the new one; the size of a device is asked of the
+system (BLKGETSIZE64, DIOCGMEDIASIZE, DIOCGETP), as stat(2) gives none.
+`-c` marks the file
 system clean or dirty, where Linux and MINIX 3 keep the mark.  `-e`
 sets the bits of the maps past the last inode or zone to 0, as the mkfs
 of MINIX leaves them, or 1, as that of Linux.  `-m` sets the maximum

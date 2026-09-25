@@ -729,15 +729,15 @@ grow_super(struct mfs *fs, uint32_t nzones, uint32_t zmap_blocks,
 }
 
 int
-mfs_grow(struct mfs *fs, uint32_t nblocks)
+mfs_grow(struct mfs *fs, uint32_t nblocks, int keep)
 {
 	struct mfs_inode ip;
 	struct grow g;
 	unsigned char *buf, *oldmap, *zmap;
-	uint64_t bits, oldbits, need, newbits;
+	uint64_t bits, oldbits, need, newbits, size;
 	uint32_t delta, first, grow_blocks, i, ino, itable, k, newz, z;
 	uint32_t oldfirst, oldz;
-	int pad, r;
+	int pad, r, resize;
 
 	if (!fs->writable)
 		return -EROFS;
@@ -750,6 +750,12 @@ mfs_grow(struct mfs *fs, uint32_t nblocks)
 		return 0;
 	if (fs->version == 1 && newz > MAX_16)
 		return -EFBIG;
+	/* A device, or an image kept as it is, has to hold the zones. */
+	size = ((uint64_t)newz << fs->log_zone_size) * fs->block_size;
+	resize = fs->regular && !keep;
+	if (!resize && (fs->image_size < 0 ||
+	    (uint64_t)fs->image_size < size))
+		return -ENXIO;
 
 	/* The zone map needs a bit for each data zone, and bit 0. */
 	bits = (uint64_t)fs->block_size * 8;
@@ -811,13 +817,14 @@ mfs_grow(struct mfs *fs, uint32_t nblocks)
 		mfs_set_map_bit(fs, zmap, i, i > newbits ? pad : 0);
 
 	/* Write: the file grows, then the zones and the inode table move. */
-	if (ftruncate(fs->fd, (off_t)((uint64_t)newz << fs->log_zone_size) *
-	    fs->block_size) == -1) {
-		r = -errno;
-		goto out;
+	if (resize) {
+		if (ftruncate(fs->fd, (off_t)size) == -1) {
+			r = -errno;
+			goto out;
+		}
+		fs->file_size = fs->image_size = (off_t)size;
 	}
 	fs->nblocks = newz << fs->log_zone_size;
-	fs->file_size = fs->image_size = (off_t)fs->nblocks * fs->block_size;
 	for (z = oldz; delta > 0 && z-- > oldfirst; ) {
 		if (!mfs_map_bit(fs, oldmap, z - oldfirst + 1))
 			continue;
@@ -917,7 +924,7 @@ note_tail(uint32_t zone, int level, const struct mfs_zref *ref, void *arg)
 }
 
 int
-mfs_shrink(struct mfs *fs, uint32_t nblocks)
+mfs_shrink(struct mfs *fs, uint32_t nblocks, int keep)
 {
 	struct mfs_inode ip;
 	struct shrink s;
@@ -1020,11 +1027,15 @@ mfs_shrink(struct mfs *fs, uint32_t nblocks)
 		goto out;
 	fs->nzones = s.newz;
 	fs->nblocks = s.newz << fs->log_zone_size;
-	if (ftruncate(fs->fd, (off_t)fs->nblocks * fs->block_size) == -1) {
-		r = -errno;
-		goto out;
+	if (fs->regular && !keep) {
+		if (ftruncate(fs->fd, (off_t)fs->nblocks * fs->block_size) ==
+		    -1) {
+			r = -errno;
+			goto out;
+		}
+		fs->file_size = fs->image_size =
+		    (off_t)fs->nblocks * fs->block_size;
 	}
-	fs->file_size = fs->image_size = (off_t)fs->nblocks * fs->block_size;
 out:
 	free(s.refs);
 	free(newloc);

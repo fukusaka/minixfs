@@ -361,13 +361,20 @@ print_fill(struct cmd *c)
 	struct run *runs, *best;
 	uint64_t bytes, len, nrun;
 	size_t i, nruns;
-	off_t off;
+	off_t end, off;
 
+	/*
+	 * An image file is read to its end, a device only as far as the file
+	 * system: it may be a whole disk, and its size may not be known.
+	 */
+	end = (off_t)c->fs.nblocks * c->fs.block_size;
+	if (c->fs.regular || (c->fs.image_size >= 0 && c->fs.image_size < end))
+		end = c->fs.image_size;
 	runs = NULL;
 	nruns = 0;
 	bytes = 0;
 	len = 0;
-	for (off = 0; off + SECTOR <= c->fs.image_size; off += SECTOR) {
+	for (off = 0; off + SECTOR <= end; off += SECTOR) {
 		if (mfs_read_device(&c->fs, buf, SECTOR, off) < 0)
 			break;
 		if (is_fill(buf)) {
@@ -390,9 +397,9 @@ print_fill(struct cmd *c)
 			best = &runs[i];
 	}
 	(void)printf("fill sectors: %" PRIu64 " bytes, %" PRIu64 "%% of the "
-	    "image, in %" PRIu64 " runs\n", bytes,
-	    c->fs.image_size > 0 ? bytes * 100 / (uint64_t)c->fs.image_size :
-	    0, nrun);
+	    "%s, in %" PRIu64 " runs\n", bytes,
+	    end > 0 ? bytes * 100 / (uint64_t)end : 0,
+	    c->fs.regular ? "image" : "file system", nrun);
 	if (best != NULL)
 		(void)printf("commonest fill run: %" PRIu64 " bytes, %" PRIu64
 		    " time%s\n", best->len, best->count,
@@ -406,8 +413,13 @@ print_sizes(const struct cmd *c)
 {
 	uint64_t fsbytes, image;
 
-	image = (uint64_t)c->fs.image_size;
 	fsbytes = (uint64_t)c->fs.nblocks * c->fs.block_size;
+	if (c->fs.image_size < 0) {
+		(void)printf("image size: unknown\n");
+		(void)printf("file system size: %" PRIu64 "\n", fsbytes);
+		return;
+	}
+	image = (uint64_t)c->fs.image_size;
 	(void)printf("image size: %" PRIu64 "\n", image);
 	(void)printf("file system size: %" PRIu64, fsbytes);
 	if (image > 0 && fsbytes != image)
