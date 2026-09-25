@@ -28,6 +28,14 @@
  * many seconds have gone since they last did (as update(8) of MINIX
  * does every 30).
  *
+ * A file removed while it is open keeps its inode and zones, with no
+ * name, until it is closed, as the system calls have it: writes to it
+ * would otherwise go to a free inode, or to another file that took it.
+ * libfuse tells when the last one closes.  librefuse (NetBSD, MINIX 3)
+ * passes on only the first of the opens that overlap and calls release
+ * at the first close, so there such a file is kept until the unmount;
+ * and one opened twice, closed once and then removed is not kept.
+ *
  * The mount is single-threaded, since the library keeps one set of block
  * buffers per image.  The image is opened before FUSE takes over, so a
  * relative path works even after FUSE has changed directory.
@@ -62,6 +70,17 @@
 
 #define MAX_ARGS	64		/* arguments handed on to FUSE */
 
+/*
+ * Whether the FUSE library tells when the last user of a file closes it:
+ * librefuse passes on only the first of the opens that overlap, and
+ * calls release at the first close.
+ */
+#if defined(_REFUSE_VERSION_) || defined(PUFFS_SERVICE)
+#define LAST_CLOSE_KNOWN 0
+#else
+#define LAST_CLOSE_KNOWN 1
+#endif
+
 /* Add one directory entry through the filler of readdir. */
 #if FUSE_USE_VERSION >= 30
 #define FILL(filler, buf, name, st)	(filler)((buf), (name), (st), 0, 0)
@@ -87,9 +106,19 @@ static char opt_ro[] = "ro,use_ino,readdir_ino";
 static char opt_rw[] = "rw,default_permissions,use_ino,readdir_ino";
 #endif
 
+/* A file opened for a mount for writing, by inode. */
+struct handle {
+	uint32_t	ino;		/* 0: a free slot */
+	uint32_t	opens;		/* not closed yet */
+	int		orphan;		/* removed, and kept for them */
+};
+
 /* The mounted file system. */
 struct mount {
 	struct mfs	fs;
+	struct handle	*handles;	/* open addressing, by inode */
+	size_t		nhandles;
+	size_t		maxhandles;	/* a power of 2 */
 	int		rw;		/* -w, and the image allows it */
 	long		every;		/* -u seconds, or 0 */
 	int64_t		flushed;	/* when the maps last went out */
@@ -117,6 +146,99 @@ static struct mfs *
 image(void)
 {
 	return &mount_of()->fs;
+}
+
+/*
+ * The files open in a mount for writing, so that one removed while open
+ * keeps its inode.
+ */
+
+/* The slot of inode ino in the table: its own, or a free one. */
+static struct handle *
+handle_slot(const struct mount *m, uint32_t ino)
+{
+	size_t i;
+
+	for (i = ino & (m->maxhandles - 1); m->handles[i].ino != 0 &&
+	    m->handles[i].ino != ino; i = (i + 1) & (m->maxhandles - 1))
+		continue;
+	return &m->handles[i];
+}
+
+/* The entry of inode ino, or NULL. */
+static struct handle *
+handle_find(const struct mount *m, uint32_t ino)
+{
+	struct handle *h;
+
+	if (m->maxhandles == 0)
+		return NULL;
+	h = handle_slot(m, ino);
+	return h->ino != 0 ? h : NULL;
+}
+
+/* Note that inode ino is opened once more.  Returns 0 or -ENOMEM. */
+static int
+handle_open(struct mount *m, uint32_t ino)
+{
+	struct handle *h, *old;
+	size_t i, max;
+
+	if ((m->nhandles + 1) * 2 > m->maxhandles) {
+		old = m->handles;
+		max = m->maxhandles;
+		h = calloc(max == 0 ? 64 : max * 2, sizeof(*h));
+		if (h == NULL)
+			return -ENOMEM;
+		m->handles = h;
+		m->maxhandles = max == 0 ? 64 : max * 2;
+		for (i = 0; i < max; i++)
+			if (old[i].ino != 0)
+				*handle_slot(m, old[i].ino) = old[i];
+		free(old);
+	}
+	h = handle_slot(m, ino);
+	if (h->ino == 0) {
+		h->ino = ino;
+		m->nhandles++;
+	}
+	h->opens++;
+	return 0;
+}
+
+/* Take the entry *h out of the table, moving up those that follow it. */
+static void
+handle_drop(struct mount *m, struct handle *h)
+{
+	size_t home, i, j, mask;
+
+	mask = m->maxhandles - 1;
+	i = (size_t)(h - m->handles);
+	for (j = (i + 1) & mask; m->handles[j].ino != 0; j = (j + 1) & mask) {
+		home = m->handles[j].ino & mask;
+		/* An entry whose home lies after the hole stays. */
+		if (i <= j ? (i < home && home <= j) : (i < home || home <= j))
+			continue;
+		m->handles[i] = m->handles[j];
+		i = j;
+	}
+	(void)memset(&m->handles[i], 0, sizeof(m->handles[i]));
+	m->nhandles--;
+}
+
+/*
+ * fs->keep: whether to keep inode ino when its last name goes, as it is
+ * open; it is then noted as kept.
+ */
+static int
+keep_open(void *arg, uint32_t ino)
+{
+	struct handle *h;
+
+	if ((h = handle_find(arg, ino)) == NULL || h->opens == 0)
+		return 0;
+	h->orphan = 1;
+	return 1;
 }
 
 /* Fill *st from an inode. */
@@ -193,6 +315,8 @@ mfs_open_file(const char *path, struct fuse_file_info *fi)
 		return r;
 	if (mfs_is_dir(&ino))
 		return -EISDIR;
+	if (mount_of()->rw && (r = handle_open(mount_of(), ino.num)) < 0)
+		return r;
 	/* Remember the inode, so that read does not look the path up. */
 	fi->fh = ino.num;
 	return 0;
@@ -442,10 +566,37 @@ mfs_create_file(const char *path, mode_t mode, struct fuse_file_info *fi)
 	struct mfs_inode ip;
 	int r;
 
-	if ((r = make(path, (mode & 07777) | S_IFREG, 0, &ip)) < 0)
+	if ((r = make(path, (mode & 07777) | S_IFREG, 0, &ip)) < 0 ||
+	    (r = handle_open(mount_of(), ip.num)) < 0)
 		return r;
 	fi->fh = ip.num;
 	return 0;
+}
+
+/*
+ * The close of a file opened for writing: once no one has it open, one
+ * that was removed goes.  With librefuse another may still have it open,
+ * so that is left to the unmount.
+ */
+static int
+mfs_release_file(const char *path, struct fuse_file_info *fi)
+{
+	struct handle *h;
+	struct mount *m;
+	int r;
+
+	(void)path;
+	m = mount_of();
+	if (fi == NULL || fi->fh == 0 ||
+	    (h = handle_find(m, (uint32_t)fi->fh)) == NULL)
+		return 0;
+	if (h->opens > 0)
+		h->opens--;
+	if (h->opens > 0 || (h->orphan && !LAST_CLOSE_KNOWN))
+		return 0;
+	r = h->orphan ? mfs_free_orphan(&m->fs, h->ino) : 0;
+	handle_drop(m, h);
+	return changed(r);
 }
 
 static int
@@ -982,15 +1133,37 @@ open_image(struct mount *m, const struct options *o)
 	if (!m->rw)
 		return;
 	mfs_maps_through(&m->fs, o->always);
+	m->fs.keep = keep_open;
+	m->fs.keep_arg = m;
 	if ((r = mfs_mark_in_use(&m->fs)) < 0)
 		errx(1, "%s: %s", o->image, strerror(-r));
 	m->every = o->every;
 	m->flushed = now();
 }
 
+/* Free the files that were removed while open.  Returns 0 or -errno. */
+static int
+free_orphans(struct mount *m)
+{
+	size_t i;
+	int e, r;
+
+	r = 0;
+	for (i = 0; i < m->maxhandles; i++)
+		if (m->handles[i].ino != 0 && m->handles[i].orphan &&
+		    (e = mfs_free_orphan(&m->fs, m->handles[i].ino)) < 0 &&
+		    r == 0)
+			r = e;
+	free(m->handles);
+	m->handles = NULL;
+	m->nhandles = m->maxhandles = 0;
+	return r;
+}
+
 /*
- * After the unmount: the maps out, the clean mark back, and the image
- * closed, once.  Returns 1 if they could not be written.
+ * After the unmount: the files removed while open freed, the maps out,
+ * the clean mark back, and the image closed, once.  Returns 1 if they
+ * could not be written.
  */
 static int
 close_image(struct mount *m)
@@ -1001,7 +1174,9 @@ close_image(struct mount *m)
 		return m->failed;
 	m->closed = 1;
 	r = 0;
-	if (m->rw && (r = mfs_sync(&m->fs)) == 0 &&
+	if (m->rw)
+		r = free_orphans(m);
+	if (m->rw && r == 0 && (r = mfs_sync(&m->fs)) == 0 &&
 	    (r = mfs_mark_clean(&m->fs, 1)) == 0 && fsync(m->fs.fd) == -1)
 		r = -errno;
 	mfs_close(&m->fs);
@@ -1041,6 +1216,7 @@ write_ops(struct fuse_operations *ops)
 	ops->utimens = op_utimens;
 	ops->write = mfs_write_file;
 	ops->fsync = mfs_sync_file;
+	ops->release = mfs_release_file;
 }
 
 #ifdef PUFFS_SERVICE

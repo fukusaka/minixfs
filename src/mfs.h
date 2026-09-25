@@ -89,6 +89,9 @@ struct mfs {
 	uint32_t	inext;		/* where to look for a free inode */
 	uint32_t	znext;		/* and for a free zone, as map bits */
 	int		maps_through;	/* write a changed map block at once */
+	int		(*keep)(void *, uint32_t);	/* or NULL; see
+					   mfs_unlink() */
+	void		*keep_arg;	/* its first argument */
 	int		version;	/* 1, 2 or 3 */
 
 	/* From the super block. */
@@ -512,8 +515,20 @@ int	mfs_symlink(struct mfs *, uint32_t, const char *, const char *,
 /* Give inode ino, which is not a directory, one more name, in dir. */
 int	mfs_link(struct mfs *, uint32_t, uint32_t, const char *, uint32_t);
 
-/* Remove name from dir, and free its inode if that was its last name. */
+/*
+ * Remove name from dir, and free its inode if that was its last name.
+ * If fs->keep is set and says so for the inode, it is kept instead, with
+ * no links, for a file that is still open: mfs_free_orphan() frees it
+ * once it is closed.  The same holds for a file that mfs_rename()
+ * replaces.
+ */
 int	mfs_unlink(struct mfs *, uint32_t, const char *, uint32_t);
+
+/*
+ * Free inode ino and its zones if it has no links left, as fs->keep had
+ * it kept; otherwise do nothing.  Returns 0 or a negative errno value.
+ */
+int	mfs_free_orphan(struct mfs *, uint32_t);
 
 /* Remove the empty directory name from dir. */
 int	mfs_rmdir(struct mfs *, uint32_t, const char *, uint32_t);

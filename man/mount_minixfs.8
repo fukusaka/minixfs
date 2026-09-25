@@ -63,6 +63,8 @@ where that is set-group-ID, as a new directory takes the bit too, or
 where the inode cannot hold the group of the caller, as in V1, whose
 inodes keep the group in a byte.
 The mtime and ctime of what changes are set; atimes are not.
+A file removed while it is open keeps its inode and its data, with no
+name, until it is closed, and then goes.
 .Pp
 While the file system is mounted,
 .Ar image
@@ -201,3 +203,16 @@ from then on, as it does for every file system served through
 librefuse; see
 .Pa docs/netbsd-refuse-dotdot.md
 in the source.
+.Pp
+On
+.Nx
+and MINIX 3, librefuse passes on only the first of the opens of a file
+that overlap, and says a file is closed at the first close.
+A file removed while open is then kept until the unmount, not until it
+is closed; and a file opened twice, closed once and then removed goes at
+once, so that writing through the other descriptor changes a free inode,
+or a file that took it.
+.Pp
+On Linux, libfuse hides a file removed while open under a name of 28
+characters until it is closed, and so cannot remove an open file where
+names are of 14.

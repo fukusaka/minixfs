@@ -199,12 +199,14 @@ top of `tests/mkimage.c`).  The scripts:
   holding what the host does; mounted in the background, without `-f`,
   the image stays locked, and in a set-group-ID directory new files and
   directories take its group, and new directories the bit (not on
-  NetBSD, whose librefuse takes it away); a file system not marked clean
-  is mounted read-only.  On NetBSD the list of every name, which looks
-  up "..", after which librefuse has freed the root, is left out.  On
-  MINIX 3, where it is a service of mount(8) on a vnd device, the
-  reading, run by hand it shows how to mount, and writing is left
-  out.  Skipped otherwise.  `MINIXFS_FUSE` names the program;
+  NetBSD, whose librefuse takes it away); a file removed while open
+  keeps its inode until it is closed, so that writing to it changes no
+  file that comes after it, and gives it back then; a file system not
+  marked clean is mounted read-only.  On NetBSD the list of every name,
+  which looks up "..", after which librefuse has freed the root, is
+  left out.  On MINIX 3, where it is a service of mount(8) on a vnd
+  device, the reading, run by hand it shows how to mount, and writing
+  is left out.  Skipped otherwise.  `MINIXFS_FUSE` names the program;
   `FUSE_SUDO` is a command to mount and read with where users cannot
   mount, such as `sudo` on NetBSD.
 - `t_device.sh` - where an image can be put on a device, a loop device

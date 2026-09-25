@@ -409,6 +409,45 @@ else
 	check_status "-w in the background: fsck finds nothing wrong" 0
 	check_true "-w in the background: the new file is there" \
 	    "$MINIXFS" cat "$T/bg.img" /new
+
+	# A file removed while open keeps its inode until it is closed.  Of
+	# 8 inodes, b to g take the rest, g gives its own back, and the next
+	# file, which would take that of the removed file if it were free,
+	# takes that of g: a write to the removed file does not show in it.
+	# Once closed and unmounted, the inode is free again.  Names are of
+	# 30 characters, where libfuse of Linux can hide such a file under a
+	# name of its own until it is closed, as it does.
+	rm -f "$T/rm.img"
+	"$NEWFS_MINIXFS" -V 2 -l 30 -i 8 -s 1000 -d "$T/empty" \
+	    -o "$(id -u):$(id -g)" "$T/rm.img" >/dev/null
+	run as_mounter "$MINIXFS_FUSE" -w "$T/rm.img" "$mnt"
+	check_status "removed while open: mounted" 0
+	# The script is for the sh -c.
+	# shellcheck disable=SC2016
+	run as_mounter sh -c '
+	    cd "$1" || exit 1
+	    exec 3>a
+	    printf AAAA >&3
+	    rm a
+	    for f in b c d e f g; do : >"$f" || exit 1; done
+	    rm g
+	    printf innocent >victim || exit 1
+	    printf XXXX >&3
+	    exec 3>&-
+	    cat victim' sh "$mnt"
+	check_out_has "removed while open: a write to it goes to no other" \
+	    "^innocent\$"
+	fuse_pid=
+	unmount_image "$mnt"
+	n=0
+	while [ "$(info_field "$T/rm.img" clean)" != yes ] && [ "$n" -lt 10 ]; do
+		sleep 1
+		n=$((n + 1))
+	done
+	run "$FSCK_MINIXFS" "$T/rm.img"
+	check_status "removed while open: fsck finds nothing wrong" 0
+	check_info "removed while open: its inode is free again" "$T/rm.img" \
+	    "free inodes" 1
 fi
 
 # A file system not marked clean is mounted read-only.

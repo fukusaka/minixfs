@@ -303,15 +303,32 @@ mfs_link(struct mfs *fs, uint32_t ino, uint32_t dir, const char *name,
 	return touch(fs, dir, now);
 }
 
-/* Drop one name of the file *ip, which is not a directory. */
+/*
+ * Drop one name of the file *ip, which is not a directory.  Its last name
+ * frees it, unless fs->keep keeps it for one who has it open.
+ */
 static int
 drop_name(struct mfs *fs, struct mfs_inode *ip, uint32_t now)
 {
-	if (ip->nlinks <= 1)
+	if (ip->nlinks <= 1 &&
+	    (fs->keep == NULL || !fs->keep(fs->keep_arg, ip->num)))
 		return release(fs, ip);
-	ip->nlinks--;
+	ip->nlinks = ip->nlinks <= 1 ? 0 : ip->nlinks - 1;
 	ip->ctime = now;
 	return mfs_put_inode(fs, ip);
+}
+
+int
+mfs_free_orphan(struct mfs *fs, uint32_t ino)
+{
+	struct mfs_inode ip;
+	int r;
+
+	if ((r = mfs_read_inode(fs, ino, &ip)) < 0)
+		return r;
+	if (ip.mode == 0 || ip.nlinks != 0)
+		return 0;
+	return release(fs, &ip);
 }
 
 int
