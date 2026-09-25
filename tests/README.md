@@ -23,8 +23,9 @@ the runtime reports stores to local variables as errors.  Building with
         -fno-sanitize-recover=all"
 
 The tests are POSIX shell scripts, so that they also run on MINIX 3,
-which has no Python 3, and follow the rules in `../STYLE.md`.  They
-print TAP.  Variables:
+which has no Python 3, and follow the rules in `../STYLE.md`; `make
+lint-sh` (`shellcheck -x -s sh`) runs shellcheck(1) over them where it
+is installed.  They print TAP.  Variables:
 
 - `TEST_SHELL` - the shell for the scripts (default `sh`)
 - `JUNIT_XML=FILE` - also write the results as JUnit XML

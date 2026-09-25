@@ -195,6 +195,8 @@ check_same_tree() {
 
 # check_mode NAME PATH MODE - "ls -ld" shows MODE (such as drwxr-xr-x).
 check_mode() {
+	# ls is the portable way to the mode; the names are the tests' own.
+	# shellcheck disable=SC2012
 	_check_mode_got=$(ls -ld "$2" | cut -c1-10)
 	if [ "$_check_mode_got" = "$3" ]; then
 		pass "$1"
@@ -214,6 +216,8 @@ check_older() {
 
 # check_link NAME PATH TARGET - PATH is a symbolic link to TARGET.
 check_link() {
+	# ls is the portable way to the target; the names are the tests' own.
+	# shellcheck disable=SC2012
 	_check_link_got=$(ls -l "$2")
 	case $_check_link_got in
 	*" -> $3")
@@ -285,15 +289,30 @@ tree_listing() {
 
 # mkimage SPEC IMAGE [EXPECTDIR] - build an image from a spec file.
 mkimage() {
+	_mkimage_ok=yes
 	if [ -n "$3" ]; then
-		"$MKIMAGE" -e "$3" "$1" "$2"
+		"$MKIMAGE" -e "$3" "$1" "$2" || _mkimage_ok=no
 	else
-		"$MKIMAGE" "$1" "$2"
+		"$MKIMAGE" "$1" "$2" || _mkimage_ok=no
 	fi
-	if [ $? -ne 0 ]; then
+	if [ "$_mkimage_ok" = no ]; then
 		echo "Bail out! mkimage failed on $1"
 		exit 1
 	fi
+}
+
+# inode_of PATH - the inode number of a file of the host.
+inode_of() {
+	# ls -i is the portable way to it; the names are the tests' own.
+	# shellcheck disable=SC2012
+	ls -i "$1" | awk '{ print $1 }'
+}
+
+# link_target PATH - what a symbolic link of the host points to.
+link_target() {
+	# ls -l is the portable way to it; the names are the tests' own.
+	# shellcheck disable=SC2012
+	ls -l "$1" | sed 's/.* -> //'
 }
 
 # info_field IMAGE FIELD - one value from "minixfs info".

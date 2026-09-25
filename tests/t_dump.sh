@@ -9,6 +9,7 @@
 # removed, added, changed, renamed and turned from a directory into a
 # file.
 
+# shellcheck source=tests/lib.sh
 . ./tests/lib.sh
 
 TZ=UTC

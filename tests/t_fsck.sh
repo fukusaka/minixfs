@@ -8,6 +8,7 @@
 # that no directory names go to /lost+found; with -e, the bits past the
 # end of the maps must be as given.
 
+# shellcheck source=tests/lib.sh
 . ./tests/lib.sh
 
 # The images to damage.  The spec gives /d inode 2, /d/e 3, /f 4, /big 5
@@ -290,7 +291,7 @@ damage_inodes() {
 	    "$(get_inode "$T/good" 7 zone0)"
 
 	# The text "target" of /l.
-	text=$(((($(get_inode "$T/good" 8 zone0) << lz)) * bs))
+	text=$((($(get_inode "$T/good" 8 zone0) << lz) * bs))
 	cp "$T/good" "$T/img"
 	poke "$T/img" $((text + 3)) 000
 	fsck_damaged "a NUL byte in a symbolic link" \

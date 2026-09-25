@@ -5,6 +5,7 @@
 # Large sparse files that reach the triple indirect zone, and trees whose
 # paths are longer than PATH_MAX.
 
+# shellcheck source=tests/lib.sh
 . ./tests/lib.sh
 
 # The longest line of a file.

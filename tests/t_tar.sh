@@ -8,6 +8,7 @@
 # Devices cannot be made without privileges, so they are checked in the
 # listing and in the headers, not by extracting them.
 
+# shellcheck source=tests/lib.sh
 . ./tests/lib.sh
 
 # The listing of tar -tv, in the C locale that the patterns expect.
@@ -78,8 +79,7 @@ for order in le be; do
 	check_same_tree "$v: the extracted tree is that of the image" \
 	    "$T/exp" "$T/x"
 	check_true "$v: the hard link is one file" \
-	    test "$(ls -i "$T/x/bin/sh" | awk '{ print $1 }')" = \
-	    "$(ls -i "$T/x/bin/sh2" | awk '{ print $1 }')"
+	    test "$(inode_of "$T/x/bin/sh")" = "$(inode_of "$T/x/bin/sh2")"
 done
 done
 
@@ -107,7 +107,7 @@ done
 if ! mkdir -p "$T/try$p" 2>/dev/null ||
     ! : >"$T/try$p/$b" 2>/dev/null ||
     ! ln -s "${p#/}/$b" "$T/try/l" 2>/dev/null ||
-    [ "$(cd "$T/try" && ls -l l | sed 's/.* -> //')" != "${p#/}/$b" ]; then
+    [ "$(link_target "$T/try/l")" != "${p#/}/$b" ]; then
 	skip "tar stores long names" "this system cannot make the tree"
 	finish
 fi
@@ -132,6 +132,6 @@ status=$?
 check_status "tar extracts long names" 0
 check_same_tree "long names come back whole" "$T/exp" "$T/x"
 check_true "a long symbolic link comes back whole" \
-    test "$(ls -l "$T/x/l" | sed 's/.* -> //')" = "${p#/}/$b"
+    test "$(link_target "$T/x/l")" = "${p#/}/$b"
 
 finish

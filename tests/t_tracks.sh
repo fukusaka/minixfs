@@ -7,6 +7,7 @@
 # reads as the file system itself, and fsck_minixfs -y repairs it in
 # place without touching the other side.
 
+# shellcheck source=tests/lib.sh
 . ./tests/lib.sh
 
 track=4608				# 9 sectors of 512 bytes

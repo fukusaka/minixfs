@@ -11,6 +11,7 @@
 # is refused, a file system that fills up, the maps written as they
 # change, and the lock that keeps two writers apart.
 
+# shellcheck source=tests/lib.sh
 . ./tests/lib.sh
 
 # must CMD ARGS... - a step the checks depend on.

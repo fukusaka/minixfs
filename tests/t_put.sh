@@ -10,6 +10,7 @@
 # directory, or -o), what is refused, -f on a file system not marked
 # clean, the lock, and -M.
 
+# shellcheck source=tests/lib.sh
 . ./tests/lib.sh
 
 # The times that ls -l shows are in UTC, and the modes of what mkdir

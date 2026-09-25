@@ -9,6 +9,7 @@
 # empty, names, owners and devices that do not fit, file systems that are
 # not clean or have flex directories; -N writes nothing.
 
+# shellcheck source=tests/lib.sh
 . ./tests/lib.sh
 
 TZ=UTC

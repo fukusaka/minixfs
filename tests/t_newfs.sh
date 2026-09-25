@@ -6,6 +6,7 @@
 # that tests/mkimage, the independent writer, makes from an empty tree;
 # the defaults, the size and the options must behave as documented.
 
+# shellcheck source=tests/lib.sh
 . ./tests/lib.sh
 
 # Make both images of one format and compare them.  mkimage gives the
@@ -179,6 +180,8 @@ listing() {
 from_tree() {
 	for fs in "1 14 le" "1 30 be" "2 14 be" "2 30 le" "3 60 le" \
 	    "3 60 be"; do
+		# The fields are split on purpose.
+		# shellcheck disable=SC2086
 		set -- $fs
 		v="V$1/$2/$3"
 		opts="-V $1 -B $3"

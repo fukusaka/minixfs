@@ -6,6 +6,7 @@
 # big-endian, with every name length and V3 block size, and with one- and
 # two-block zones.
 
+# shellcheck source=tests/lib.sh
 . ./tests/lib.sh
 
 # The regular files of the tree.
@@ -153,8 +154,7 @@ read_extract() {
 	check_note "$v: extract warns of the devices it did not make" \
 	    "warning: 2 devices not made; make them with extract -d as root"
 	check_true "$v: extract makes a hard link one file" \
-	    test "$(ls -i "$T/x/bin/sh" | awk '{ print $1 }')" = \
-	    "$(ls -i "$T/x/bin/sh2" | awk '{ print $1 }')"
+	    test "$(inode_of "$T/x/bin/sh")" = "$(inode_of "$T/x/bin/sh2")"
 	check_true "$v: extract makes the pipe" test -p "$T/x/dev/fifo"
 	check_mode "$v: extract keeps the mode of the pipe" "$T/x/dev/fifo" \
 	    prw-------
@@ -306,8 +306,7 @@ check_same_file "the other name of a replaced link keeps its contents" \
 check_same_file "a link of the first image is replaced by a file" \
     "$T/second.exp/b" "$T/x/b"
 check_true "the new link is a link of the new file" \
-    test "$(ls -i "$T/x/b" | awk '{ print $1 }')" = \
-    "$(ls -i "$T/x/c" | awk '{ print $1 }')"
+    test "$(inode_of "$T/x/b")" = "$(inode_of "$T/x/c")"
 check_same_file "a symbolic link is replaced by a file" \
     "$T/second.exp/s" "$T/x/s"
 check_same_file "a pipe is replaced by a file" "$T/second.exp/p" "$T/x/p"

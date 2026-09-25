@@ -186,9 +186,15 @@ lint-man:
 	    done; \
 	fi
 
+# Where shellcheck is installed, the test scripts pass it as POSIX sh;
+# -x has it read tests/lib.sh, which each script names.
+lint-sh:
+	shellcheck -x -s sh tests/*.sh
+
 clean:
 	rm -f $(PROG) $(NEWFS) $(FSCK) $(TUNEFS) $(DUMP) $(RESTORE) \
 	    src/*.o $(MKIMAGE) $(MKDUMP) $(MFSOP) $(FUSEPROG)
 	rm -rf build-san
 
-.PHONY: all check check-sanitize clean fuse fuse-minix install lint-man
+.PHONY: all check check-sanitize clean fuse fuse-minix install lint-man \
+	lint-sh

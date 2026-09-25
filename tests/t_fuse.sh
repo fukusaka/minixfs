@@ -24,6 +24,7 @@
 #                 minixfs, as /usr/pkg/service/minixfs)
 #   MINIXFS_VND   on MINIX 3, the vnd device to use (default: vnd0)
 
+# shellcheck source=tests/lib.sh
 . ./tests/lib.sh
 
 : "${MINIXFS_FUSE:=./mount_minixfs}"
@@ -72,7 +73,7 @@ mount_image() {
 		as_mounter vndconfig "$MINIXFS_VND" "$1" 2>"$T/fuse.err" ||
 		    return 1
 		# The options are several words or none, split on purpose.
-		# shellcheck disable=SC2046
+		# shellcheck disable=SC2046,SC2086
 		if ! as_mounter mount -t "$MINIXFS_TYPE" $(minix_opts $3) \
 		    "/dev/$MINIXFS_VND" "$2" >"$T/fuse.err" 2>&1; then
 			as_mounter vndconfig -u "$MINIXFS_VND"
@@ -136,13 +137,16 @@ field_of() {
 
 # can_write FILE - does creating FILE succeed?
 can_write() {
+	# The $1 is that of the sh -c.
+	# shellcheck disable=SC2016
 	as_mounter sh -c ': >"$1"' sh "$1" 2>/dev/null
 }
 
 # read_mount: the checks on the mount $mnt of variant $v.
 read_mount() {
 
-	# $T/files is a list of names, split on purpose.
+	# $T/files is a list of names without blanks, split on purpose.
+	# shellcheck disable=SC2013
 	for f in $(cat "$T/files"); do
 		as_mounter cat "$mnt/$f" >"$T/got"
 		check_same_file "$v: /$f reads back" "$exp/$f" "$T/got"
@@ -265,7 +269,9 @@ for variant in "version=1 namelen=14:be:1024" \
 done
 
 # Writing.  The same commands run on the mount and on a copy of the tree
-# on the host; the image is then a copy of that.
+# on the host; the image is then a copy of that.  check_true runs it;
+# the $1 and $2 are those of the sh -c.
+# shellcheck disable=SC2317,SC2016
 change() {
 	# The copy on the host is changed by who runs the test, not through
 	# FUSE_SUDO, so that it can read and remove it.

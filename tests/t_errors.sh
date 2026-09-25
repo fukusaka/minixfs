@@ -6,6 +6,7 @@
 # every version.  Every case must end in an error message and exit status
 # 1, never in a crash.
 
+# shellcheck source=tests/lib.sh
 . ./tests/lib.sh
 
 # Files that are not file systems.

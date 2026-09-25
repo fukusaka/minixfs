@@ -13,6 +13,7 @@
 #             commands on it with, such as "sudo" (default: none)
 #   DEV_VND   on NetBSD and MINIX 3, the vnd device to use (default: vnd0)
 
+# shellcheck source=tests/lib.sh
 . ./tests/lib.sh
 
 : "${DEV_SUDO:=}"

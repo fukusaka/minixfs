@@ -23,6 +23,7 @@
 # repair by it, which is to reach the disk, is not to go through
 # fsck_minix.
 
+# shellcheck source=tests/lib.sh
 . ./tests/lib.sh
 
 : "${FSCK_MINIX:=fsck.minix}"
@@ -45,7 +46,9 @@ if [ "$UTILLINUX_NOSYNC" = yes ] && have "$FSCK_MINIX"; then
 fi
 
 # fsck_minix ARGS... - run fsck.minix, without its sync(2) calls if
-# UTILLINUX_NOSYNC asks and strace can.
+# UTILLINUX_NOSYNC asks and strace can.  run(), which takes a command,
+# calls it.
+# shellcheck disable=SC2317
 fsck_minix() {
 	if [ "$nosync" = yes ]; then
 		strace -qq -e trace=sync -e inject=sync:retval=0 \

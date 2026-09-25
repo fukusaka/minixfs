@@ -6,6 +6,7 @@
 # change leaves a file system that fsck_minixfs passes and that says what
 # was asked for.
 
+# shellcheck source=tests/lib.sh
 . ./tests/lib.sh
 
 # tuned NAME - tunefs succeeded, and fsck passes the image.

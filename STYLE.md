@@ -137,6 +137,6 @@ it.
 - `make check` and `make check-sanitize` pass on Linux and NetBSD.
 - `TEST_SHELL=dash`, `TEST_SHELL="bash --posix"` and
   `TEST_SHELL="busybox sh"` pass.
-- Where `shellcheck` is installed, `shellcheck -s sh` reports nothing
+- Where `shellcheck` is installed, `shellcheck -x -s sh` reports nothing
   for the scripts; a warning that is deliberately ignored is disabled on
   the line with a comment giving the reason.

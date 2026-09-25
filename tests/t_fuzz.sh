@@ -9,6 +9,7 @@
 # FUZZ_COUNT sets the number of damaged images per format and byte order
 # (default 100); FUZZ_SEED changes the sequence.
 
+# shellcheck source=tests/lib.sh
 . ./tests/lib.sh
 
 : "${FUZZ_COUNT:=100}"

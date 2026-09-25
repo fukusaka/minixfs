@@ -8,6 +8,7 @@
 # start the next one, and the clean flag is its own; what writes entries
 # of a fixed size refuses, and the rest works.
 
+# shellcheck source=tests/lib.sh
 . ./tests/lib.sh
 
 # Names on both sides of each count of extra slots, and the longest.
