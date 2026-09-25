@@ -155,7 +155,9 @@ top of `tests/mkimage.c`).  The scripts:
   0, 1 and 2, noted with `-u` in a dumpdates file, hold what changed
   and restore one after the other as the second image, with files
   removed, added, changed, renamed and turned from a directory into a
-  file, while a dump restored twice or out of order is refused.  A level
+  file, while a dump restored twice or out of order is refused; in the
+  dumpdates file a blank in the name of the image is written in octal,
+  and names that differ in a trailing blank are kept apart.  A level
   1 that runs out of room fails, leaves the file system in order and the
   table following level 0, and restores once the file system has grown;
   and in a file system of 16 inodes, fifteen files give way to fifteen

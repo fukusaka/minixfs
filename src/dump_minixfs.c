@@ -235,63 +235,79 @@ parse(int argc, char **argv, struct options *o)
 }
 
 /*
- * The dumpdates file: a line for each image and level, the name padded
- * to DATES_NAME characters, the level and the date as ctime(3) prints it.
+ * The dumpdates file, in the form of BSD dump: a line for each image and
+ * level, the name padded to DATES_NAME characters, the level and the date
+ * as ctime(3) prints it.  The name is the first word of the line, as BSD
+ * reads it, so that the blanks, newlines and backslashes of a path are
+ * written as a backslash and three octal digits.
  */
 
 /*
- * Take a line of the dumpdates file apart: the name, which may hold
- * blanks, padded with blanks, a blank, the level, a blank and the date.
- * The level is the last digit between blanks that a date follows.
- * Returns 0, or -1 for a line of another form.
+ * The name of image as the dumpdates file holds it, into buf of
+ * DATES_NAME + 1 bytes.  Returns 0, or -1 if it does not fit.
  */
 static int
-dates_line(const char *line, size_t *namelen, int *level, int64_t *t)
+dates_name(const char *image, char *buf)
 {
-	size_t i, len;
+	const unsigned char *p;
+	size_t n;
 
-	len = strlen(line);
-	for (i = len; i-- > 2; ) {
-		if (line[i - 1] != ' ' || line[i] < '0' || line[i] > '9' ||
-		    line[i + 1] != ' ' || (*t = parse_date(line + i + 2)) < 0)
-			continue;
-		for (len = i - 1; len > 0 && line[len - 1] == ' '; len--)
-			continue;
-		*namelen = len;
-		*level = line[i] - '0';
-		return 0;
+	n = 0;
+	for (p = (const unsigned char *)image; *p != '\0'; p++) {
+		if (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\\') {
+			if (n + 4 > DATES_NAME)
+				return -1;
+			(void)snprintf(buf + n, 5, "\\%03o", *p);
+			n += 4;
+		} else {
+			if (n + 1 > DATES_NAME)
+				return -1;
+			buf[n++] = (char)*p;
+		}
 	}
-	return -1;
+	buf[n] = '\0';
+	return 0;
 }
 
-/* Whether the line of the dumpdates file names image. */
+/*
+ * Take a line of the dumpdates file apart: the name, into name of
+ * DATES_NAME + 1 bytes, the level and the date.  Returns 0, or -1 for a
+ * line of another form.
+ */
 static int
-dates_for(const char *line, const char *image, size_t namelen)
+dates_line(const char *line, char *name, int *level, int64_t *t)
 {
-	return strlen(image) == namelen && strncmp(line, image, namelen) == 0;
+	char date[64], lv;
+
+	/* 511 is DATES_NAME. */
+	if (sscanf(line, "%511s %c %63[^\n]", name, &lv, date) != 3 ||
+	    lv < '0' || lv > '9' || (*t = parse_date(date)) < 0)
+		return -1;
+	*level = lv - '0';
+	return 0;
 }
 
 /* The date of the last dump of image of a lower level, or 0. */
 static int64_t
 last_date(struct dump *d, int *lastlevel)
 {
-	char line[DATES_LINE];
+	char line[DATES_LINE], name[DATES_NAME + 1], want[DATES_NAME + 1];
 	int64_t best, t;
-	size_t namelen;
 	FILE *fp;
 	int lv;
 
 	best = 0;
 	*lastlevel = -1;
+	if (dates_name(d->o->image, want) == -1)
+		return 0;
 	if ((fp = fopen(d->o->dates, "r")) == NULL) {
 		if (errno != ENOENT || d->o->level > 0)
 			warn("%s", d->o->dates);
 		return 0;
 	}
 	while (fgets(line, sizeof(line), fp) != NULL) {
-		if (dates_line(line, &namelen, &lv, &t) < 0 ||
-		    !dates_for(line, d->o->image, namelen) ||
-		    lv >= d->o->level || t <= best)
+		if (dates_line(line, name, &lv, &t) < 0 ||
+		    strcmp(name, want) != 0 || lv >= d->o->level || t <= best)
 			continue;
 		best = t;
 		*lastlevel = lv;
@@ -304,13 +320,18 @@ last_date(struct dump *d, int *lastlevel)
 static void
 note_date(struct dump *d)
 {
-	char line[DATES_LINE], tmp[PATH_MAX];
+	char line[DATES_LINE], name[DATES_NAME + 1], want[DATES_NAME + 1];
+	char tmp[PATH_MAX];
 	FILE *in, *out;
 	int64_t when;
-	size_t namelen;
 	time_t t;
 	int lv;
 
+	if (dates_name(d->o->image, want) == -1) {
+		problem(d, "%s: the name is too long for %s", d->o->image,
+		    d->o->dates);
+		return;
+	}
 	if ((size_t)snprintf(tmp, sizeof(tmp), "%s.tmp", d->o->dates) >=
 	    sizeof(tmp) || (out = fopen(tmp, "w")) == NULL) {
 		problem(d, "%s: cannot be written", d->o->dates);
@@ -318,17 +339,16 @@ note_date(struct dump *d)
 	}
 	if ((in = fopen(d->o->dates, "r")) != NULL) {
 		while (fgets(line, sizeof(line), in) != NULL) {
-			if (dates_line(line, &namelen, &lv, &when) == 0 &&
-			    dates_for(line, d->o->image, namelen) &&
-			    lv == d->o->level)
+			if (dates_line(line, name, &lv, &when) == 0 &&
+			    strcmp(name, want) == 0 && lv == d->o->level)
 				continue;
 			(void)fputs(line, out);
 		}
 		(void)fclose(in);
 	}
 	t = (time_t)d->h.date;
-	(void)fprintf(out, "%-*s %c %s", DATES_NAME, d->o->image,
-	    '0' + d->o->level, ctime(&t));
+	(void)fprintf(out, "%-*s %c %s", DATES_NAME, want, '0' + d->o->level,
+	    ctime(&t));
 	if (fflush(out) == EOF || ferror(out) || fclose(out) == EOF ||
 	    rename(tmp, d->o->dates) == -1)
 		problem(d, "%s: %s", d->o->dates, strerror(errno));

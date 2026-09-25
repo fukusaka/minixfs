@@ -219,6 +219,15 @@ check_true "a blank in the path: it follows level 0" \
 run "$DUMP_MINIXFS" -1 -u -D "$T/dumpdates5" -f "$T/b1" "$T/a b.img"
 check_true "a blank in the path: -u replaces the line of the level" \
     test "$(wc -l <"$T/dumpdates5")" -eq 2
+check_true "a blank in the path: is written in octal" \
+    grep -q "a\\\\040b.img " "$T/dumpdates5"
+# A name that ends in a blank is not that without it.
+cp "$T/fs.img" "$T/c.img "
+cp "$T/fs.img" "$T/c.img"
+must "$DUMP_MINIXFS" -0 -u -D "$T/dumpdates5" -f "$T/c0" "$T/c.img "
+run "$DUMP_MINIXFS" -1 -D "$T/dumpdates5" -f "$T/c1" "$T/c.img"
+check_true "a blank at the end: the name without it has no dump of its own" \
+    grep -q "last level -1 dump: the epoch" "$T/err"
 
 # A level 1 that runs out of room fails, but leaves the file system in
 # order and the table following level 0, and restores once there is room.

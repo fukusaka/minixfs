@@ -69,7 +69,9 @@ as it was given, in place of the note of the same level.
 The dumpdates file, with a line for each image and level: the name, the
 level and the date as
 .Xr ctime 3
-prints it.
+prints it, as BSD dump writes it.
+A blank, tab, newline or backslash of the name is written as a
+backslash and three octal digits, as the name is the first word.
 The default is
 .Pa /etc/dumpdates .
 .It Fl L Ar label
