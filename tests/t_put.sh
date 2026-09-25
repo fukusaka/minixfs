@@ -254,6 +254,10 @@ check_status "$v: so does ln -s into a directory" 0
 check_true "$v: the link keeps its target" \
     test "$("$MINIXFS" ls -l "$T/slash.img" /sub/target | sed 's/.* -> //')" = \
     target/
+run "$MINIXFS" mkdir -p -m 700 "$T/slash.img" /p/q//
+check_true "$v: mkdir -p -m gives the last directory its mode" \
+    test "$("$MINIXFS" ls -l "$T/slash.img" /p | awk '{ print $1 }')" = \
+    drwx------
 run "$FSCK_MINIXFS" "$T/slash.img"
 check_status "$v: fsck finds nothing wrong" 0
 

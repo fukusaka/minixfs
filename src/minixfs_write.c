@@ -675,7 +675,7 @@ make_path(struct cmd *c, const char *path, const struct owner *o,
     uint16_t mode)
 {
 	char buf[PATH_MAX], sofar[PATH_MAX];
-	char *p, *q;
+	char *p, *q, *r;
 	uint32_t dir;
 
 	if (strlen(path) >= sizeof(buf))
@@ -696,8 +696,11 @@ make_path(struct cmd *c, const char *path, const struct owner *o,
 			return failed(c, path, -ENAMETOOLONG);
 		(void)snprintf(sofar + strlen(sofar),
 		    sizeof(sofar) - strlen(sofar), "/%s", p);
+		/* The last component may have more than one slash after it. */
+		for (r = q; *r == '/'; r++)
+			continue;
 		if (make_component(c, dir, p, sofar, o,
-		    *q == '\0' ? mode : 0755, &dir) == -1)
+		    *r == '\0' ? mode : 0755, &dir) == -1)
 			return -1;
 	}
 	return 0;
