@@ -163,9 +163,12 @@ top of `tests/mkimage.c`).  The scripts:
   tree, and with zones of two blocks.  Each refusal gives the error of
   the system call; a file system that fills up with zones or inodes
   stays consistent; a write that runs out of zones gives back what it
-  put past the end of the file, which then grows over zeros; a writer
-  killed after a change leaves the maps right with `-a` and behind the
-  inodes without; and a writer holds a lock that `tunefs_minixfs` and
+  put past the end of the file, which then grows over zeros; a write
+  that meets a zone number outside the data area, in a directory, a
+  file or an indirect zone, fails with EIO and leaves the block it names
+  alone, and cutting the file to 0 drops the number; a writer killed
+  after a change leaves the maps right with `-a` and behind the inodes
+  without; and a writer holds a lock that `tunefs_minixfs` and
   `newfs_minixfs` meet, but not a reader.
 - `t_put.sh` - the commands of `minixfs` that write an image without
   mounting it, `put`, `mkdir`, `rm`, `mv`, `ln`, `chmod` and `chown`,

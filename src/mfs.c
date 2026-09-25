@@ -554,15 +554,6 @@ mfs_read_inode(struct mfs *fs, uint32_t num, struct mfs_inode *ip)
 	return 0;
 }
 
-/* Check a zone number found in an inode or an indirect block. */
-static int
-check_zone(const struct mfs *fs, uint32_t zone)
-{
-	if (zone != 0 && (zone < fs->firstdatazone || zone >= fs->nzones))
-		return -EIO;
-	return 0;
-}
-
 /* Fetch entry idx of the indirect block that starts zone ind. */
 static int
 indirect(struct mfs *fs, uint32_t ind, uint32_t idx, uint32_t *zone)

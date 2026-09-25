@@ -417,8 +417,9 @@ int	mfs_alloc_zone(struct mfs *, uint32_t *);
  * Should it fail, what it wrote past the old end is taken back, with the
  * zones it took for that; what it wrote before the old end stays.  *ip
  * changes in memory only, for the caller to write back with
- * mfs_put_inode().  Returns 0, -EFBIG past the reach of the zones, -ENOSPC
- * or another negative errno value.
+ * mfs_put_inode().  Returns 0, -EFBIG past the reach of the zones, -ENOSPC,
+ * -EIO for a zone number on the way outside the data area, which is not
+ * written through, or another negative errno value.
  */
 int	mfs_pwrite(struct mfs *, struct mfs_inode *, const void *, size_t,
 	    uint32_t);
@@ -463,8 +464,10 @@ void	mfs_maps_through(struct mfs *, int);
  * the old end when it grows, are freed, indirect zones that list nothing
  * more with them, and the rest of the last zone is cleared, so that the
  * file reads as zeros where it grows.  *ip changes in memory only, for
- * the caller to write back with mfs_put_inode().  Returns 0, -EINVAL for
- * a device, -EFBIG past the reach of the zones, or another negative errno
+ * the caller to write back with mfs_put_inode().  A zone number outside
+ * the data area is dropped from what goes; in the zone that is cleared,
+ * it is -EIO, and nothing changes.  Returns 0, -EINVAL for a device,
+ * -EFBIG past the reach of the zones, -EIO, or another negative errno
  * value.
  */
 int	mfs_resize(struct mfs *, struct mfs_inode *, uint32_t);

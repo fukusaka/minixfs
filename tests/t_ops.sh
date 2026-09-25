@@ -256,6 +256,106 @@ dd if=/dev/zero bs=2048 count=1 2>/dev/null >>"$T/want"
 run "$MINIXFS" cat "$T/img" /f
 check_out "the file grows over zeros, not the failed write" "$T/want"
 
+# Zone numbers outside the data area, which a damaged image may hold in
+# an image marked clean: a write that meets one fails with the error of
+# a read, and the block it names, here one before the data area, stays
+# as it was.  Cutting a file back to 0 drops such a number.
+block() {
+	dd if="$1" bs="$2" skip="$3" count=1 2>/dev/null
+}
+for fs in "1 le 14" "1 be 30" "2 le 14" "2 be 30" "3 le 60" "3 be 60"; do
+	# The fields are split on purpose.
+	# shellcheck disable=SC2086
+	set -- $fs
+	v="V$1/$2/$3"
+	opts="-V $1 -B $2"
+	if [ "$1" -lt 3 ]; then
+		opts="$opts -l $3"
+	fi
+	width=32
+	if [ "$1" -eq 1 ]; then
+		width=16
+	fi
+	dsize=$(($3 + 2))
+	if [ "$1" -eq 3 ]; then
+		dsize=64
+	fi
+	rm -f "$T/img"
+	# $opts is several options on purpose.
+	# shellcheck disable=SC2086
+	must "$NEWFS_MINIXFS" $opts -s 400 "$T/img"
+	bs=$(info_field "$T/img" "block size")
+	# The last block of the inode table, which holds no inode in use.
+	target=$(($(info_field "$T/img" "first data zone") - 1))
+	block "$T/img" "$bs" "$target" >"$T/before"
+
+	# The root, one block of entries long, with a second zone past it.
+	n=$((bs / dsize - 2))
+	i=0
+	while [ "$i" -lt "$n" ]; do
+		echo "mknod /f$i f 0644"
+		i=$((i + 1))
+	done >"$T/script"
+	must "$MFSOP" "$T/img" <"$T/script"
+	set_inode "$T/img" 1 zone1 "$target"
+	run "$MINIXFS" mkdir "$T/img" /victim
+	check_status "$v: an entry past a bad zone of a directory fails" 1
+	check_err "$v: with the error of a read" "Input/output error"
+	block "$T/img" "$bs" "$target" >"$T/after"
+	check_same_file "$v: the block it names is not written" \
+	    "$T/before" "$T/after"
+	run "$FSCK_MINIXFS" "$T/img"
+	check_status "$v: fsck finds the bad zone" 1
+	check_true "$v: and nothing else" grep -q ", 1 problems$" "$T/out"
+
+	# A file with a bad zone, one whose indirect zone lists one, and one
+	# with a bad indirect zone.
+	rm -f "$T/img"
+	# $opts is several options on purpose.
+	# shellcheck disable=SC2086
+	must "$NEWFS_MINIXFS" $opts -s 400 "$T/img"
+	block "$T/img" "$bs" "$target" >"$T/before"
+	data $((bs / 1024)) 6 >"$T/block"
+	printf 'mknod /f f 0644\nmknod /g f 0644\nwrite /g %s %s\n' \
+	    $((8 * bs)) "$T/block" >"$T/script"
+	echo "mknod /h f 0644" >>"$T/script"
+	must "$MFSOP" "$T/img" <"$T/script"
+	set_inode "$T/img" 2 zone0 "$target"
+	set_inode "$T/img" 2 size 100
+	poke_number "$T/img" $(($(get_inode "$T/img" 3 zone7) * bs)) \
+	    "$width" "$target"
+	set_inode "$T/img" 4 zone7 "$target"
+	set_inode "$T/img" 4 size 100
+	cat >"$T/script" <<EOF
+write /f 0 $T/block
+truncate /f 50
+truncate /f 0
+write /g $((7 * bs)) $T/block
+truncate /g $((7 * bs + 10))
+truncate /g 0
+write /h $((7 * bs)) $T/block
+truncate /h 0
+EOF
+	cat >"$T/expected" <<EOF
+1 error: Input/output error
+2 error: Input/output error
+3 ok
+4 error: Input/output error
+5 error: Input/output error
+6 ok
+7 error: Input/output error
+8 ok
+EOF
+	run "$MFSOP" "$T/img" <"$T/script"
+	check_out "$v: writes and cuts through bad zones fail, to 0 not" \
+	    "$T/expected"
+	block "$T/img" "$bs" "$target" >"$T/after"
+	check_same_file "$v: the block they name is not written" \
+	    "$T/before" "$T/after"
+	run "$FSCK_MINIXFS" "$T/img"
+	check_status "$v: cut to 0, the files pass fsck" 0
+done
+
 # The maps: kept in memory until the end, or written as they change
 # (-a).  A writer killed after a change leaves the maps behind the
 # inodes in the first case only.

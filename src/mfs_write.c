@@ -201,8 +201,10 @@ mfs_sync(struct mfs *fs)
 }
 
 /*
- * The zone number at entry index of indirect zone ind; with a zone to
- * put there, take a new zone and store it if there is none yet.
+ * The zone number at entry index of indirect zone ind, which is in the
+ * data area; with a zone to put there, take a new zone and store it if
+ * there is none yet.  A number outside the data area is -EIO, as when
+ * reading, and nothing is written through it.
  */
 static int
 indirect_entry(struct mfs *fs, uint32_t ind, uint32_t index, int take,
@@ -218,6 +220,8 @@ indirect_entry(struct mfs *fs, uint32_t ind, uint32_t index, int take,
 	p = fs->ibuf + index * fs->zone_num_size;
 	*zone = fs->zone_num_size == 2 ? load16(fs->order, p) :
 	    load32(fs->order, p);
+	if ((r = check_zone(fs, *zone)) < 0)
+		return r;
 	if (*zone != 0 || !take)
 		return 0;
 	/* mfs_alloc_zone() uses the other buffer. */
@@ -234,7 +238,9 @@ indirect_entry(struct mfs *fs, uint32_t ind, uint32_t index, int take,
 
 /*
  * The zone that holds zone number n of the file *ip, taken if there is
- * none and take is set; 0 in *zone for a hole.
+ * none and take is set; 0 in *zone for a hole.  A zone number on the way
+ * that lies outside the data area is -EIO: a damaged file is left to
+ * fsck_minixfs, and neither written through nor given a new zone.
  */
 static int
 file_zone(struct mfs *fs, struct mfs_inode *ip, uint64_t n, int take,
@@ -245,6 +251,8 @@ file_zone(struct mfs *fs, struct mfs_inode *ip, uint64_t n, int take,
 	int r;
 
 	if (n < fs->ndzones) {
+		if ((r = check_zone(fs, ip->zone[n])) < 0)
+			return r;
 		if (ip->zone[n] == 0 && take &&
 		    (r = mfs_alloc_zone(fs, &ip->zone[n])) < 0)
 			return r;
@@ -262,6 +270,8 @@ file_zone(struct mfs *fs, struct mfs_inode *ip, uint64_t n, int take,
 	if (level > fs->nlevels)
 		return -EFBIG;
 	slot = fs->ndzones + level - 1;
+	if ((r = check_zone(fs, ip->zone[slot])) < 0)
+		return r;
 	if (ip->zone[slot] == 0 && take &&
 	    (r = mfs_alloc_zone(fs, &ip->zone[slot])) < 0)
 		return r;
@@ -425,7 +435,8 @@ zero_tail(struct mfs *fs, struct mfs_inode *ip, uint32_t from)
  * Leave nothing of the file *ip past byte size: free the zones after the
  * one that holds it, and clear the rest of that one.  A file grows over
  * zeros then, whatever was there: data of a write that failed, or zones
- * past the end that another system left.
+ * past the end that another system left.  The clearing goes first, so
+ * that a zone it cannot reach leaves everything as it was.
  */
 static int
 cut_back(struct mfs *fs, struct mfs_inode *ip, uint32_t size)
@@ -434,9 +445,9 @@ cut_back(struct mfs *fs, struct mfs_inode *ip, uint32_t size)
 	int r;
 
 	zbytes = (uint64_t)fs->block_size << fs->log_zone_size;
-	if ((r = free_from(fs, ip, (size + zbytes - 1) / zbytes)) < 0)
+	if ((r = zero_tail(fs, ip, size)) < 0)
 		return r;
-	return zero_tail(fs, ip, size);
+	return free_from(fs, ip, (size + zbytes - 1) / zbytes);
 }
 
 int

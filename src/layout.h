@@ -161,6 +161,18 @@ load32(enum mfs_order order, const unsigned char *p)
 	return load16(order, p + 2) << 16 | load16(order, p);
 }
 
+/*
+ * Check a zone number found in an inode or an indirect block: 0, a hole,
+ * or a zone of the data area; -EIO otherwise.
+ */
+static inline int
+check_zone(const struct mfs *fs, uint32_t zone)
+{
+	if (zone != 0 && (zone < fs->firstdatazone || zone >= fs->nzones))
+		return -EIO;
+	return 0;
+}
+
 /* Write exactly len bytes at off. */
 static inline int
 write_at(int fd, const void *buf, size_t len, off_t off)
