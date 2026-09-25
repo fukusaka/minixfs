@@ -36,7 +36,7 @@ NetBSD.  The points that matter most, and the choices KNF leaves open:
 - C99 and POSIX.1-2008, plus `<err.h>`.  No compiler extensions and no
   platform `#ifdef`s outside one compatibility header.
 - The code must build without warnings under gcc and clang with the flags
-  in the Makefile and `-Werror`, on Linux, NetBSD and MINIX 3.
+  in the Makefile and `-Werror`, on Linux, FreeBSD, NetBSD and MINIX 3.
 - Fixed-width types (`uint16_t`, `uint32_t`, `uint64_t`) for values that
   come from or go to the disk; `size_t` for sizes in memory; `off_t` for
   file offsets.  Print them with `<inttypes.h>` macros (`PRIu32`) or cast
@@ -134,7 +134,8 @@ it.
 
 ## Checks
 
-- `make check` and `make check-sanitize` pass on Linux and NetBSD.
+- `make check` and `make check-sanitize` pass on Linux, FreeBSD and
+  NetBSD.
 - `TEST_SHELL=dash`, `TEST_SHELL="bash --posix"` and
   `TEST_SHELL="busybox sh"` pass.
 - Where `shellcheck` is installed, `shellcheck -x -s sh` reports nothing

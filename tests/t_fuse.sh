@@ -172,8 +172,12 @@ read_mount() {
 	    test "$(field_of "$mnt/usr/a" 4)" -eq 3
 	check_true "$v: the group is that of the image" \
 	    test "$(field_of "$mnt/usr/a" 5)" -eq 4
+	# ls of FreeBSD prints the device number whole, in hexadecimal.
+	# The script is for the sh -c.
+	# shellcheck disable=SC2016
 	check_true "$v: the device number is that of the image" \
-	    test "$(field_of "$mnt/dev/fd0" 6)" = "2,"
+	    sh -c 'test "$1" = "2," || test "$1" = 0x201' sh \
+	    "$(field_of "$mnt/dev/fd0" 6)"
 
 	# df -P: file system, size, used, available, capacity, mount point.
 	check_true "$v: df shows free space" \
@@ -270,7 +274,13 @@ done
 
 # Writing.  The same commands run on the mount and on a copy of the tree
 # on the host; the image is then a copy of that.  check_true runs it;
-# the $1 and $2 are those of the sh -c.
+# the $1, $2 and $3 are those of the sh -c.  The fusefs of FreeBSD takes
+# a hard link made through libfuse for a failure (see BUGS in
+# mount_minixfs(8)), so there none is made.
+hardlinks=yes
+if [ "$(uname -s)" = FreeBSD ]; then
+	hardlinks=no
+fi
 # shellcheck disable=SC2317,SC2016
 change() {
 	# The copy on the host is changed by who runs the test, not through
@@ -284,12 +294,12 @@ change() {
 			cd "$1" || exit 1
 			mkdir -p new/deep &&
 			cp "$2" new/data &&
-			ln new/data link &&
+			{ [ "$3" = no ] || ln new/data link; } &&
 			ln -s new/data sym &&
 			mv new/deep moved &&
 			mv etc/b1025 moved/b &&
 			mkfifo fifo &&
-			chmod 0600 link &&
+			{ [ "$3" = no ] || chmod 0600 link; } &&
 			dd if=/dev/null of=usr/big bs=1 seek=5000 \
 			    2>/dev/null &&
 			dd if=/dev/null of=etc/one bs=1 seek=300000 \
@@ -298,7 +308,7 @@ change() {
 			rm bin/sh etc/sh.link &&
 			rm -r usr/a/b/c &&
 			touch -t 200101010000 moved
-		' sh "$_change_d" "$T/zero" || return 1
+		' sh "$_change_d" "$T/zero" "$hardlinks" || return 1
 	done
 }
 
@@ -361,6 +371,10 @@ else
 	writable "V1/le" "-V 1 -o $(id -u):0" sync 1
 	writable "V2/be, 30-character names" "-V 2 -l 30 -B be" always 0
 	writable "V3/le" "-V 3" 1 0
+	if [ "$hardlinks" = no ]; then
+		skip "-w: a hard link made through the mount" \
+		    "the fusefs of FreeBSD takes it for a failure"
+	fi
 
 	# In the background, as without -f, mount_minixfs returns once the
 	# file system is mounted, and still holds the lock.

@@ -62,6 +62,9 @@ POSIX.1-2008 interfaces and needs no libraries.
     make fuse-minix                                     # MINIX 3
 
 `FUSE_CFLAGS` and `FUSE_LIBS` default to what `pkg-config fuse3` says.
+On FreeBSD, libfuse 3 comes with the packages fusefs-libs3 and pkgconf,
+and the kernel needs the fusefs module (`kldload fusefs`); users other
+than root mount where the sysctl `vfs.usermount` is 1.
 The source uses only the high-level FUSE API, in its FUSE 3 form
 (`FUSE_VERSION=31`, the default) or its FUSE 2 form (`FUSE_VERSION=26`,
 for older librefuse).

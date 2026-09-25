@@ -481,7 +481,10 @@ set_map_bit() {
 		fi
 	fi
 	_set_map_bit_off=$((_set_map_bit_start + _set_map_bit_byte))
-	_set_map_bit_old=$(od -An -tu1 -j "$_set_map_bit_off" -N 1 "$1")
+	# od of FreeBSD pads the number with blanks, which its sh does not
+	# take as a number.
+	_set_map_bit_old=$(od -An -tu1 -j "$_set_map_bit_off" -N 1 "$1" |
+	    tr -d ' ')
 	_set_map_bit_mask=$((1 << ($3 % 8)))
 	if [ "$4" -eq 1 ]; then
 		_set_map_bit_new=$((_set_map_bit_old | _set_map_bit_mask))

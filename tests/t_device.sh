@@ -3,11 +3,12 @@
 # Copyright (c) 2026 Shoichi Fukusaka
 #
 # An image on a device: its size comes from the system, as stat(2) gives
-# 0 for a block device on Linux, NetBSD and MINIX 3; fsck_minixfs and
-# info take it, and tunefs_minixfs -s grows and shrinks the file system
-# inside the device, which keeps its size.  The image is put on a loop
-# device on Linux and a vnd device on NetBSD and MINIX 3, which takes
-# root or DEV_SUDO; the checks are skipped otherwise.
+# 0 for a block device on Linux, NetBSD and MINIX 3, and for the
+# character device of a disk on FreeBSD; fsck_minixfs and info take it,
+# and tunefs_minixfs -s grows and shrinks the file system inside the
+# device, which keeps its size.  The image is put on a loop device on
+# Linux, an md device on FreeBSD and a vnd device on NetBSD and MINIX 3,
+# which takes root or DEV_SUDO; the checks are skipped otherwise.
 #
 #   DEV_SUDO  a command to attach and detach the device and run the
 #             commands on it with, such as "sudo" (default: none)
@@ -28,7 +29,7 @@ as_root() {
 
 system=$(uname -s)
 case $system in
-Linux|NetBSD|Minix)
+Linux|FreeBSD|NetBSD|Minix)
 	;;
 *)
 	skip "devices" "no way to attach an image on $system"
@@ -45,6 +46,10 @@ attach() {
 	case $system in
 	Linux)
 		dev=$(as_root losetup -f --show "$1")
+		;;
+	FreeBSD)
+		md=$(as_root mdconfig -a -t vnode -f "$1") || return 1
+		dev=/dev/$md
 		;;
 	NetBSD)
 		as_root vnconfig "$DEV_VND" "$1" || return 1
@@ -66,6 +71,9 @@ detach() {
 	case $system in
 	Linux)
 		as_root losetup -d "$dev"
+		;;
+	FreeBSD)
+		as_root mdconfig -d -u "$md"
 		;;
 	NetBSD)
 		as_root vnconfig -u "$DEV_VND"

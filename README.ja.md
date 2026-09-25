@@ -58,7 +58,9 @@ Makefile は GNU make でも BSD make でも動きます。コードは C99 と 
     make fuse FUSE_LIBS="-lrefuse -lpuffs" FUSE_VERSION=26   # FUSE 2
     make fuse-minix                                     # MINIX 3
 
-`FUSE_CFLAGS` と `FUSE_LIBS` の既定は `pkg-config fuse3` の出力です。ソースは FUSE の高水準 API
+`FUSE_CFLAGS` と `FUSE_LIBS` の既定は `pkg-config fuse3` の出力です。FreeBSD では、libfuse 3 は
+パッケージ fusefs-libs3 と pkgconf で入り、カーネルには fusefs モジュール（`kldload fusefs`）が要ります。
+root 以外の利用者がマウントするには、sysctl の `vfs.usermount` を 1 にします。ソースは FUSE の高水準 API
 だけを使い、FUSE 3 の形（`FUSE_VERSION=31`、既定）か FUSE 2 の形（`FUSE_VERSION=26`、古い
 librefuse 向け）でビルドできます。
 

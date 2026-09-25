@@ -213,6 +213,16 @@ is closed; and a file opened twice, closed once and then removed goes at
 once, so that writing through the other descriptor changes a free inode,
 or a file that took it.
 .Pp
+On
+.Fx ,
+.Xr ln 1
+through the mount fails with EIO, although the link is made: libfuse
+answers a hard link with a node number of its own for the new name, and
+the fusefs of
+.Fx
+takes an answer with another node number than that of the file for a
+failure.
+.Pp
 On Linux, libfuse hides a file removed while open under a name of 28
 characters until it is closed, and so cannot remove an open file where
 names are of 14.

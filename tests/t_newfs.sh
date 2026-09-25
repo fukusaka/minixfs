@@ -262,6 +262,8 @@ tree_kinds() {
 	rmdir "$T/t/a_name_of_twenty_c"
 
 	if [ "$(id -g)" -gt 255 ]; then
+		# The BSDs give a new file the group of its directory.
+		chgrp -R "$(id -g)" "$T/t"
 		run "$NEWFS_MINIXFS" -V 1 -d "$T/t" "$T/img"
 		check_err "a group too large for V1 is refused" \
 		    "does not fit in V1"

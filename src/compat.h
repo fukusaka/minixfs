@@ -20,6 +20,14 @@
 #define _NETBSD_SOURCE
 #endif
 
+/*
+ * FreeBSD leaves __BSD_VISIBLE undefined, and so hides the types of
+ * <sys/disk.h> and makedev(), when _XOPEN_SOURCE is defined.
+ */
+#if defined(__FreeBSD__)
+#define __BSD_VISIBLE	1
+#endif
+
 #include <sys/types.h>
 
 /* makedev(): <sys/types.h> on the BSDs and MINIX, its own header on Linux. */
