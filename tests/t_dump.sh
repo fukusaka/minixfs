@@ -203,4 +203,84 @@ run "$RESTORE_MINIXFS" -r -s "$T/symtab" -f "$T/d1" "$T/img"
 check_err "level 1: it needs the table of the restore before" \
     "needs the table of the restores before it"
 
+
+# A level 1 that runs out of room fails, but leaves the file system in
+# order and the table following level 0, and restores once there is room.
+cat >"$T/a4.spec" <<EOF
+fs version=2 order=le blocks=400 inodes=64
+file /f 0644 1 1 $old 1000 1
+EOF
+cat >"$T/b4.spec" <<EOF
+fs version=2 order=le blocks=400 inodes=64
+file /f 0644 1 1 $old 1000 1
+file /big 0644 1 1 $new 20000 2
+EOF
+mkimage "$T/a4.spec" "$T/fs4.img"
+mkimage "$T/b4.spec" "$T/b4.img"
+rm -f "$T/dumpdates4"
+must "$DUMP_MINIXFS" -0 -u -D "$T/dumpdates4" -f "$T/e0" "$T/fs4.img"
+cp "$T/b4.img" "$T/fs4.img"
+sleep 1
+must "$DUMP_MINIXFS" -1 -u -D "$T/dumpdates4" -f "$T/e1" "$T/fs4.img"
+rm -f "$T/img" "$T/symtab"
+must "$NEWFS_MINIXFS" -V 2 -s 400 -i 16 "$T/img"
+must "$RESTORE_MINIXFS" -r -s "$T/symtab" -f "$T/e0" "$T/img"
+date0=$(sed -n 's/^date //p' "$T/symtab")
+zones=$(info_field "$T/img" zones)
+free=$(info_field "$T/img" "free zones")
+must "$TUNEFS_MINIXFS" -s $((zones - free + 1)) "$T/img"
+run "$RESTORE_MINIXFS" -r -s "$T/symtab" -f "$T/e1" "$T/img"
+check_err "out of room: level 1 fails" "No space left on device"
+check_true "out of room: it says to restore it again" \
+    grep -q "restore it again" "$T/err"
+run "$FSCK_MINIXFS" "$T/img"
+check_status "out of room: fsck finds nothing wrong" 0
+check_true "out of room: the table still follows level 0" \
+    test "$(sed -n 's/^date //p' "$T/symtab")" = "$date0"
+must "$TUNEFS_MINIXFS" -s 400 "$T/img"
+run "$RESTORE_MINIXFS" -r -s "$T/symtab" -f "$T/e1" "$T/img"
+check_status "out of room: level 1 restores once there is room" 0
+tar_of "$T/b4.img" "$T/b4.tar"
+run "$MINIXFS" tar "$T/img"
+check_out "out of room: the tree is then that of the second image" \
+    "$T/b4.tar"
+
+# The files that went make room for the new ones: in a file system of 16
+# inodes, fifteen files give way to fifteen others with inodes of their
+# own.
+{
+	echo "fs version=2 order=le blocks=400 inodes=64"
+	i=1
+	while [ "$i" -le 15 ]; do
+		echo "file /f$i 0644 1 1 $old 10 $i"
+		i=$((i + 1))
+	done
+} >"$T/a3.spec"
+{
+	echo "fs version=2 order=le blocks=400 inodes=64"
+	echo "unused 15"
+	i=1
+	while [ "$i" -le 15 ]; do
+		echo "file /g$i 0644 1 1 $new 10 $i"
+		i=$((i + 1))
+	done
+} >"$T/b3.spec"
+mkimage "$T/a3.spec" "$T/fs3.img"
+mkimage "$T/b3.spec" "$T/b3.img"
+rm -f "$T/dumpdates3"
+must "$DUMP_MINIXFS" -0 -u -D "$T/dumpdates3" -f "$T/e0" "$T/fs3.img"
+cp "$T/b3.img" "$T/fs3.img"
+sleep 1
+must "$DUMP_MINIXFS" -1 -u -D "$T/dumpdates3" -f "$T/e1" "$T/fs3.img"
+rm -f "$T/img" "$T/symtab"
+must "$NEWFS_MINIXFS" -V 2 -s 400 -i 16 "$T/img"
+must "$RESTORE_MINIXFS" -r -s "$T/symtab" -f "$T/e0" "$T/img"
+run "$RESTORE_MINIXFS" -r -s "$T/symtab" -f "$T/e1" "$T/img"
+check_status "inodes that go are free for new files" 0
+check_note "the fifteen files that went are removed" \
+    "; 15 files removed\$"
+tar_of "$T/b3.img" "$T/b3.tar"
+run "$MINIXFS" tar "$T/img"
+check_out "the tree is that of the second image" "$T/b3.tar"
+
 finish

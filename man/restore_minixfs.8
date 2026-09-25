@@ -108,8 +108,10 @@ Device numbers are taken as major \(mu 256 + minor, and have to be below
 A dump of a higher level has to follow the dump restored last: its date
 of the dump before it has to be the date in
 .Ar symtable .
-A dump that ends too soon leaves what was written in order, but no new
-.Ar symtable .
+A restore that fails, or a dump that ends too soon, leaves what was
+written in order, and a
+.Ar symtable
+by which the same dump follows again, once what failed is put right.
 .Pp
 The file system has to be marked clean, and not to have the flex
 directories of Minix-vmd.

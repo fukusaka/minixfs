@@ -926,8 +926,9 @@ load_symtab(struct restore *r)
 	return 0;
 }
 
+/* Write the table of -s: the inodes, and the date the next dump follows. */
 static int
-save_symtab(struct restore *r)
+save_symtab(struct restore *r, int64_t date)
 {
 	char tmp[PATH_MAX];
 	uint32_t m;
@@ -942,8 +943,7 @@ save_symtab(struct restore *r)
 		problem(r, "%s: %s", tmp, strerror(errno));
 		return -1;
 	}
-	(void)fprintf(fp, "%s\ndate %lld\n", SYMTAB_MAGIC,
-	    (long long)r->tape.date);
+	(void)fprintf(fp, "%s\ndate %lld\n", SYMTAB_MAGIC, (long long)date);
 	for (m = 1; m <= r->fs.ninodes; m++)
 		if (r->rev[m] != 0)
 			(void)fprintf(fp, "%" PRIu32 " %" PRIu32 "\n",
@@ -1504,6 +1504,21 @@ count_file(struct restore *r, uint16_t mode)
 	}
 }
 
+/*
+ * After a file failed: the zones it took go back, and the inode on the
+ * disk stops naming the ones it gave up first, so that collect() finds
+ * the file as it is.
+ */
+static void
+give_back(struct restore *r, struct mfs_inode *ip, const char *path)
+{
+	int e;
+
+	if ((e = mfs_truncate(&r->fs, ip)) < 0 ||
+	    (e = mfs_put_inode(&r->fs, ip)) < 0)
+		(void)failed(r, path, e);
+}
+
 /* Restore the file whose TS_INODE header is *h into inode m. */
 static int
 restore_file(struct restore *r, const struct dump_header *h, uint32_t m)
@@ -1531,8 +1546,10 @@ restore_file(struct restore *r, const struct dump_header *h, uint32_t m)
 	s.path = path;
 	if (mfs_is_reg(&ip) || mfs_is_lnk(&ip)) {
 		s.ip = &ip;
-		if (read_contents(r, h, &s) == -1)
+		if (read_contents(r, h, &s) == -1) {
+			give_back(r, &ip, path);
 			return -1;
+		}
 		/* A hole at the end is not written; the size says it. */
 		ip.size = (uint32_t)h->size;
 	} else {
@@ -1544,6 +1561,7 @@ restore_file(struct restore *r, const struct dump_header *h, uint32_t m)
 	if (!s.failed && (e = mfs_put_inode(&r->fs, &ip)) < 0)
 		s.failed = failed(r, path, e);
 	if (s.failed) {
+		give_back(r, &ip, path);
 		if (r->pending[m] == PENDING)
 			r->pending[m] = LEFT_OUT;
 		return 0;
@@ -1630,6 +1648,32 @@ walk_entry(struct restore *r, struct walk *wk, const struct mfs_inode *dp,
 		wk->queue[wk->tail++] = de->ino;
 }
 
+/* Free inode *ip and its zones, and forget the dump inode it was. */
+static void
+drop(struct restore *r, struct mfs_inode *ip)
+{
+	uint32_t m;
+	int e;
+
+	m = ip->num;
+	if (ip->mode == 0)
+		return;
+	if (r->pending[m] == 0)
+		r->nfreed++;
+	if ((e = mfs_truncate(&r->fs, ip)) < 0)
+		(void)failed(r, r->o->image, e);
+	(void)memset(ip, 0, sizeof(*ip));
+	ip->num = m;
+	if ((e = mfs_put_inode(&r->fs, ip)) < 0 ||
+	    (e = mfs_free_inode(&r->fs, m)) < 0)
+		(void)failed(r, r->o->image, e);
+	if (r->rev[m] != 0)
+		map_set(&r->map, r->rev[m], 0);
+	r->rev[m] = 0;
+	r->ours[m] = 0;
+	r->pending[m] = 0;
+}
+
 /* Set the link count of inode m, or free it if nothing names it. */
 static void
 settle(struct restore *r, struct walk *wk, uint32_t m)
@@ -1657,22 +1701,7 @@ settle(struct restore *r, struct walk *wk, uint32_t m)
 		}
 		return;
 	}
-	if (ip.mode == 0)
-		return;
-	if (r->pending[m] == 0)
-		r->nfreed++;
-	if ((e = mfs_truncate(&r->fs, &ip)) < 0)
-		(void)failed(r, r->o->image, e);
-	(void)memset(&ip, 0, sizeof(ip));
-	ip.num = m;
-	if ((e = mfs_put_inode(&r->fs, &ip)) < 0 ||
-	    (e = mfs_free_inode(&r->fs, m)) < 0)
-		(void)failed(r, r->o->image, e);
-	if (r->rev[m] != 0)
-		map_set(&r->map, r->rev[m], 0);
-	r->rev[m] = 0;
-	r->ours[m] = 0;
-	r->pending[m] = 0;
+	drop(r, &ip);
 }
 
 static void
@@ -1803,6 +1832,36 @@ summary(struct restore *r)
 		    "out", r->unnamed);
 }
 
+/*
+ * Free the inodes of the files that the dump says are gone before new
+ * ones are taken, as check() counts them free.  Their names go when the
+ * directories are made to hold what the dump says.  The map may grow as
+ * it changes, so the inodes are listed first.
+ */
+static void
+free_gone(struct restore *r)
+{
+	struct mfs_inode ip;
+	uint32_t *gone;
+	size_t i, n;
+	int e;
+
+	if (r->used == NULL)
+		return;
+	gone = xcalloc(r->map.max + 1, sizeof(*gone));
+	for (i = n = 0; i < r->map.max; i++)
+		if (r->map.tab[i].t != 0 && r->map.tab[i].m != 0 &&
+		    !map_has(r->used, r->nused, r->map.tab[i].t))
+			gone[n++] = r->map.tab[i].m;
+	for (i = 0; i < n; i++) {
+		if ((e = mfs_get_inode(&r->fs, gone[i], &ip)) < 0)
+			(void)failed(r, r->o->image, e);
+		else
+			drop(r, &ip);
+	}
+	free(gone);
+}
+
 /* Everything -r does after the dump has been checked. */
 static void
 write_all(struct restore *r)
@@ -1810,6 +1869,7 @@ write_all(struct restore *r)
 	size_t i;
 	int e;
 
+	free_gone(r);
 	/* What was written is put in order whatever failed. */
 	if (make_inodes(r) == 0) {
 		for (i = 0; i < r->dirs.n; i++)
@@ -1824,9 +1884,18 @@ write_all(struct restore *r)
 		(void)failed(r, r->o->image, e);
 		return;
 	}
-	/* The next incremental dump follows only a whole one. */
-	if (!r->cut)
-		(void)save_symtab(r);
+	/*
+	 * The table follows the image whatever failed, but the next
+	 * incremental dump follows only a whole restore: after a failure it
+	 * is this dump that comes next again.
+	 */
+	if (r->cut || r->status != 0) {
+		warnx("warning: not all of %s was restored; restore it again "
+		    "once what failed is put right", r->o->file);
+		(void)save_symtab(r, r->tape.ddate);
+	} else {
+		(void)save_symtab(r, r->tape.date);
+	}
 }
 
 static void
