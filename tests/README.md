@@ -81,9 +81,9 @@ top of `tests/mkimage.c`).  The scripts:
   also in a loop, into a `/lost+found` that it makes or finds; `-e`
   checks and sets the bits past the end of the maps; `-w` notes spare
   map blocks, a gap before the data zones and a maximum file size
-  other than MINIX's, and nothing about a layout as MINIX makes it.  A directory
-  holding more directories than the walk first has room for is
-  checked too.
+  other than MINIX's, and nothing about a layout as MINIX makes it.  A
+  directory holding more directories than the walk first has room for
+  is checked too.
 - `t_tunefs.sh` - `tunefs_minixfs` prints the settings, `-N` writes
   nothing, and `-c`, `-m` and `-e` each leave a file system that
   `fsck_minixfs` passes and that has what was asked for, in several
@@ -163,9 +163,10 @@ top of `tests/mkimage.c`).  The scripts:
   tree, and with zones of two blocks.  Each refusal gives the error of
   the system call; a file system that fills up with zones or inodes
   stays consistent; a write that runs out of zones gives back what it
-  put past the end of the file, which then grows over zeros; a writer killed after a change leaves the maps right
-  with `-a` and behind the inodes without; and a writer holds a lock that
-  `tunefs_minixfs` and `newfs_minixfs` meet, but not a reader.
+  put past the end of the file, which then grows over zeros; a writer
+  killed after a change leaves the maps right with `-a` and behind the
+  inodes without; and a writer holds a lock that `tunefs_minixfs` and
+  `newfs_minixfs` meet, but not a reader.
 - `t_put.sh` - the commands of `minixfs` that write an image without
   mounting it, `put`, `mkdir`, `rm`, `mv`, `ln`, `chmod` and `chown`,
   make the same changes as their namesakes make on a directory of the
@@ -193,11 +194,12 @@ top of `tests/mkimage.c`).  The scripts:
   directories take its group, and new directories the bit (not on
   NetBSD, whose librefuse takes it away); a file system not marked clean
   is mounted read-only.  On NetBSD the list of every name, which looks
-  up "..", after which librefuse has freed the root, is left out.  On MINIX 3, where it is a service of mount(8)
-  on a vnd device, the reading, run by hand it shows how to mount, and
-  writing is left out.  Skipped otherwise.  `MINIXFS_FUSE` names the program; `FUSE_SUDO` is a
-  command to mount and read with where users cannot mount, such as
-  `sudo` on NetBSD.
+  up "..", after which librefuse has freed the root, is left out.  On
+  MINIX 3, where it is a service of mount(8) on a vnd device, the
+  reading, run by hand it shows how to mount, and writing is left
+  out.  Skipped otherwise.  `MINIXFS_FUSE` names the program;
+  `FUSE_SUDO` is a command to mount and read with where users cannot
+  mount, such as `sudo` on NetBSD.
 - `t_device.sh` - where an image can be put on a device, a loop device
   on Linux and a vnd device on NetBSD and MINIX 3, as root or through
   `DEV_SUDO` (such as `sudo`): `info` and `fsck_minixfs` take the size
