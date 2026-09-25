@@ -8,5 +8,6 @@
 /restore_minixfs
 /tests/mkdump
 /tests/mfsop
+/tests/fdops
 /tests/mkimage
 /tunefs_minixfs

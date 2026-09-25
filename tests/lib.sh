@@ -21,6 +21,7 @@
 : "${RESTORE_MINIXFS:=./restore_minixfs}"
 : "${MKDUMP:=./tests/mkdump}"
 : "${MFSOP:=./tests/mfsop}"
+: "${FDOPS:=./tests/fdops}"
 
 # The sanitizers are told to exit with this status, so that a sanitizer
 # report can be told apart from an ordinary failure (status 1).

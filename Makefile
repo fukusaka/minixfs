@@ -22,6 +22,7 @@ RESTORE =	restore_minixfs
 MKIMAGE =	tests/mkimage
 MKDUMP =	tests/mkdump
 MFSOP =		tests/mfsop
+FDOPS =		tests/fdops
 
 # mount_minixfs needs a FUSE library, so it is built on request: "make
 # fuse".  FUSE_CFLAGS and FUSE_LIBS come from pkg-config where libfuse 3
@@ -64,6 +65,9 @@ $(MKDUMP): tests/mkdump.c
 
 $(MFSOP): tests/mfsop.c $(LIBOBJS)
 	$(CC) $(CFLAGS) $(WARNFLAGS) -o $(MFSOP) tests/mfsop.c $(LIBOBJS)
+
+$(FDOPS): tests/fdops.c
+	$(CC) $(CFLAGS) $(WARNFLAGS) -o $(FDOPS) tests/fdops.c
 
 $(PROG): src/minixfs.o src/minixfs_write.o $(LIBOBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $(PROG) src/minixfs.o \
@@ -123,14 +127,15 @@ fuse-minix:
 	    FUSE_CFLAGS=-DPUFFS_SERVICE \
 	    FUSE_LIBS="-lrefuse -lpuffs -lfsdriver -lsys -ltimers"
 
-check: all $(MKIMAGE) $(MKDUMP) $(MFSOP)
+check: all $(MKIMAGE) $(MKDUMP) $(MFSOP) $(FDOPS)
 	MINIXFS=./$(PROG) NEWFS_MINIXFS=./$(NEWFS) FSCK_MINIXFS=./$(FSCK) \
 	    TUNEFS_MINIXFS=./$(TUNEFS) DUMP_MINIXFS=./$(DUMP) \
-	    RESTORE_MINIXFS=./$(RESTORE) MFSOP=./$(MFSOP) sh tests/run.sh
+	    RESTORE_MINIXFS=./$(RESTORE) MFSOP=./$(MFSOP) \
+	    FDOPS=./$(FDOPS) sh tests/run.sh
 
 # Build with AddressSanitizer and UBSan in a separate directory, then run
 # the whole test suite against that binary.
-check-sanitize: $(MKIMAGE) $(MKDUMP)
+check-sanitize: $(MKIMAGE) $(MKDUMP) $(FDOPS)
 	rm -rf build-san && mkdir build-san
 	$(CC) $(SANFLAGS) $(WARNFLAGS) -o build-san/$(PROG) \
 	    src/minixfs.c src/minixfs_write.c $(LIBSRCS)
@@ -157,7 +162,7 @@ check-sanitize: $(MKIMAGE) $(MKDUMP)
 	    TUNEFS_MINIXFS=./build-san/$(TUNEFS) \
 	    DUMP_MINIXFS=./build-san/$(DUMP) \
 	    RESTORE_MINIXFS=./build-san/$(RESTORE) \
-	    MFSOP=./build-san/mfsop sh tests/run.sh
+	    MFSOP=./build-san/mfsop FDOPS=./$(FDOPS) sh tests/run.sh
 
 # mount_minixfs goes in too if "make fuse" built it.
 install: all
@@ -193,7 +198,7 @@ lint-sh:
 
 clean:
 	rm -f $(PROG) $(NEWFS) $(FSCK) $(TUNEFS) $(DUMP) $(RESTORE) \
-	    src/*.o $(MKIMAGE) $(MKDUMP) $(MFSOP) $(FUSEPROG)
+	    src/*.o $(MKIMAGE) $(MKDUMP) $(MFSOP) $(FDOPS) $(FUSEPROG)
 	rm -rf build-san
 
 .PHONY: all check check-sanitize clean fuse fuse-minix install lint-man \

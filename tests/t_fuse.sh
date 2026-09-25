@@ -312,6 +312,246 @@ change() {
 	done
 }
 
+# removed_open NAME NEWFS-OPTIONS - a file removed while open keeps its
+# inode until it is closed.  Of 8 inodes, b to g take the rest, g gives
+# its own back, and the next file, which would take that of the removed
+# file if it were free, takes that of g: a write to the removed file does
+# not show in it.  Once closed and unmounted, the inode is free again.
+removed_open() {
+	rm -f "$T/rm.img"
+	# The options are several words, split on purpose.
+	# shellcheck disable=SC2086
+	"$NEWFS_MINIXFS" -V 2 $2 -i 8 -s 1000 -d "$T/empty" \
+	    -o "$(id -u):$(id -g)" "$T/rm.img" >/dev/null
+	run as_mounter "$MINIXFS_FUSE" -w "$T/rm.img" "$mnt"
+	check_status "$1: mounted" 0
+	# The script is for the sh -c.
+	# shellcheck disable=SC2016
+	run as_mounter sh -c '
+	    cd "$1" || exit 1
+	    exec 3>a
+	    printf AAAA >&3
+	    exec 5<a
+	    rm a || exit 1
+	    for f in b c d e f g; do : >"$f" || exit 1; done
+	    rm g
+	    printf innocent >victim || exit 1
+	    printf XXXX >&3
+	    cat <&5; echo
+	    exec 3>&- 5<&-
+	    cat victim; echo' sh "$mnt"
+	printf 'AAAAXXXX\ninnocent\n' >"$T/want"
+	check_out "$1: a write to it goes to no other file" "$T/want"
+	fuse_pid=
+	unmount_image "$mnt"
+	_removed_open_n=0
+	while [ "$(info_field "$T/rm.img" clean)" != yes ] &&
+	    [ "$_removed_open_n" -lt 10 ]; do
+		sleep 1
+		_removed_open_n=$((_removed_open_n + 1))
+	done
+	run "$FSCK_MINIXFS" "$T/rm.img"
+	check_status "$1: fsck finds nothing wrong" 0
+	check_info "$1: its inode is free again" "$T/rm.img" "free inodes" 1
+}
+
+# fd_ops NAME NEWFS-OPTIONS MOUNT-OPTIONS HIDDEN NLINK [CASE] - a file
+# removed while open, through its descriptor (tests/fdops): the steps
+# succeed, fstat gives NLINK, and HIDDEN names of libfuse are in the
+# directory meanwhile.  CASE is link, where it has another name, which
+# stays; links, where that is open and removed as well, and closed
+# first; rename, where another file is renamed over it; rmdir and
+# replace, where its directory is removed, or has an empty one renamed
+# over it, which libfuse refuses as it hides the file there.  Afterwards
+# fsck passes, and the inodes of what has no name are free again.
+fd_ops() {
+	rm -f "$T/fd.img"
+	# The options are several words or none, split on purpose.
+	# shellcheck disable=SC2086
+	"$NEWFS_MINIXFS" -V 2 $2 -i 16 -s 1000 -d "$T/empty" \
+	    -o "$(id -u):$(id -g)" "$T/fd.img" >/dev/null
+	# shellcheck disable=SC2086
+	run as_mounter "$MINIXFS_FUSE" -w $3 "$T/fd.img" "$mnt"
+	check_status "$1: mounted" 0
+	_fd_ops_f=$mnt/a
+	case $6 in
+	rmdir|replace)
+		as_mounter mkdir "$mnt/d" "$mnt/e"
+		_fd_ops_f=$mnt/d/a
+		;;
+	esac
+	# The script is for the sh -c.
+	# shellcheck disable=SC2016
+	as_mounter sh -c 'printf AAAA >"$1" && printf BBBB >"$2/x"' \
+	    sh "$_fd_ops_f" "$mnt"
+	# The inodes free afterwards; libfuse leaves the directories.
+	_fd_ops_free=15
+	case $6 in
+	link)
+		as_mounter ln "$mnt/a" "$mnt/b"
+		_fd_ops_free=14
+		;;
+	links)
+		as_mounter ln "$mnt/a" "$mnt/b"
+		;;
+	rename)
+		_fd_ops_free=14
+		;;
+	rmdir|replace)
+		_fd_ops_free=13
+		[ "$libfuse" = yes ] || _fd_ops_free=14
+		;;
+	esac
+	[ "$6" = rename ] || as_mounter rm "$mnt/x"
+	case $6 in
+	rename)
+		run as_mounter "$FDOPS" "$mnt/a" "$mnt/x"
+		echo "rename ok" >"$T/want"
+		;;
+	rmdir)
+		run as_mounter "$FDOPS" -r "$_fd_ops_f"
+		printf '%s\n' "unlink ok" "hidden $4" >"$T/want"
+		;;
+	replace)
+		run as_mounter "$FDOPS" -R "$mnt/e" "$_fd_ops_f"
+		printf '%s\n' "unlink ok" "hidden $4" >"$T/want"
+		;;
+	links)
+		run as_mounter "$FDOPS" -L "$mnt/b" "$mnt/a"
+		printf '%s\n' "unlink ok" "unlink link ok" "hidden $4" \
+		    "fstat nlink $5 size 4" "close link ok" >"$T/want"
+		;;
+	*)
+		run as_mounter "$FDOPS" "$mnt/a"
+		echo "unlink ok" >"$T/want"
+		;;
+	esac
+	case $6 in
+	rename|link|'')
+		echo "hidden $4" >>"$T/want"
+		;;
+	esac
+	_fd_ops_refused="Directory not empty"
+	case $6 in
+	rmdir)
+		if [ "$libfuse" = yes ]; then
+			echo "rmdir parent: $_fd_ops_refused" >>"$T/want"
+		else
+			echo "rmdir parent ok" >>"$T/want"
+		fi
+		;;
+	replace)
+		if [ "$libfuse" = yes ]; then
+			echo "replace parent: $_fd_ops_refused" >>"$T/want"
+		else
+			echo "replace parent ok" >>"$T/want"
+		fi
+		;;
+	esac
+	printf '%s\n' "pwrite ok" "pread AAAAXXXX" \
+	    "fstat nlink $5 size 8" "ftruncate ok" "futimens ok" "fchmod ok" \
+	    "fchown ok" "fsync ok" \
+	    "fstat size 6 mode 600 mtime 1000000000" "pread AAAAXX" \
+	    "close ok" >>"$T/want"
+	# The fusefs of FreeBSD keeps the link count of a file that another
+	# is renamed over, and does not ask for it.
+	if [ "$6" = rename ] && [ "$(uname -s)" = FreeBSD ]; then
+		sed 's/^fstat nlink [0-9]* /fstat nlink - /' "$T/out" \
+		    >"$T/out.tmp" && mv "$T/out.tmp" "$T/out"
+		sed 's/^fstat nlink [0-9]* /fstat nlink - /' "$T/want" \
+		    >"$T/want.tmp" && mv "$T/want.tmp" "$T/want"
+	fi
+	check_out "$1: it is worked on through the open file" "$T/want"
+	fuse_pid=
+	unmount_image "$mnt"
+	_fd_ops_n=0
+	while [ "$(info_field "$T/fd.img" clean)" != yes ] &&
+	    [ "$_fd_ops_n" -lt 10 ]; do
+		sleep 1
+		_fd_ops_n=$((_fd_ops_n + 1))
+	done
+	run "$FSCK_MINIXFS" "$T/fd.img"
+	check_status "$1: fsck finds nothing wrong" 0
+	check_info "$1: the inodes are free again" "$T/fd.img" "free inodes" \
+	    "$_fd_ops_free"
+	# Read from the image: the kernel keeps what it knew of the other
+	# name, which libfuse gives a node of its own, for a while.
+	if [ "$6" = link ]; then
+		check_true "$1: its other name stays" \
+		    test "$("$MINIXFS" cat "$T/fd.img" /b)" = AAAAXX
+	fi
+}
+
+# hidden_rename NAME NEWFS-OPTIONS MOUNT-OPTIONS STATUS - a file that is
+# not open, renamed by the user to a name of the form libfuse hides files
+# under, is renamed as any other: where the name does not fit, it is
+# refused (STATUS 1), and where it does (0), the file stays under it.
+hidden_rename() {
+	rm -f "$T/hr.img"
+	# The options are several words or none, split on purpose.
+	# shellcheck disable=SC2086
+	"$NEWFS_MINIXFS" -V 2 $2 -i 16 -s 1000 -d "$T/empty" \
+	    -o "$(id -u):$(id -g)" "$T/hr.img" >/dev/null
+	# shellcheck disable=SC2086
+	run as_mounter "$MINIXFS_FUSE" -w $3 "$T/hr.img" "$mnt"
+	check_status "$1: mounted" 0
+	# The script is for the sh -c.
+	# shellcheck disable=SC2016
+	as_mounter sh -c 'printf data >"$1/f"' sh "$mnt"
+	run as_mounter mv "$mnt/f" "$mnt/.fuse_hidden0000000000000001"
+	check_status "$1: the rename" "$4"
+	fuse_pid=
+	unmount_image "$mnt"
+	_hidden_rename_n=0
+	while [ "$(info_field "$T/hr.img" clean)" != yes ] &&
+	    [ "$_hidden_rename_n" -lt 10 ]; do
+		sleep 1
+		_hidden_rename_n=$((_hidden_rename_n + 1))
+	done
+	run "$FSCK_MINIXFS" "$T/hr.img"
+	check_status "$1: fsck finds nothing wrong" 0
+	if [ "$4" -eq 0 ]; then
+		_hidden_rename_f=/.fuse_hidden0000000000000001
+	else
+		_hidden_rename_f=/f
+	fi
+	check_true "$1: the file is there" \
+	    test "$("$MINIXFS" cat "$T/hr.img" "$_hidden_rename_f")" = data
+}
+
+# hidden_open NAME - a file that is open, renamed by the user to a name
+# of the form libfuse hides files under, with -o hide=memory, is taken
+# for one that libfuse hides (see BUGS in mount_minixfs(8)): it is still
+# read by that name once closed, and goes at the unmount.
+hidden_open() {
+	rm -f "$T/ho.img"
+	"$NEWFS_MINIXFS" -V 2 -l 30 -i 16 -s 1000 -d "$T/empty" \
+	    -o "$(id -u):$(id -g)" "$T/ho.img" >/dev/null
+	run as_mounter "$MINIXFS_FUSE" -w -o hide=memory "$T/ho.img" "$mnt"
+	check_status "$1: mounted" 0
+	# The script is for the sh -c.
+	# shellcheck disable=SC2016
+	run as_mounter sh -c '
+	    cd "$1" || exit 1
+	    printf data >f
+	    exec 3<f
+	    mv f .fuse_hidden0000000000000001 || exit 1
+	    exec 3<&-
+	    cat .fuse_hidden0000000000000001' sh "$mnt"
+	check_out_has "$1: it is read by the name once closed" "^data\$"
+	fuse_pid=
+	unmount_image "$mnt"
+	_hidden_open_n=0
+	while [ "$(info_field "$T/ho.img" clean)" != yes ] &&
+	    [ "$_hidden_open_n" -lt 10 ]; do
+		sleep 1
+		_hidden_open_n=$((_hidden_open_n + 1))
+	done
+	run "$FSCK_MINIXFS" "$T/ho.img"
+	check_status "$1: fsck finds nothing wrong" 0
+	check_info "$1: it goes at the unmount" "$T/ho.img" "free inodes" 15
+}
+
 # writable NAME NEWFS-OPTIONS FLUSH STATUS - make the test tree into a
 # file system with NEWFS-OPTIONS, mount it with -w -u FLUSH, change it,
 # and check it: while mounted, fsck exits with STATUS, as the maps are
@@ -424,44 +664,42 @@ else
 	check_true "-w in the background: the new file is there" \
 	    "$MINIXFS" cat "$T/bg.img" /new
 
-	# A file removed while open keeps its inode until it is closed.  Of
-	# 8 inodes, b to g take the rest, g gives its own back, and the next
-	# file, which would take that of the removed file if it were free,
-	# takes that of g: a write to the removed file does not show in it.
-	# Once closed and unmounted, the inode is free again.  Names are of
-	# 30 characters, where libfuse of Linux can hide such a file under a
-	# name of its own until it is closed, as it does.
-	rm -f "$T/rm.img"
-	"$NEWFS_MINIXFS" -V 2 -l 30 -i 8 -s 1000 -d "$T/empty" \
-	    -o "$(id -u):$(id -g)" "$T/rm.img" >/dev/null
-	run as_mounter "$MINIXFS_FUSE" -w "$T/rm.img" "$mnt"
-	check_status "removed while open: mounted" 0
-	# The script is for the sh -c.
-	# shellcheck disable=SC2016
-	run as_mounter sh -c '
-	    cd "$1" || exit 1
-	    exec 3>a
-	    printf AAAA >&3
-	    rm a
-	    for f in b c d e f g; do : >"$f" || exit 1; done
-	    rm g
-	    printf innocent >victim || exit 1
-	    printf XXXX >&3
-	    exec 3>&-
-	    cat victim' sh "$mnt"
-	check_out_has "removed while open: a write to it goes to no other" \
-	    "^innocent\$"
-	fuse_pid=
-	unmount_image "$mnt"
-	n=0
-	while [ "$(info_field "$T/rm.img" clean)" != yes ] && [ "$n" -lt 10 ]; do
-		sleep 1
-		n=$((n + 1))
-	done
-	run "$FSCK_MINIXFS" "$T/rm.img"
-	check_status "removed while open: fsck finds nothing wrong" 0
-	check_info "removed while open: its inode is free again" "$T/rm.img" \
-	    "free inodes" 1
+	# A file removed while open keeps its inode until it is closed.
+	# libfuse hides it meanwhile under a name of 28 characters, which is
+	# kept in memory where names are of 14, or with -o hide=memory, and
+	# otherwise stays in the directory; librefuse hides nothing.
+	removed_open "removed while open, 30-character names" "-l 30"
+	removed_open "removed while open, 14-character names" "-l 14"
+	on_disk=1
+	libfuse=yes
+	if [ "$(uname -s)" = NetBSD ]; then
+		on_disk=0
+		libfuse=no
+	fi
+	fd_ops "fd, 14-character names" "-l 14" "" 0 0
+	fd_ops "fd, 30-character names" "-l 30" "" "$on_disk" 0
+	fd_ops "fd, 30-character names, hide=memory" "-l 30" \
+	    "-o hide=memory" 0 0
+	# A hard link is made through the mount (see $hardlinks).
+	if [ "$hardlinks" = yes ]; then
+		fd_ops "fd, with another name" "-l 14" "" 0 1 link
+		fd_ops "fd, both names open" "-l 14" "" 0 0 links
+		fd_ops "fd, both names open, hide=memory" "-l 30" \
+		    "-o hide=memory" 0 0 links
+	else
+		skip "fd, with another name" \
+		    "the fusefs of FreeBSD takes a hard link for a failure"
+	fi
+	fd_ops "fd, renamed over" "-l 14" "" 0 0 rename
+	fd_ops "fd, directory removed" "-l 14" "" 0 0 rmdir
+	fd_ops "fd, directory replaced" "-l 14" "" 0 0 replace
+	hidden_rename "user rename to a hidden name, 14-character names" \
+	    "-l 14" "" 1
+	hidden_rename "user rename to a hidden name, hide=memory" "-l 30" \
+	    "-o hide=memory" 0
+	if [ "$libfuse" = yes ]; then
+		hidden_open "user rename of an open file to a hidden name"
+	fi
 fi
 
 # A file system not marked clean is mounted read-only.

@@ -65,6 +65,15 @@ inodes keep the group in a byte.
 The mtime and ctime of what changes are set; atimes are not.
 A file removed while it is open keeps its inode and its data, with no
 name, until it is closed, and then goes.
+Meanwhile libfuse, of Linux and
+.Fx ,
+hides it under a name of its own,
+.Ql .fuse_hidden
+and 16 hexadecimal digits: where names are of 14 characters, which cannot
+hold that, the name is kept in memory and not in the directory; where
+they are longer, it is in the directory until the file is closed, unless
+.Cm hide=memory
+is given.
 .Pp
 While the file system is mounted,
 .Ar image
@@ -114,11 +123,16 @@ for
 to take that back,
 .Cm update= Ns Ar X
 for
-.Fl u Ar X
-and
+.Fl u Ar X ,
 .Cm tracks= Ns Ar X
 for
-.Fl M Ar X .
+.Fl M Ar X ,
+and
+.Cm hide=memory
+to keep the names that libfuse hides files removed while open under in
+memory also where names are longer than 14 characters, or
+.Cm hide=disk ,
+the default, to leave them in the directory there.
 .El
 .Pp
 The file system is unmounted with
@@ -223,6 +237,14 @@ the fusefs of
 takes an answer with another node number than that of the file for a
 failure.
 .Pp
-On Linux, libfuse hides a file removed while open under a name of 28
-characters until it is closed, and so cannot remove an open file where
-names are of 14.
+Where the names libfuse hides files under are kept in memory, a file
+that is open and that the user renames to a name of that form is taken
+for one that libfuse hides: the name goes at the unmount, and the file
+with it unless it has another.
+A file that is not open is renamed as to any other name.
+.Pp
+libfuse gives the link count of a file removed while open one too high
+for a while after its mode, owner or times are changed through it: it
+takes the name it hides the file under off the count it gives for
+.Xr fstat 2 ,
+but not off the one it gives back for the change, which the kernel keeps.

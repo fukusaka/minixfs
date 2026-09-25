@@ -201,14 +201,22 @@ top of `tests/mkimage.c`).  The scripts:
   directories take its group, and new directories the bit (not on
   NetBSD, whose librefuse takes it away); a file removed while open
   keeps its inode until it is closed, so that writing to it changes no
-  file that comes after it, and gives it back then; a file system not
-  marked clean is mounted read-only.  On FreeBSD no hard link is made
-  through the mount.  On NetBSD the list of every name, which looks up
-  "..", after which librefuse has freed the root, is left out.  On
-  MINIX 3, where it is a service of mount(8) on a vnd device, the
-  reading, run by hand it shows how to mount, and writing is left out.  Skipped otherwise.  `MINIXFS_FUSE` names the program;
-  `FUSE_SUDO` is a command to mount and read with where users cannot
-  mount, such as `sudo` on NetBSD.
+  file that comes after it, and gives it back then; through its
+  descriptor (`tests/fdops`) it is written, read, stat, cut, given a
+  time, a mode and an owner, with names of 14 and 30 characters, with
+  `-o hide=memory`, with another name, open and removed as well or not,
+  when another file is renamed over it, and when its directory is
+  removed or replaced, which libfuse refuses; the name libfuse hides it
+  under is not in the directory but where it is kept there, and a file
+  renamed to such a name is renamed as to any other if it is not open,
+  and kept till the unmount if it is; a file system not marked clean is
+  mounted read-only.  On FreeBSD no hard link is made through the mount.  On
+  NetBSD the list of every name, which looks up "..", after which
+  librefuse has freed the root, is left out.  On MINIX 3, where it is a
+  service of mount(8) on a vnd device, the reading, run by hand it shows
+  how to mount, and writing is left out.  Skipped otherwise.
+  `MINIXFS_FUSE` names the program; `FUSE_SUDO` is a command to mount
+  and read with where users cannot mount, such as `sudo` on NetBSD.
 - `t_device.sh` - where an image can be put on a device, a loop device
   on Linux, an md device on FreeBSD and a vnd device on NetBSD and
   MINIX 3, as root or through `DEV_SUDO` (such as `sudo`): `info` and
@@ -226,5 +234,7 @@ top of `tests/mkimage.c`).  The scripts:
     mkimage.c       the independent image writer
     mkdump.c        the independent writer of dumps of BSD and Linux
     mfsop.c         a driver of the library for t_ops.sh
+    fdops.c         work through the descriptor of a removed file, for
+                    t_fuse.sh
     tree.spec       the tree that t_read.sh and t_fuse.sh read
     tree.names      the names in that tree

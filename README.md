@@ -151,11 +151,14 @@ bit maps go to the image: at fsync and unmount (`sync`, the default),
 as they change (`always`), or also after so many seconds.  Unmount it
 with `fusermount3 -u MOUNTPOINT` on Linux or `umount MOUNTPOINT` on the
 BSDs.  `-o rw,ro,update=X,tracks=X` stand for `-w`, read-only, `-u X`
-and `-M X`, as mount(8) gives options.  On MINIX 3 it is a service that
-mount(8) starts on a vnd device (`mount -t minixfs -o rw /dev/vnd0
-/mnt`), installed as mount_minixfs(8) says; writing is not reliable
-there, as libpuffs gets new symbolic links, pipes and character devices
-wrong.
+and `-M X`, as mount(8) gives options.  A file removed while open is
+kept until it is closed; the name libfuse hides it under meanwhile is
+kept in memory, not in the directory, where names are of 14 characters,
+and with `-o hide=memory` where they are longer.  On MINIX 3 it is a
+service that mount(8) starts on a vnd device (`mount -t minixfs -o rw
+/dev/vnd0 /mnt`), installed as mount_minixfs(8) says; writing is not
+reliable there, as libpuffs gets new symbolic links, pipes and character
+devices wrong.
 
 The commands that write an image lock it with fcntl(2) while they have
 it open, and refuse an image that another holds.

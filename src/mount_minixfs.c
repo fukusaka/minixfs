@@ -31,10 +31,18 @@
  * A file removed while it is open keeps its inode and zones, with no
  * name, until it is closed, as the system calls have it: writes to it
  * would otherwise go to a free inode, or to another file that took it.
- * libfuse tells when the last one closes.  librefuse (NetBSD, MINIX 3)
- * passes on only the first of the opens that overlap and calls release
- * at the first close, so there such a file is kept until the unmount;
- * and one opened twice, closed once and then removed is not kept.
+ * libfuse tells when the last one closes; till then it hides the file
+ * under a name of 28 characters of its own, by a rename, and asks for
+ * what is done through the file by that name.  Where names are of 14
+ * characters, and with -o hide=memory where they are longer, the name is
+ * kept here rather than in the directory: the rename removes the file,
+ * which is kept as above, and the name then leads to it, and keeps its
+ * directory from being empty.  Only a file that is open is taken to be
+ * hidden so; one that is not is renamed as to any other name.  librefuse
+ * (NetBSD, MINIX 3) hides nothing, passes on only the first of the opens
+ * that overlap and calls release at the first close, so there such a
+ * file is kept until the unmount; and one opened twice, closed once and
+ * then removed is not kept.
  *
  * The mount is single-threaded, since the library keeps one set of block
  * buffers per image.  The image is opened before FUSE takes over, so a
@@ -51,6 +59,7 @@
 #include <sys/statvfs.h>
 #include <sys/wait.h>
 
+#include <ctype.h>
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -80,6 +89,13 @@
 #else
 #define LAST_CLOSE_KNOWN 1
 #endif
+
+/*
+ * The name libfuse hides a file removed while open under: this and 16
+ * hexadecimal digits.
+ */
+#define HIDDEN_PREFIX	".fuse_hidden"
+#define HIDDEN_LEN	28
 
 /* Add one directory entry through the filler of readdir. */
 #if FUSE_USE_VERSION >= 30
@@ -113,9 +129,20 @@ struct handle {
 	int		orphan;		/* removed, and kept for them */
 };
 
+/* A name libfuse hides a file under, kept here. */
+struct hidden {
+	uint32_t	dir;		/* the directory it is in */
+	uint32_t	ino;		/* the file */
+	char		name[HIDDEN_LEN + 1];
+};
+
 /* The mounted file system. */
 struct mount {
 	struct mfs	fs;
+	struct hidden	*hidden;	/* the names libfuse hides under */
+	size_t		nhidden;
+	size_t		maxhidden;
+	int		hide_memory;	/* keep them here */
 	struct handle	*handles;	/* open addressing, by inode */
 	size_t		nhandles;
 	size_t		maxhandles;	/* a power of 2 */
@@ -264,6 +291,139 @@ fill_stat(const struct mfs *fs, const struct mfs_inode *ip, struct stat *st)
 	}
 }
 
+/* Whether name is one libfuse hides a file removed while open under. */
+static int
+is_hidden_name(const char *name)
+{
+	size_t i;
+
+	if (strlen(name) != HIDDEN_LEN ||
+	    strncmp(name, HIDDEN_PREFIX, sizeof(HIDDEN_PREFIX) - 1) != 0)
+		return 0;
+	for (i = sizeof(HIDDEN_PREFIX) - 1; i < HIDDEN_LEN; i++)
+		if (!isxdigit((unsigned char)name[i]))
+			return 0;
+	return 1;
+}
+
+/*
+ * Whether path ends in such a name, where they are kept here; *dir gets
+ * the directory, and *name the name.
+ */
+static int
+hidden_path(const char *path, uint32_t *dir, const char **name)
+{
+	struct mfs_inode dp;
+	char buf[PATH_MAX];
+	const char *slash;
+	size_t len;
+
+	if (path == NULL || !mount_of()->hide_memory ||
+	    (slash = strrchr(path, '/')) == NULL || !is_hidden_name(slash + 1))
+		return 0;
+	if ((len = (size_t)(slash - path)) >= sizeof(buf))
+		return 0;
+	(void)memcpy(buf, path, len);
+	buf[len] = '\0';
+	if (mfs_namei(image(), len == 0 ? "/" : buf, &dp) < 0)
+		return 0;
+	*dir = dp.num;
+	*name = slash + 1;
+	return 1;
+}
+
+/* The hidden name name in directory dir, or NULL. */
+static struct hidden *
+hidden_find(uint32_t dir, const char *name)
+{
+	struct mount *m;
+	size_t i;
+
+	m = mount_of();
+	for (i = 0; i < m->nhidden; i++)
+		if (m->hidden[i].dir == dir &&
+		    strcmp(m->hidden[i].name, name) == 0)
+			return &m->hidden[i];
+	return NULL;
+}
+
+/* Whether a hidden name kept here leads to inode ino. */
+static int
+hidden_names_of(uint32_t ino)
+{
+	struct mount *m;
+	size_t i;
+
+	m = mount_of();
+	for (i = 0; i < m->nhidden; i++)
+		if (m->hidden[i].ino == ino)
+			return 1;
+	return 0;
+}
+
+/*
+ * Whether directory dir holds a hidden name kept here: it is not empty
+ * then, as it would not be with the name in it.
+ */
+static int
+hidden_names_in(uint32_t dir)
+{
+	struct mount *m;
+	size_t i;
+
+	m = mount_of();
+	for (i = 0; i < m->nhidden; i++)
+		if (m->hidden[i].dir == dir)
+			return 1;
+	return 0;
+}
+
+/* The hidden name path leads to, or NULL. */
+static struct hidden *
+hidden_of(const char *path)
+{
+	const char *name;
+	uint32_t dir;
+
+	if (!hidden_path(path, &dir, &name))
+		return NULL;
+	return hidden_find(dir, name);
+}
+
+/*
+ * The inode of path.  A name libfuse hides a file under leads to that
+ * file if it is kept here, and else to nothing, however long it is.
+ */
+static int
+lookup(const char *path, struct mfs_inode *ip)
+{
+	struct hidden *h;
+	const char *name;
+	uint32_t dir;
+	int r;
+
+	if (!hidden_path(path, &dir, &name))
+		return mfs_namei(image(), path, ip);
+	if ((h = hidden_find(dir, name)) != NULL)
+		return mfs_read_inode(image(), h->ino, ip);
+	r = mfs_namei(image(), path, ip);
+	return r == -ENAMETOOLONG ? -ENOENT : r;
+}
+
+/*
+ * The inode of the file open as fi, or else of path: an open file that
+ * was renamed or removed is still found.
+ */
+static int
+inode_of(const char *path, struct fuse_file_info *fi, struct mfs_inode *ip)
+{
+	if (fi != NULL && fi->fh != 0)
+		return mfs_read_inode(image(), (uint32_t)fi->fh, ip);
+	if (path == NULL)
+		return -ESTALE;
+	return lookup(path, ip);
+}
+
 #if FUSE_USE_VERSION >= 30
 static int
 mfs_getattr(const char *path, struct stat *st, struct fuse_file_info *fi)
@@ -276,11 +436,16 @@ mfs_getattr(const char *path, struct stat *st)
 	int r;
 
 #if FUSE_USE_VERSION >= 30
-	(void)fi;
+	r = inode_of(path, fi, &ino);
+#else
+	r = inode_of(path, NULL, &ino);
 #endif
-	if ((r = mfs_namei(image(), path, &ino)) < 0)
+	if (r < 0)
 		return r;
 	fill_stat(image(), &ino, st);
+	/* libfuse takes the hidden name off the count. */
+	if (hidden_of(path) != NULL)
+		st->st_nlink++;
 	return 0;
 }
 
@@ -293,7 +458,7 @@ mfs_readlink(const char *path, char *buf, size_t size)
 
 	if (size == 0)
 		return -EINVAL;
-	if ((r = mfs_namei(image(), path, &ino)) < 0)
+	if ((r = lookup(path, &ino)) < 0)
 		return r;
 	if (!mfs_is_lnk(&ino))
 		return -EINVAL;
@@ -311,7 +476,7 @@ mfs_open_file(const char *path, struct fuse_file_info *fi)
 
 	if ((fi->flags & O_ACCMODE) != O_RDONLY && !mount_of()->rw)
 		return -EROFS;
-	if ((r = mfs_namei(image(), path, &ino)) < 0)
+	if ((r = lookup(path, &ino)) < 0)
 		return r;
 	if (mfs_is_dir(&ino))
 		return -EISDIR;
@@ -330,11 +495,7 @@ mfs_read_file(const char *path, char *buf, size_t size, off_t off,
 	ssize_t n;
 	int r;
 
-	if (fi != NULL && fi->fh != 0)
-		r = mfs_read_inode(image(), (uint32_t)fi->fh, &ino);
-	else
-		r = mfs_namei(image(), path, &ino);
-	if (r < 0)
+	if ((r = inode_of(path, fi, &ino)) < 0)
 		return r;
 	if (off < 0)
 		return -EINVAL;
@@ -592,7 +753,12 @@ mfs_release_file(const char *path, struct fuse_file_info *fi)
 		return 0;
 	if (h->opens > 0)
 		h->opens--;
-	if (h->opens > 0 || (h->orphan && !LAST_CLOSE_KNOWN))
+	/*
+	 * libfuse unlinks the hidden name after the release: the file goes
+	 * then.
+	 */
+	if (h->opens > 0 || (h->orphan && !LAST_CLOSE_KNOWN) ||
+	    hidden_names_of(h->ino))
 		return 0;
 	r = h->orphan ? mfs_free_orphan(&m->fs, h->ino) : 0;
 	handle_drop(m, h);
@@ -647,20 +813,83 @@ mfs_make_link(const char *from, const char *to)
 	uint32_t dir;
 	int r;
 
-	if ((r = mfs_namei(image(), from, &ip)) < 0 ||
+	if ((r = lookup(from, &ip)) < 0 ||
 	    (r = parent_of(to, &dir, name)) < 0)
 		return r;
 	return changed(mfs_link(image(), ip.num, dir, name,
 	    (uint32_t)now()));
 }
 
+/*
+ * The unlink of a hidden name kept here, which libfuse sends once the
+ * file is closed: the name goes, and the file with it if it has no other
+ * name, hidden or not, and no one has it open.
+ */
+static int
+unhide(struct hidden *h)
+{
+	struct handle *hd;
+	struct mount *m;
+	uint32_t ino;
+	int r;
+
+	m = mount_of();
+	ino = h->ino;
+	*h = m->hidden[--m->nhidden];
+	if (hidden_names_of(ino) || (hd = handle_find(m, ino)) == NULL ||
+	    hd->opens > 0 || (!hd->orphan && LAST_CLOSE_KNOWN))
+		return 0;
+	r = hd->orphan ? mfs_free_orphan(&m->fs, ino) : 0;
+	handle_drop(m, hd);
+	return changed(r);
+}
+
+/*
+ * The rename of from to a hidden name kept here, as libfuse hides a file
+ * removed while open: from is removed, and kept as it is open, and the
+ * name leads to it.
+ */
+static int
+hide(const char *from, uint32_t ndir, const char *nname)
+{
+	char oname[MFS_MAX_NAME + 1];
+	struct mfs_inode ip;
+	struct hidden *h;
+	struct mount *m;
+	uint32_t odir;
+	size_t max;
+	int r;
+
+	m = mount_of();
+	if ((r = parent_of(from, &odir, oname)) < 0 ||
+	    (r = lookup(from, &ip)) < 0)
+		return r;
+	if (m->nhidden == m->maxhidden) {
+		max = m->maxhidden == 0 ? 8 : m->maxhidden * 2;
+		if ((h = realloc(m->hidden, max * sizeof(*h))) == NULL)
+			return -ENOMEM;
+		m->hidden = h;
+		m->maxhidden = max;
+	}
+	if ((r = mfs_unlink(image(), odir, oname, (uint32_t)now())) < 0)
+		return changed(r);
+	h = &m->hidden[m->nhidden++];
+	h->dir = ndir;
+	h->ino = ip.num;
+	(void)snprintf(h->name, sizeof(h->name), "%s", nname);
+	return changed(0);
+}
+
 static int
 mfs_remove(const char *path)
 {
 	char name[MFS_MAX_NAME + 1];
+	struct hidden *h;
 	uint32_t dir;
 	int r;
 
+	if ((h = hidden_of(path)) != NULL)
+		return unhide(h);
 	if ((r = parent_of(path, &dir, name)) < 0)
 		return r;
 	return changed(mfs_unlink(image(), dir, name, (uint32_t)now()));
@@ -670,9 +899,12 @@ static int
 mfs_remove_dir(const char *path)
 {
 	char name[MFS_MAX_NAME + 1];
+	struct mfs_inode ip;
 	uint32_t dir;
 	int r;
 
+	if (lookup(path, &ip) == 0 && hidden_names_in(ip.num))
+		return -ENOTEMPTY;
 	if ((r = parent_of(path, &dir, name)) < 0)
 		return r;
 	return changed(mfs_rmdir(image(), dir, name, (uint32_t)now()));
@@ -687,6 +919,9 @@ mfs_move(const char *from, const char *to)
 #endif
 {
 	char oname[MFS_MAX_NAME + 1], nname[MFS_MAX_NAME + 1];
+	struct mfs_inode ip;
+	struct handle *h;
+	const char *hname;
 	uint32_t odir, ndir;
 	int noreplace, r;
 
@@ -696,23 +931,24 @@ mfs_move(const char *from, const char *to)
 		return -EINVAL;
 	noreplace = (flags & RENAME_NOREPLACE_) != 0;
 #endif
+	/*
+	 * libfuse hides a file that is open, under a name that is free.
+	 * Any other rename, to such a name as well, is one of the user.
+	 */
+	if (hidden_path(to, &ndir, &hname) && hidden_find(ndir, hname) ==
+	    NULL && mfs_namei(image(), to, &ip) < 0 &&
+	    lookup(from, &ip) == 0 && !mfs_is_dir(&ip) &&
+	    (h = handle_find(mount_of(), ip.num)) != NULL && h->opens > 0)
+		return hide(from, ndir, hname);
+	/* A directory that holds a hidden name is not empty. */
+	if (lookup(to, &ip) == 0 && mfs_is_dir(&ip) &&
+	    hidden_names_in(ip.num))
+		return -ENOTEMPTY;
 	if ((r = parent_of(from, &odir, oname)) < 0 ||
 	    (r = parent_of(to, &ndir, nname)) < 0)
 		return r;
 	return changed(mfs_rename(image(), odir, oname, ndir, nname,
 	    noreplace, (uint32_t)now()));
-}
-
-/*
- * The inode of path, or of the file open as fi: an open file that was
- * renamed or removed is still found.
- */
-static int
-inode_of(const char *path, struct fuse_file_info *fi, struct mfs_inode *ip)
-{
-	if (fi != NULL && fi->fh != 0)
-		return mfs_read_inode(image(), (uint32_t)fi->fh, ip);
-	return mfs_namei(image(), path, ip);
 }
 
 /* Write the inode back with its ctime set. */
@@ -953,6 +1189,7 @@ struct options {
 	int		always;		/* -u always */
 	long		every;		/* -u seconds */
 	int		foreground;	/* -f or -d, or -o debug, for FUSE */
+	int		hide_memory;	/* -o hide=memory */
 };
 
 /* -u: always, sync, or a number of seconds. */
@@ -974,9 +1211,9 @@ flush_option(const char *s, struct options *o)
 
 /*
  * Take the options of mount_minixfs out of the list of -o, as mount(8)
- * gives them, on MINIX 3 the only way: rw for -w, ro, update=X for -u X
- * and tracks=X for -M X.  The rest stays in list, for FUSE.  Returns the
- * value of update=, or NULL.
+ * gives them, on MINIX 3 the only way: rw for -w, ro, update=X for -u X,
+ * tracks=X for -M X, and hide=memory or hide=disk.  The rest stays in
+ * list, for FUSE.  Returns the value of update=, or NULL.
  */
 static const char *
 mount_opts(char *list, struct options *o)
@@ -998,6 +1235,10 @@ mount_opts(char *list, struct options *o)
 		} else if (strncmp(p, "tracks=", 7) == 0) {
 			if (mfs_parse_tracks(p + 7, &o->tracks) < 0)
 				usage();
+		} else if (strcmp(p, "hide=memory") == 0) {
+			o->hide_memory = 1;
+		} else if (strcmp(p, "hide=disk") == 0) {
+			o->hide_memory = 0;
 		} else if (*p != '\0') {
 			if (strcmp(p, "debug") == 0)
 				o->foreground = 1;
@@ -1135,6 +1376,8 @@ open_image(struct mount *m, const struct options *o)
 	mfs_maps_through(&m->fs, o->always);
 	m->fs.keep = keep_open;
 	m->fs.keep_arg = m;
+	m->hide_memory = LAST_CLOSE_KNOWN &&
+	    (o->hide_memory || m->fs.namelen < HIDDEN_LEN);
 	if ((r = mfs_mark_in_use(&m->fs)) < 0)
 		errx(1, "%s: %s", o->image, strerror(-r));
 	m->every = o->every;
@@ -1176,6 +1419,9 @@ close_image(struct mount *m)
 	r = 0;
 	if (m->rw)
 		r = free_orphans(m);
+	free(m->hidden);
+	m->hidden = NULL;
+	m->nhidden = m->maxhidden = 0;
 	if (m->rw && r == 0 && (r = mfs_sync(&m->fs)) == 0 &&
 	    (r = mfs_mark_clean(&m->fs, 1)) == 0 && fsync(m->fs.fd) == -1)
 		r = -errno;

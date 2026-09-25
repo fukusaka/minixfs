@@ -137,7 +137,9 @@ superblock は正しい位置にあるので、`info` は正しく見えます�
 アンマウントのとき（`sync`、既定）、変わるたび（`always`）、またはそれに加えて指定の秒数ごとです。
 アンマウントは、Linux では `fusermount3 -u MOUNTPOINT`、BSD では `umount MOUNTPOINT` で行います。
 `-o rw,ro,update=X,tracks=X` は、mount(8) が渡す形で `-w`、読み出し専用、`-u X`、`-M X` を
-表します。MINIX 3 では、mount(8) が vnd デバイスの上で起動するサービスで
+表します。開いたまま消したファイルは閉じられるまで残ります。その間 libfuse が隠す名前は、名前が
+14 文字のファイルシステムでは、また `-o hide=memory` を指定すればそれより長くても、ディレクトリに
+置かずメモリに持ちます。MINIX 3 では、mount(8) が vnd デバイスの上で起動するサービスで
 （`mount -t minixfs -o rw /dev/vnd0 /mnt`）、置き方は mount_minixfs(8) のとおりです。そこでは
 libpuffs が新しいシンボリックリンク、FIFO、文字デバイスを誤って扱うので、書き込みは当てになりません。
 
