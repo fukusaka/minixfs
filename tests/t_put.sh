@@ -237,6 +237,26 @@ check_err "$v: a missing directory is reported" "No such file"
 run "$FSCK_MINIXFS" "$T/img"
 check_status "$v: fsck finds nothing wrong after the refusals" 0
 
+# Names with slashes after them, as a shell completes those of
+# directories: the name is taken without them.
+v="trailing slashes"
+rm -f "$T/slash.img"
+must "$NEWFS_MINIXFS" -V 2 -s 400 "$T/slash.img"
+rm -rf "$T/slash"
+mkdir -p "$T/slash/sub"
+printf 'in\n' >"$T/slash/sub/f"
+run "$MINIXFS" put -R "$T/slash.img" "$T/slash/sub/" /
+check_status "$v: put -R takes the name of a directory without them" 0
+run "$MINIXFS" cat "$T/slash.img" /sub/f
+check_out "$v: the directory is copied" "$T/slash/sub/f"
+run "$MINIXFS" ln -s "$T/slash.img" target/ /sub
+check_status "$v: so does ln -s into a directory" 0
+check_true "$v: the link keeps its target" \
+    test "$("$MINIXFS" ls -l "$T/slash.img" /sub/target | sed 's/.* -> //')" = \
+    target/
+run "$FSCK_MINIXFS" "$T/slash.img"
+check_status "$v: fsck finds nothing wrong" 0
+
 # What else is refused.
 v="refused"
 long=$(LC_ALL=C awk 'BEGIN { for (i = 0; i < 61; i++) printf "x" }')

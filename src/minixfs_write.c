@@ -193,12 +193,14 @@ finish_writing(struct cmd *c)
 	return c->status;
 }
 
-/* The last component of a path of the host, or NULL for "/", "." or "..". */
+/*
+ * Where the last component of path starts, and in *len its length, the
+ * slashes after it left out; NULL for "/", "." or "..".
+ */
 static const char *
-base_name(const char *path)
+last_part(const char *path, size_t *len)
 {
 	const char *end, *p;
-	size_t len;
 
 	end = path + strlen(path);
 	while (end > path && end[-1] == '/')
@@ -206,10 +208,27 @@ base_name(const char *path)
 	p = end;
 	while (p > path && p[-1] != '/')
 		p--;
-	len = (size_t)(end - p);
-	if (len == 0 || (len <= 2 && strncmp(p, "..", len) == 0))
+	*len = (size_t)(end - p);
+	if (*len == 0 || (*len <= 2 && strncmp(p, "..", *len) == 0))
 		return NULL;
 	return p;
+}
+
+/*
+ * The last component of a path of the host, without the slashes after
+ * it, in buf of PATH_MAX bytes; NULL for "/", "." or "..".
+ */
+static const char *
+base_name(const char *path, char *buf)
+{
+	const char *p;
+	size_t len;
+
+	if ((p = last_part(path, &len)) == NULL || len >= PATH_MAX)
+		return NULL;
+	(void)memcpy(buf, p, len);
+	buf[len] = '\0';
+	return buf;
 }
 
 /*
@@ -228,11 +247,8 @@ split_path(struct cmd *c, const char *path, uint32_t *dir, char *name)
 
 	if (strlen(path) >= sizeof(buf))
 		return -ENAMETOOLONG;
-	if ((base = base_name(path)) == NULL)
+	if ((base = last_part(path, &len)) == NULL)
 		return -EINVAL;
-	len = strlen(base);
-	while (len > 0 && base[len - 1] == '/')
-		len--;
 	if (len > MFS_MAX_NAME)
 		return -ENAMETOOLONG;
 	(void)memcpy(name, base, len);
@@ -554,7 +570,7 @@ put_one(struct put *p, const char *host, uint32_t dir, const char *name,
 int
 cmd_put(int argc, char **argv)
 {
-	char name[MFS_MAX_NAME + 1];
+	char buf[PATH_MAX], name[MFS_MAX_NAME + 1];
 	struct mfs_inode dp;
 	struct cmd c;
 	struct put p;
@@ -599,7 +615,7 @@ cmd_put(int argc, char **argv)
 	/* Into the directory dest under their own names, or as dest. */
 	if (mfs_namei(&c.fs, dest, &dp) == 0 && mfs_is_dir(&dp)) {
 		for (i = 1; i < argc - 1; i++) {
-			if ((base = base_name(argv[i])) == NULL) {
+			if ((base = base_name(argv[i], buf)) == NULL) {
 				problem(&c, "%s: give the name it gets as the "
 				    "last argument", argv[i]);
 				continue;
@@ -887,7 +903,7 @@ cmd_mv(int argc, char **argv)
 int
 cmd_ln(int argc, char **argv)
 {
-	char name[MFS_MAX_NAME + 1];
+	char buf[PATH_MAX], name[MFS_MAX_NAME + 1];
 	struct mfs_inode ip;
 	struct mfs_new n;
 	struct owner o;
@@ -909,7 +925,8 @@ cmd_ln(int argc, char **argv)
 		usage();
 
 	open_for_writing(&c, argv[0]);
-	if ((r = place(&c, argv[2], base_name(argv[1]), &dir, name)) < 0) {
+	if ((r = place(&c, argv[2], base_name(argv[1], buf), &dir,
+	    name)) < 0) {
 		(void)failed(&c, argv[2], r);
 	} else if (symbolic) {
 		if ((r = new_in(&c, dir, &o, 0, now(), &n)) < 0 ||

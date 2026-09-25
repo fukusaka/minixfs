@@ -183,7 +183,8 @@ top of `tests/mkimage.c`).  The scripts:
   is made belongs to the directory it is made in, or to `-o`, and a
   group V1 cannot hold is refused; a name in the way is replaced, kept
   with `-n` or asked about with `-i`, a directory needs `-R` and does
-  not replace a file; names too long, the root, a directory below
+  not replace a file; `put -R` and `ln` take a name without the slashes
+  after it; names too long, the root, a directory below
   itself, a link to a directory, bad modes and owners are refused; a
   file that runs out of room leaves nothing; a file system not marked
   clean is refused without `-f` and keeps its mark with it, flex
