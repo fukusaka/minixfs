@@ -12,17 +12,21 @@ Linux added forms of V1 and V2 with longer names and a state word, and
 Minix-vmd a form of V1 and V2 with a super block and directories of its
 own.
 The tools of this package read all of them in either byte order;
-.Xr minixfs 1 ,
-.Xr mount_minixfs 8
+.Xr minixfs 1
 and
 .Xr dump_minixfs 8
 read,
 .Xr newfs_minixfs 8 ,
 .Xr fsck_minixfs 8 ,
-.Xr tunefs_minixfs 8
-and
+.Xr tunefs_minixfs 8 ,
 .Xr restore_minixfs 8
+and, with
+.Fl w ,
+.Xr mount_minixfs 8
 also write.
+Those that write an image lock it with
+.Xr fcntl 2
+while they have it open, and refuse one that another holds.
 .Ss Layout
 A file system is a sequence of blocks, of 1024 bytes in V1 and V2 and of
 the size its super block gives in V3:

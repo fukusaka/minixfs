@@ -15,8 +15,8 @@ file systems, on Linux, FreeBSD, NetBSD and MINIX 3 itself:
 ## Status
 
 Read-only access to V1, V2 and V3 file systems in either byte order,
-through the `minixfs` command, read-only mounts through FUSE with
-`mount_minixfs`, empty file systems of any of them with
+through the `minixfs` command, mounts through FUSE with
+`mount_minixfs`, read-only or, with `-w`, read-write, empty file systems of any of them with
 `newfs_minixfs`, consistency checks and repairs with `fsck_minixfs`,
 changes of settings with `tunefs_minixfs`, and dumps in the format of
 BSD dump with `dump_minixfs`, which `restore_minixfs` restores, as it
@@ -108,11 +108,22 @@ super block is then still in place, so `info` looks right, while the
 rest reads as damage.  `fsck_minixfs -y -M` repairs such an image in
 place and leaves the other side alone.
 
-    mount_minixfs [-M SIZE:HEADS:SIDE] [FUSE options] IMAGE MOUNTPOINT
+    mount_minixfs [-w [-u always|sync|seconds]] [-M SIZE:HEADS:SIDE]
+        [FUSE options] IMAGE MOUNTPOINT
 
-mounts the image read-only.  Inode numbers, modes, owners, times and
-device numbers are those of the image.  Unmount it with `fusermount3 -u
-MOUNTPOINT` on Linux or `umount MOUNTPOINT` on the BSDs.
+mounts the image, read-only unless `-w` is given.  Inode numbers,
+modes, owners, times and device numbers are those of the image.  With
+`-w`, files, directories and links can be made, removed, renamed and
+changed; the kernel checks permissions, and new files belong to the
+caller, with the group of their directory where the inode cannot hold
+that of the caller (a byte in V1).  While mounted for writing, the
+image is locked against other writers and not marked clean; unmounting
+marks it clean again.  An image that is not marked clean, or has flex
+directories, is mounted read-only with a warning.  `-u` says when the
+bit maps go to the image: at fsync and unmount (`sync`, the default),
+as they change (`always`), or also after so many seconds.  Unmount it
+with `fusermount3 -u MOUNTPOINT` on Linux or `umount MOUNTPOINT` on the
+BSDs.
 
 The commands that write an image lock it with fcntl(2) while they have
 it open, and refuse an image that another holds.

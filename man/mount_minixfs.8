@@ -8,6 +8,10 @@
 .Nd mount a MINIX file system image with FUSE
 .Sh SYNOPSIS
 .Nm
+.Oo
+.Fl w
+.Op Fl u Cm always | sync | Ar seconds
+.Oc
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
 .Op Ar FUSE options
 .Ar image
@@ -27,10 +31,16 @@ Every version, V1, V2 and V3, in either byte order, and the file systems
 of Minix-vmd are read; see
 .Xr minixfs 5 .
 .Pp
-The mount is read-only and single-threaded: the options
+The mount is read-only unless
+.Fl w
+is given, and single-threaded: the options
 .Fl s
 and
-.Fl o Ar ro
+.Fl o Ar ro ,
+or
+.Fl o Ar rw,default_permissions
+with
+.Fl w ,
 are always given to FUSE.
 Inode numbers, modes, link counts, owners, times and device numbers are
 those of the image.
@@ -43,10 +53,51 @@ are passed on to FUSE.
 .Pp
 The options are:
 .Bl -tag -width Ds
+.It Fl w
+Mount the file system for writing.
+Files, directories, symbolic links, hard links, pipes and devices can be
+made, removed, renamed and changed.
+The kernel checks permissions against the modes and owners in the image.
+A new file belongs to the caller, but takes the group of its directory
+where the inode cannot hold the group of the caller, as in V1, whose
+inodes keep the group in a byte.
+The mtime and ctime of what changes are set; atimes are not.
+.Pp
+While the file system is mounted,
+.Ar image
+is locked against other programs that write it, such as
+.Nm fsck_minixfs Fl y ,
+and its clean mark is away, as Linux and MINIX 3 take it away; unmounting
+puts it back.
+A file system that is not marked clean, or that has the flex directories
+of Minix-vmd, which this cannot write, is mounted read-only with a
+warning.
+.It Fl u Cm always | sync | Ar seconds
+When the bit maps, which say which inodes and zones are in use, go to
+the image: at
+.Xr fsync 2
+and unmount, as fuse2fs does
+.Pq Cm sync , No the default ;
+as they change, as ntfs-3g does
+.Pq Cm always ;
+or, besides, with the first change after
+.Ar seconds
+have gone since they last did, as
+.Xr update 8
+of MINIX writes everything every 30 seconds.
+Everything else goes to the image as it changes.
+If
+.Nm
+dies, the image is left not marked clean, and with
+.Cm sync
+the maps may be behind the inodes;
+.Nm fsck_minixfs Fl y
+puts them right.
 .It Fl M Ar size : Ns Ar heads : Ns Ar side
-Read an image that holds the file system in the tracks of one side of a
-disk only, as for
-.Xr minixfs 1 .
+Take an image that holds the file system in the tracks of one side of a
+disk only, as
+.Xr minixfs 1
+does.
 .El
 .Pp
 The file system is unmounted with
@@ -57,22 +108,30 @@ on the BSDs.
 .Sh EXIT STATUS
 .Nm
 exits with 0 when the file system has been unmounted, 1 if the image
-cannot be opened or FUSE fails, and 2 for a usage error.
+cannot be opened, FUSE fails or the image cannot be written back, and 2
+for a usage error.
 .Sh EXAMPLES
+Look at an image:
 .Bd -literal -offset indent
 $ mount_minixfs usr.img /mnt
 $ ls -l /mnt
 $ fusermount3 -u /mnt
 .Ed
+.Pp
+Copy a tree into an image, with the maps written as they change:
+.Bd -literal -offset indent
+$ mount_minixfs -w -u always usr.img /mnt
+$ cp -R src /mnt
+$ fusermount3 -u /mnt
+.Ed
 .Sh SEE ALSO
 .Xr minixfs 1 ,
 .Xr minixfs 5 ,
-.Xr fsck_minixfs 8
+.Xr fsck_minixfs 8 ,
+.Xr newfs_minixfs 8
 .Sh AUTHORS
 .An Shoichi Fukusaka
 .Sh BUGS
-The file system cannot be written.
-.Pp
 On
 .Nx
 10.1, looking up

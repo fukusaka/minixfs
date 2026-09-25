@@ -152,8 +152,13 @@ top of `tests/mkimage.c`).  The scripts:
   `tunefs_minixfs` and `newfs_minixfs` meet, but not a reader.
 - `t_fuse.sh` - where `mount_minixfs` is built and mounting is allowed:
   the tree read through the kernel in four formats, with its names,
-  contents, modes, owners, inode numbers and device numbers.  Skipped
-  otherwise.  `MINIXFS_FUSE` names the program; `FUSE_SUDO` is a
+  contents, modes, owners, inode numbers and device numbers; and with
+  `-w`, in three formats, the tree changed through the kernel as a copy
+  on the host is changed, the image not marked clean and locked while
+  mounted, the maps behind with `-u sync` and written with `always` or
+  seconds, and afterwards marked clean, passing `fsck_minixfs` and
+  holding what the host does; a file system not marked clean is mounted
+  read-only.  Skipped otherwise.  `MINIXFS_FUSE` names the program; `FUSE_SUDO` is a
   command to mount and read with where users cannot mount, such as
   `sudo` on NetBSD.
 

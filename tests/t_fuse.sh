@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: BSD-2-Clause
 # Copyright (c) 2026 Shoichi Fukusaka
 #
-# Mount images with mount_minixfs and read them through the kernel.  The
+# Mount images with mount_minixfs and read them through the kernel; then
+# mount them with -w and change them through the kernel as a directory of
+# the host is changed, and the image holds what the host does.  The
 # checks need a FUSE build ("make fuse") and the right to mount; without
 # them they are skipped.
 #
@@ -23,10 +25,12 @@ as_mounter() {
 	$FUSE_SUDO "$@"
 }
 
-# mount_image IMAGE DIR - mount in the background and wait until the
-# root directory shows the tree.  Sets fuse_pid; returns 1 on failure.
+# mount_image IMAGE DIR [OPTIONS] - mount in the background and wait until
+# the root directory shows the tree.  Sets fuse_pid; returns 1 on failure.
 mount_image() {
-	as_mounter "$MINIXFS_FUSE" -f "$1" "$2" 2>"$T/fuse.err" &
+	# OPTIONS are several words or none, split on purpose.
+	# shellcheck disable=SC2086
+	as_mounter "$MINIXFS_FUSE" -f $3 "$1" "$2" 2>"$T/fuse.err" &
 	fuse_pid=$!
 	_mount_image_i=0
 	while [ "$_mount_image_i" -lt 10 ]; do
@@ -158,5 +162,103 @@ for variant in "version=1 namelen=14:be:1024" \
 	check_status "$v: the mount is unmounted" 0
 	check_true "$v: mount_minixfs exits cleanly" test "$fuse_status" -eq 0
 done
+
+# Writing.  The same commands run on the mount and on a copy of the tree
+# on the host; the image is then a copy of that.
+change() {
+	for _change_d in "$mnt" "$H"; do
+		as_mounter sh -c '
+			cd "$1" || exit 1
+			mkdir -p new/deep &&
+			cp "$2" new/data &&
+			ln new/data link &&
+			ln -s new/data sym &&
+			mv new/deep moved &&
+			mv etc/b1025 moved/b &&
+			mkfifo fifo &&
+			chmod 0600 link &&
+			dd if=/dev/null of=usr/big bs=1 seek=5000 \
+			    2>/dev/null &&
+			dd if=/dev/null of=etc/one bs=1 seek=300000 \
+			    2>/dev/null &&
+			echo more >>new/data &&
+			rm bin/sh etc/sh.link &&
+			rm -r usr/a/b/c &&
+			touch -t 200101010000 moved
+		' sh "$_change_d" "$T/zero" || return 1
+	done
+}
+
+# writable NAME NEWFS-OPTIONS FLUSH STATUS - make the test tree into a
+# file system with NEWFS-OPTIONS, mount it with -w -u FLUSH, change it,
+# and check it: while mounted, fsck exits with STATUS, as the maps are
+# behind the inodes or not.
+writable() {
+	v="-w $1"
+	exp="$T/exp"
+	H="$T/host"
+	rm -rf "$exp" "$H" "$T/img"
+	sed -e "s/@FS@/version=2/" -e "s/@ORDER@/le/" -e "s/@BLOCKS@/4096/" \
+	    -e "s/@LOGZONE@/0/" tests/tree.spec >"$T/spec"
+	mkimage "$T/spec" "$T/tree.img" "$exp"
+	# Owned by who runs the test, so that the mount may be written.
+	# NEWFS-OPTIONS are several words, split on purpose.
+	# shellcheck disable=SC2086
+	run "$NEWFS_MINIXFS" $2 -d "$exp" -s 8192 "$T/img"
+	cp -R "$exp" "$H"
+	if ! mount_image "$T/img" "$mnt" "-w -u $3"; then
+		kill "$fuse_pid" 2>/dev/null
+		fail "$v: the image is mounted for writing" \
+		    "$(head -5 "$T/fuse.err")"
+		return
+	fi
+	check_true "$v: the image is not marked clean while mounted" \
+	    test "$(info_field "$T/img" clean)" = no
+	run "$TUNEFS_MINIXFS" -c clean "$T/img"
+	check_err "$v: another writer is refused" "busy"
+	check_true "$v: the tree is changed through the kernel" change
+	# -u seconds writes the maps with the first change after them.
+	case $3 in
+	[0-9]*)
+		sleep $(($3 + 1))
+		as_mounter touch "$mnt/late" "$H/late"
+		;;
+	esac
+	run "$FSCK_MINIXFS" "$T/img"
+	check_status "$v: -u $3, while mounted: fsck exits with $4" "$4"
+	unmount_image "$mnt"
+	check_true "$v: mount_minixfs exits cleanly" test "$fuse_status" -eq 0
+	check_true "$v: unmounted, the image is marked clean" \
+	    test "$(info_field "$T/img" clean)" = yes
+	run "$FSCK_MINIXFS" "$T/img"
+	check_status "$v: fsck finds nothing wrong" 0
+	rm -rf "$T/x"
+	run "$MINIXFS" extract "$T/img" "$T/x"
+	tree_listing "$H" >"$T/want"
+	tree_listing "$T/x" >"$T/got"
+	check_same_file "$v: the image holds what the host does" \
+	    "$T/want" "$T/got"
+}
+
+# V1 keeps a group of a byte: the tree gets group 0.
+writable "V1/le" "-V 1 -o $(id -u):0" sync 1
+writable "V2/be, 30-character names" "-V 2 -l 30 -B be" always 0
+writable "V3/le" "-V 3" 1 0
+
+# A file system not marked clean is mounted read-only.
+run "$TUNEFS_MINIXFS" -c dirty "$T/img"
+if mount_image "$T/img" "$mnt" -w; then
+	check_true "-w, not clean: the warning says so" \
+	    grep -q "not marked clean; check it with fsck_minixfs" \
+	    "$T/fuse.err"
+	check_true "-w, not clean: the mount cannot be written" \
+	    test "$(can_write "$mnt/new" && echo yes)" != yes
+	unmount_image "$mnt"
+else
+	kill "$fuse_pid" 2>/dev/null
+	fail "-w, not clean: the image is mounted" "$(head -5 "$T/fuse.err")"
+fi
+run "$MINIXFS_FUSE" -u always "$T/img" "$mnt"
+check_status "-u without -w is a usage error" 2
 
 finish

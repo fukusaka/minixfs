@@ -15,7 +15,7 @@ FUSE ファイルシステムと管理用の道具一式です。
 ## 現状
 
 - `minixfs` コマンドによる、V1・V2・V3 ファイルシステムの読み出し（どちらのバイト順でも）
-- `mount_minixfs` による、FUSE での読み出し専用のマウント
+- `mount_minixfs` による、FUSE でのマウント（読み出し専用、`-w` で書き込み可能）
 - `newfs_minixfs` による、どの版でも空のファイルシステムの作成
 - `fsck_minixfs` による、整合性の検査と修復
 - `tunefs_minixfs` による、設定の変更
@@ -100,11 +100,18 @@ MINIX 1.5 のディスクは `-M 4608:2:0` で、トラックは 1 つおきに�
 superblock は正しい位置にあるので、`info` は正しく見えますが、残りは壊れているように読めます。
 `fsck_minixfs -y -M` は、そうしたイメージをその場で修復し、もう片方の面には手を付けません。
 
-    mount_minixfs [-M SIZE:HEADS:SIDE] [FUSE options] IMAGE MOUNTPOINT
+    mount_minixfs [-w [-u always|sync|seconds]] [-M SIZE:HEADS:SIDE]
+        [FUSE options] IMAGE MOUNTPOINT
 
-イメージを読み出し専用でマウントします。inode 番号、モード、所有者、時刻、デバイス番号は
-イメージのとおりです。アンマウントは、Linux では `fusermount3 -u MOUNTPOINT`、BSD では
-`umount MOUNTPOINT` で行います。
+イメージをマウントします。`-w` がなければ読み出し専用です。inode 番号、モード、所有者、時刻、
+デバイス番号はイメージのとおりです。`-w` を付けると、ファイル、ディレクトリ、リンクを、作り、消し、
+名前を変え、変更できます。アクセス許可はカーネルが検査し、新しいファイルは呼び出し元のものに
+なります。ただし、inode が呼び出し元のグループを持てないとき（V1 では 1 バイト）は、ディレクトリの
+グループになります。書き込みでマウントしている間、イメージはほかの書き手に対してロックされ、clean の
+印を外します。アンマウントで印を付け直します。clean の印のないイメージや flex ディレクトリのものは、
+警告を出して読み出し専用でマウントします。`-u` はビットマップをいつイメージに書くかで、fsync と
+アンマウントのとき（`sync`、既定）、変わるたび（`always`）、またはそれに加えて指定の秒数ごとです。
+アンマウントは、Linux では `fusermount3 -u MOUNTPOINT`、BSD では `umount MOUNTPOINT` で行います。
 
 イメージに書き込むコマンドは、開いている間イメージを fcntl(2) でロックし、ほかのコマンドが
 ロックしているイメージは拒みます。

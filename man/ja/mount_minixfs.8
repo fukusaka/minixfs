@@ -14,6 +14,10 @@
 .Nd MINIX ファイルシステムのイメージを FUSE でマウントする
 .Sh SYNOPSIS
 .Nm
+.Oo
+.Fl w
+.Op Fl u Cm always | sync | Ar seconds
+.Oc
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
 .Op Ar FUSE options
 .Ar image
@@ -35,12 +39,18 @@ V1・V2・V3 のどの版も、\:どちらのバイト順でも、\:Minix-vmd �
 .Xr minixfs 5
 を参照してください。
 .Pp
-マウントは読み出し専用で、\:単一スレッドです。
+マウントは、\:
+.Fl w
+がなければ読み出し専用で、\:単一スレッドです。
 FUSE には常に
 .Fl s
-と
+と、\:
 .Fl o Ar ro
-を渡します。
+（\:
+.Fl w
+なら
+.Fl o Ar rw,default_permissions
+）を渡します。
 inode 番号、\:モード、\:リンク数、\:所有者、\:時刻、\:デバイス番号はイメージのとおりです。
 イメージは FUSE が動き出す前に開くので、\:相対パスでも構いません。
 ほかのオプションは FUSE に渡します。
@@ -52,10 +62,45 @@ inode 番号、\:モード、\:リンク数、\:所有者、\:時刻、\:デバ�
 .Pp
 オプションは次のとおりです。
 .Bl -tag -width Ds
+.It Fl w
+ファイルシステムを書き込みでマウントします。
+ファイル、\:ディレクトリ、\:シンボリックリンク、\:ハードリンク、\:FIFO、\:デバイスを、\:作り、\:消し、\:名前を変え、\:変更できます。
+アクセス許可は、\:イメージのモードと所有者に照らして\:カーネルが検査します。
+新しいファイルは呼び出し元のものになりますが、\:inode が呼び出し元のグループを持てないときは、\:そのディレクトリのグループになります。
+V1 の inode はグループを 1 バイトで持つので、\:多くの場合こうなります。
+変わったものの mtime と ctime を設定し、\:atime は変えません。
+.Pp
+マウントしている間、\:
+.Ar image
+は、\:
+.Nm fsck_minixfs Fl y
+のような\:書き込むほかのプログラムに\:対してロックされます。
+また、\:Linux と MINIX 3 と同じく\:clean の印を外し、\:アンマウントで付け直します。
+clean の印のないファイルシステムや、\:書き込めない Minix-vmd の flex ディレクトリのものは、\:警告を出して読み出し専用でマウントします。
+.It Fl u Cm always | sync | Ar seconds
+どの inode と zone が使用中かを示すビットマップを、\:いつイメージに書くかです。
+fuse2fs と同じく
+.Xr fsync 2
+とアンマウントのとき（\:
+.Cm sync ,
+既定）、\:ntfs-3g と同じく変わるたび（\:
+.Cm always ）、\:または、\:それらに加えて、\:前回から
+.Ar seconds
+秒がたった後の最初の変更のときです。
+最後のものは、\:30 秒ごとにすべてを書く MINIX の
+.Xr update 8
+にならったものです。
+ほかのものは、\:変わるたびにイメージに書きます。
+.Nm
+が途中で止まると、\:イメージは clean の印のないまま残り、\:
+.Cm sync
+ではビットマップが inode より遅れていることがあります。
+.Nm fsck_minixfs Fl y
+がこれを直します。
 .It Fl M Ar size : Ns Ar heads : Ns Ar side
-ディスクの片面のトラックだけに\:ファイルシステムが\:あるイメージを\:読みます。
+ディスクの片面のトラックだけに\:ファイルシステムが\:あるイメージを\:、\:
 .Xr minixfs 1
-と同じです。
+と同じように扱います。
 .El
 .Pp
 アンマウントは、\:Linux では
@@ -65,22 +110,29 @@ inode 番号、\:モード、\:リンク数、\:所有者、\:時刻、\:デバ�
 で行います。
 .Sh EXIT STATUS
 .Nm
-は、\:ファイルシステムがアンマウントされれば 0、\:イメージを開けないか FUSE が失敗すれば 1、\:使い方の誤りなら 2 で終了します。
+は、\:ファイルシステムがアンマウントされれば 0、\:イメージを開けないか、\:FUSE が失敗するか、\:イメージに書き戻せなければ 1、\:使い方の誤りなら 2 で終了します。
 .Sh EXAMPLES
+イメージを見ます。
 .Bd -literal -offset indent
 $ mount_minixfs usr.img /mnt
 $ ls -l /mnt
 $ fusermount3 -u /mnt
 .Ed
+.Pp
+ビットマップを変わるたびに書きながら、\:ツリーをイメージに写します。
+.Bd -literal -offset indent
+$ mount_minixfs -w -u always usr.img /mnt
+$ cp -R src /mnt
+$ fusermount3 -u /mnt
+.Ed
 .Sh SEE ALSO
 .Xr minixfs 1 ,
 .Xr minixfs 5 ,
-.Xr fsck_minixfs 8
+.Xr fsck_minixfs 8 ,
+.Xr newfs_minixfs 8
 .Sh AUTHORS
 .An Shoichi Fukusaka
 .Sh BUGS
-ファイルシステムに\:書き込むことは\:で\:きません。
-.Pp
 .Nx
 10.1 では、\:ルートのすぐ下のディレクトリで
 .Ql \&..

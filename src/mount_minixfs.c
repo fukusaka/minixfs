@@ -2,11 +2,12 @@
  * SPDX-License-Identifier: BSD-2-Clause
  * Copyright (c) 2026 Shoichi Fukusaka
  *
- * mount_minixfs - mount a MINIX file system image, read-only, with FUSE.
+ * mount_minixfs - mount a MINIX file system image with FUSE.
  *
- *	mount_minixfs [-M SIZE:HEADS:SIDE] [FUSE options] IMAGE MOUNTPOINT
+ *	mount_minixfs [-w [-u always|sync|seconds]] [-M SIZE:HEADS:SIDE]
+ *	    [FUSE options] IMAGE MOUNTPOINT
  *
- * -M reads an image that holds the file system in the tracks of one side
+ * -M takes an image that holds the file system in the tracks of one side
  * only, as minixfs(1) does.
  *
  * The file system is served through the high-level FUSE API, which
@@ -14,10 +15,22 @@
  * FUSE_USE_VERSION selects the form of that API: 31 (FUSE 3, the
  * default) or 26 (FUSE 2, for older librefuse).
  *
- * The mount is always read-only and single-threaded, since the library
- * keeps one set of block buffers per image.  The image is opened before
- * FUSE takes over, so a relative path works even after FUSE has changed
- * directory.
+ * The mount is read-only, and with -w read-write.  A file system that is
+ * not marked clean, or has the flex directories of Minix-vmd, is mounted
+ * read-only all the same, with a warning.  While it is mounted for
+ * writing, the image is locked against other writers and its clean mark
+ * is away; unmounting puts the mark back.  The kernel checks permissions
+ * (default_permissions), and new files belong to the caller, or to the
+ * group of their directory where the inode cannot hold that of the
+ * caller.  -u says
+ * when the bit maps go to the image: at fsync and unmount (sync, the
+ * default, as fuse2fs does), as they change (always), or also when so
+ * many seconds have gone since they last did (as update(8) of MINIX
+ * does every 30).
+ *
+ * The mount is single-threaded, since the library keeps one set of block
+ * buffers per image.  The image is opened before FUSE takes over, so a
+ * relative path works even after FUSE has changed directory.
  */
 
 #include "compat.h"
@@ -33,9 +46,12 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <fuse.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+#include <unistd.h>
 
 #include "mfs.h"
 
@@ -48,19 +64,39 @@
 #define FILL(filler, buf, name, st)	(filler)((buf), (name), (st), 0)
 #endif
 
+/* rename(2) flags of Linux, which FUSE 3 hands on. */
+#define RENAME_NOREPLACE_	1
+#define RENAME_EXCHANGE_	2
+
 /* The options every mount gets; FUSE wants them writable. */
 static char opt_single[] = "-s";
 static char opt_o[] = "-o";
 #if FUSE_USE_VERSION >= 30
 static char opt_ro[] = "ro";
+static char opt_rw[] = "rw,default_permissions";
 #else
 static char opt_ro[] = "ro,use_ino,readdir_ino";
+static char opt_rw[] = "rw,default_permissions,use_ino,readdir_ino";
 #endif
+
+/* The mounted file system. */
+struct mount {
+	struct mfs	fs;
+	int		rw;		/* -w, and the image allows it */
+	long		every;		/* -u seconds, or 0 */
+	int64_t		flushed;	/* when the maps last went out */
+};
+
+static struct mount *
+mount_of(void)
+{
+	return fuse_get_context()->private_data;
+}
 
 static struct mfs *
 image(void)
 {
-	return fuse_get_context()->private_data;
+	return &mount_of()->fs;
 }
 
 /* Fill *st from an inode. */
@@ -131,7 +167,7 @@ mfs_open_file(const char *path, struct fuse_file_info *fi)
 	struct mfs_inode ino;
 	int r;
 
-	if ((fi->flags & O_ACCMODE) != O_RDONLY)
+	if ((fi->flags & O_ACCMODE) != O_RDONLY && !mount_of()->rw)
 		return -EROFS;
 	if ((r = mfs_namei(image(), path, &ino)) < 0)
 		return r;
@@ -248,8 +284,429 @@ mfs_statfs(const char *path, struct statvfs *sv)
 	sv->f_ffree = inodes;
 	sv->f_favail = inodes;
 	sv->f_namemax = fs->namelen;
-	sv->f_flag = ST_RDONLY;
+	sv->f_flag = mount_of()->rw ? 0 : ST_RDONLY;
 	return 0;
+}
+
+/*
+ * Writing, with -w.
+ */
+
+#define MAX_DEV_PART	255		/* major and minor numbers of MINIX */
+#define MAX_UID		65535
+#define MAX_GID_V1	255		/* the gid of a V1 inode is a byte */
+#define MAX_GID		65535
+
+/*
+ * The time now.  time(3) returns nonsense under the AddressSanitizer of
+ * NetBSD/i386, and clock_gettime(2) does not.
+ */
+static int64_t
+now(void)
+{
+	struct timespec ts;
+
+	if (clock_gettime(CLOCK_REALTIME, &ts) == -1)
+		return 0;
+	return (int64_t)ts.tv_sec;
+}
+
+/*
+ * The end of a change: with -u seconds, write the maps out when that
+ * long has gone since they last were.  Returns r, or the failure of the
+ * write.
+ */
+static int
+changed(int r)
+{
+	struct mount *m;
+	int64_t t;
+	int e;
+
+	m = mount_of();
+	if (m->every == 0)
+		return r;
+	t = now();
+	if (t - m->flushed < m->every)
+		return r;
+	m->flushed = t;
+	if ((e = mfs_sync(&m->fs)) < 0 && r >= 0)
+		return e;
+	return r;
+}
+
+/*
+ * The directory that holds path, and the last component of path in name,
+ * which holds MFS_MAX_NAME + 1 bytes.
+ */
+static int
+parent_of(const char *path, uint32_t *dir, char *name)
+{
+	struct mfs_inode dp;
+	char buf[PATH_MAX];
+	char *slash;
+	int r;
+
+	if (strlen(path) >= sizeof(buf))
+		return -ENAMETOOLONG;
+	(void)strcpy(buf, path);
+	if ((slash = strrchr(buf, '/')) == NULL)
+		return -EINVAL;
+	if (strlen(slash + 1) > MFS_MAX_NAME)
+		return -ENAMETOOLONG;
+	(void)strcpy(name, slash + 1);
+	*slash = '\0';
+	if ((r = mfs_namei(image(), buf[0] == '\0' ? "/" : buf, &dp)) < 0)
+		return r;
+	*dir = dp.num;
+	return 0;
+}
+
+/*
+ * The owner of a new file in directory dir: the caller.  A group that
+ * the inode cannot hold, as most are in V1, where it is a byte, gives
+ * way to that of the directory, as BSD gives every new file.
+ */
+static int
+new_owner(uint32_t dir, struct mfs_new *n)
+{
+	struct fuse_context *ctx;
+	struct mfs_inode dp;
+	int r;
+
+	ctx = fuse_get_context();
+	if (ctx->uid > MAX_UID)
+		return -EINVAL;
+	n->uid = (uint16_t)ctx->uid;
+	if (ctx->gid <= (image()->version == 1 ? MAX_GID_V1 : MAX_GID)) {
+		n->gid = (uint16_t)ctx->gid;
+		return 0;
+	}
+	if ((r = mfs_read_inode(image(), dir, &dp)) < 0)
+		return r;
+	n->gid = dp.gid;
+	return 0;
+}
+
+/* Make path, of mode and device number rdev, owned by the caller. */
+static int
+make(const char *path, mode_t mode, uint32_t rdev, struct mfs_inode *ip)
+{
+	char name[MFS_MAX_NAME + 1];
+	struct mfs_new n;
+	uint32_t dir;
+	int r;
+
+	(void)memset(&n, 0, sizeof(n));
+	if ((r = parent_of(path, &dir, name)) < 0 ||
+	    (r = new_owner(dir, &n)) < 0)
+		return r;
+	n.mode = (uint16_t)mode;
+	n.rdev = rdev;
+	n.time = (uint32_t)now();
+	return changed(mfs_make(image(), dir, name, &n, ip));
+}
+
+static int
+mfs_create_file(const char *path, mode_t mode, struct fuse_file_info *fi)
+{
+	struct mfs_inode ip;
+	int r;
+
+	if ((r = make(path, (mode & 07777) | S_IFREG, 0, &ip)) < 0)
+		return r;
+	fi->fh = ip.num;
+	return 0;
+}
+
+static int
+mfs_make_node(const char *path, mode_t mode, dev_t rdev)
+{
+	struct mfs_inode ip;
+	uint32_t dev;
+
+	dev = 0;
+	if (S_ISCHR(mode) || S_ISBLK(mode)) {
+		if (major(rdev) > MAX_DEV_PART || minor(rdev) > MAX_DEV_PART)
+			return -EINVAL;
+		dev = (uint32_t)(major(rdev) << 8 | minor(rdev));
+	}
+	return make(path, mode, dev, &ip);
+}
+
+static int
+mfs_make_dir(const char *path, mode_t mode)
+{
+	struct mfs_inode ip;
+
+	return make(path, (mode & 07777) | S_IFDIR, 0, &ip);
+}
+
+static int
+mfs_make_symlink(const char *target, const char *path)
+{
+	char name[MFS_MAX_NAME + 1];
+	struct mfs_inode ip;
+	struct mfs_new n;
+	uint32_t dir;
+	int r;
+
+	(void)memset(&n, 0, sizeof(n));
+	if ((r = parent_of(path, &dir, name)) < 0 ||
+	    (r = new_owner(dir, &n)) < 0)
+		return r;
+	n.time = (uint32_t)now();
+	return changed(mfs_symlink(image(), dir, name, target, &n, &ip));
+}
+
+static int
+mfs_make_link(const char *from, const char *to)
+{
+	char name[MFS_MAX_NAME + 1];
+	struct mfs_inode ip;
+	uint32_t dir;
+	int r;
+
+	if ((r = mfs_namei(image(), from, &ip)) < 0 ||
+	    (r = parent_of(to, &dir, name)) < 0)
+		return r;
+	return changed(mfs_link(image(), ip.num, dir, name,
+	    (uint32_t)now()));
+}
+
+static int
+mfs_remove(const char *path)
+{
+	char name[MFS_MAX_NAME + 1];
+	uint32_t dir;
+	int r;
+
+	if ((r = parent_of(path, &dir, name)) < 0)
+		return r;
+	return changed(mfs_unlink(image(), dir, name, (uint32_t)now()));
+}
+
+static int
+mfs_remove_dir(const char *path)
+{
+	char name[MFS_MAX_NAME + 1];
+	uint32_t dir;
+	int r;
+
+	if ((r = parent_of(path, &dir, name)) < 0)
+		return r;
+	return changed(mfs_rmdir(image(), dir, name, (uint32_t)now()));
+}
+
+#if FUSE_USE_VERSION >= 30
+static int
+mfs_move(const char *from, const char *to, unsigned int flags)
+#else
+static int
+mfs_move(const char *from, const char *to)
+#endif
+{
+	char oname[MFS_MAX_NAME + 1], nname[MFS_MAX_NAME + 1];
+	uint32_t odir, ndir;
+	int noreplace, r;
+
+	noreplace = 0;
+#if FUSE_USE_VERSION >= 30
+	if (flags & ~RENAME_NOREPLACE_)
+		return -EINVAL;
+	noreplace = (flags & RENAME_NOREPLACE_) != 0;
+#endif
+	if ((r = parent_of(from, &odir, oname)) < 0 ||
+	    (r = parent_of(to, &ndir, nname)) < 0)
+		return r;
+	return changed(mfs_rename(image(), odir, oname, ndir, nname,
+	    noreplace, (uint32_t)now()));
+}
+
+/*
+ * The inode of path, or of the file open as fi: an open file that was
+ * renamed or removed is still found.
+ */
+static int
+inode_of(const char *path, struct fuse_file_info *fi, struct mfs_inode *ip)
+{
+	if (fi != NULL && fi->fh != 0)
+		return mfs_read_inode(image(), (uint32_t)fi->fh, ip);
+	return mfs_namei(image(), path, ip);
+}
+
+/* Write the inode back with its ctime set. */
+static int
+put_changed(struct mfs_inode *ip)
+{
+	ip->ctime = (uint32_t)now();
+	return changed(mfs_put_inode(image(), ip));
+}
+
+static int
+set_mode(const char *path, mode_t mode, struct fuse_file_info *fi)
+{
+	struct mfs_inode ip;
+	int r;
+
+	if ((r = inode_of(path, fi, &ip)) < 0)
+		return r;
+	ip.mode = (uint16_t)((ip.mode & MFS_S_IFMT) | (mode & 07777));
+	return put_changed(&ip);
+}
+
+static int
+set_owner(const char *path, uid_t uid, gid_t gid, struct fuse_file_info *fi)
+{
+	struct mfs_inode ip;
+	int r;
+
+	if ((r = inode_of(path, fi, &ip)) < 0)
+		return r;
+	if (uid != (uid_t)-1 && uid > MAX_UID)
+		return -EINVAL;
+	if (gid != (gid_t)-1 &&
+	    gid > (image()->version == 1 ? MAX_GID_V1 : MAX_GID))
+		return -EINVAL;
+	if (uid != (uid_t)-1)
+		ip.uid = (uint16_t)uid;
+	if (gid != (gid_t)-1)
+		ip.gid = (uint16_t)gid;
+	return put_changed(&ip);
+}
+
+static int
+set_size(const char *path, off_t size, struct fuse_file_info *fi)
+{
+	struct mfs_inode ip;
+	int r;
+
+	if (size < 0)
+		return -EINVAL;
+	if ((uint64_t)size > UINT32_MAX)
+		return -EFBIG;
+	if ((r = inode_of(path, fi, &ip)) < 0)
+		return r;
+	if (mfs_is_dir(&ip))
+		return -EISDIR;
+	if ((r = mfs_resize(image(), &ip, (uint32_t)size)) < 0)
+		return r;
+	ip.mtime = (uint32_t)now();
+	return put_changed(&ip);
+}
+
+/* The time of a timespec of utimensat(2): given, now, or unchanged. */
+static uint32_t
+new_time(const struct timespec *ts, uint32_t old)
+{
+	if (ts->tv_nsec == UTIME_OMIT)
+		return old;
+	if (ts->tv_nsec == UTIME_NOW)
+		return (uint32_t)now();
+	return (uint32_t)ts->tv_sec;
+}
+
+static int
+set_times(const char *path, const struct timespec ts[2],
+    struct fuse_file_info *fi)
+{
+	struct mfs_inode ip;
+	int r;
+
+	if ((r = inode_of(path, fi, &ip)) < 0)
+		return r;
+	ip.atime = new_time(&ts[0], ip.atime);
+	ip.mtime = new_time(&ts[1], ip.mtime);
+	return put_changed(&ip);
+}
+
+#if FUSE_USE_VERSION >= 30
+static int
+op_chmod(const char *path, mode_t mode, struct fuse_file_info *fi)
+{
+	return set_mode(path, mode, fi);
+}
+
+static int
+op_chown(const char *path, uid_t uid, gid_t gid, struct fuse_file_info *fi)
+{
+	return set_owner(path, uid, gid, fi);
+}
+
+static int
+op_truncate(const char *path, off_t size, struct fuse_file_info *fi)
+{
+	return set_size(path, size, fi);
+}
+
+static int
+op_utimens(const char *path, const struct timespec ts[2],
+    struct fuse_file_info *fi)
+{
+	return set_times(path, ts, fi);
+}
+#else
+static int
+op_chmod(const char *path, mode_t mode)
+{
+	return set_mode(path, mode, NULL);
+}
+
+static int
+op_chown(const char *path, uid_t uid, gid_t gid)
+{
+	return set_owner(path, uid, gid, NULL);
+}
+
+static int
+op_truncate(const char *path, off_t size)
+{
+	return set_size(path, size, NULL);
+}
+
+static int
+op_utimens(const char *path, const struct timespec ts[2])
+{
+	return set_times(path, ts, NULL);
+}
+#endif
+
+static int
+mfs_write_file(const char *path, const char *buf, size_t size, off_t off,
+    struct fuse_file_info *fi)
+{
+	struct mfs_inode ip;
+	int e, r;
+
+	if (off < 0)
+		return -EINVAL;
+	if ((uint64_t)off + size > UINT32_MAX)
+		return -EFBIG;
+	if ((r = inode_of(path, fi, &ip)) < 0)
+		return r;
+	r = mfs_pwrite(image(), &ip, buf, size, (uint32_t)off);
+	/* What was written before a failure stays, with its zones. */
+	ip.mtime = (uint32_t)now();
+	if ((e = put_changed(&ip)) < 0 && r >= 0)
+		r = e;
+	/* FUSE asks for a few pages at a time, which fits an int. */
+	return r < 0 ? r : (int)size;
+}
+
+static int
+mfs_sync_file(const char *path, int datasync, struct fuse_file_info *fi)
+{
+	struct mount *m;
+	int r;
+
+	(void)path;
+	(void)datasync;
+	(void)fi;
+	m = mount_of();
+	if ((r = mfs_sync(&m->fs)) < 0)
+		return r;
+	m->flushed = now();
+	return fsync(m->fs.fd) == -1 ? -errno : 0;
 }
 
 #if FUSE_USE_VERSION >= 30
@@ -259,14 +716,14 @@ mfs_init(struct fuse_conn_info *conn, struct fuse_config *cfg)
 	(void)conn;
 	cfg->use_ino = 1;
 	cfg->readdir_ino = 1;
-	return image();
+	return mount_of();
 }
 #else
 static void *
 mfs_init(struct fuse_conn_info *conn)
 {
 	(void)conn;
-	return image();
+	return mount_of();
 }
 #endif
 
@@ -274,25 +731,53 @@ static void
 usage(void)
 {
 	(void)fprintf(stderr,
-	    "usage: mount_minixfs [-M SIZE:HEADS:SIDE] [FUSE options] IMAGE "
-	    "MOUNTPOINT\n");
+	    "usage: mount_minixfs [-w [-u always|sync|seconds]] "
+	    "[-M SIZE:HEADS:SIDE]\n"
+	    "           [FUSE options] IMAGE MOUNTPOINT\n");
 	exit(2);
 }
 
-/*
- * Take IMAGE, the first argument that is not an option, and -M out of
- * argv, and build the arguments for FUSE in fargv: the rest, with a
- * read-only, single-threaded mount added.  FUSE options that take a value
- * ("-o x") are passed on as they are.
- */
-static const char *
-split_args(int argc, char **argv, char **fargv, int *fargc,
-    struct mfs_tracks *tracks)
+/* What the command line asks of the mount itself. */
+struct options {
+	struct mfs_tracks tracks;	/* -M */
+	const char	*image;
+	int		write;		/* -w */
+	int		always;		/* -u always */
+	long		every;		/* -u seconds */
+};
+
+/* -u: always, sync, or a number of seconds. */
+static void
+flush_option(const char *s, struct options *o)
 {
-	const char *img;
+	char *end;
+	long n;
+
+	if (strcmp(s, "always") == 0) {
+		o->always = 1;
+	} else if (strcmp(s, "sync") != 0) {
+		n = strtol(s, &end, 10);
+		if (*end != '\0' || end == s || n <= 0)
+			usage();
+		o->every = n;
+	}
+}
+
+/*
+ * Take IMAGE, the first argument that is not an option, and -M, -w and
+ * -u out of argv, and build the arguments for FUSE in fargv: the rest,
+ * with a single-threaded mount, read-only unless -w says otherwise, in
+ * place of the "ro" left for main() to change.  FUSE options that take a
+ * value ("-o x") are passed on as they are.
+ */
+static void
+split_args(int argc, char **argv, char **fargv, int *fargc,
+    struct options *o)
+{
+	const char *u;
 	int i, n;
 
-	img = NULL;
+	u = NULL;
 	n = 0;
 	fargv[n++] = argv[0];
 	fargv[n++] = opt_single;
@@ -302,43 +787,118 @@ split_args(int argc, char **argv, char **fargv, int *fargc,
 		if (n >= MAX_ARGS - 1)
 			usage();
 		if (strcmp(argv[i], "-M") == 0 && i + 1 < argc) {
-			if (mfs_parse_tracks(argv[++i], tracks) < 0)
+			if (mfs_parse_tracks(argv[++i], &o->tracks) < 0)
 				usage();
+		} else if (strcmp(argv[i], "-u") == 0 && i + 1 < argc) {
+			u = argv[++i];
+		} else if (strcmp(argv[i], "-w") == 0) {
+			o->write = 1;
 		} else if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
 			fargv[n++] = argv[i++];
 			fargv[n++] = argv[i];
-		} else if (argv[i][0] == '-' || img != NULL) {
+		} else if (argv[i][0] == '-' || o->image != NULL) {
 			fargv[n++] = argv[i];
 		} else {
-			img = argv[i];
+			o->image = argv[i];
 		}
 	}
+	if (u != NULL && !o->write)
+		usage();
+	if (u != NULL)
+		flush_option(u, o);
 	fargv[n] = NULL;
 	*fargc = n;
-	return img;
+}
+
+/* Open the image, for writing if -w asks and the image allows. */
+static void
+open_image(struct mount *m, const struct options *o)
+{
+	int r;
+
+	r = mfs_open_tracks(&m->fs, o->image, o->write, &o->tracks);
+	if (r == -EINVAL)
+		errx(1, "%s: not a MINIX file system", o->image);
+	if (r < 0)
+		errx(1, "%s: %s", o->image, strerror(-r));
+	m->rw = o->write;
+	if (m->rw && (m->fs.flex || !mfs_is_clean(&m->fs))) {
+		warnx("warning: %s: %s; mounted read-only", o->image,
+		    m->fs.flex ? "the flex directories of Minix-vmd cannot "
+		    "be written" : "not marked clean; check it with "
+		    "fsck_minixfs");
+		mfs_close(&m->fs);
+		if ((r = mfs_open_tracks(&m->fs, o->image, 0,
+		    &o->tracks)) < 0)
+			errx(1, "%s: %s", o->image, strerror(-r));
+		m->rw = 0;
+	}
+	if (!m->rw)
+		return;
+	mfs_maps_through(&m->fs, o->always);
+	if ((r = mfs_mark_in_use(&m->fs)) < 0)
+		errx(1, "%s: %s", o->image, strerror(-r));
+	m->every = o->every;
+	m->flushed = now();
+}
+
+/* After the unmount: the maps out, and the clean mark back. */
+static int
+close_image(struct mount *m, const char *path)
+{
+	int r;
+
+	r = 0;
+	if (m->rw && (r = mfs_sync(&m->fs)) == 0 &&
+	    (r = mfs_mark_clean(&m->fs, 1)) == 0 && fsync(m->fs.fd) == -1)
+		r = -errno;
+	mfs_close(&m->fs);
+	if (r < 0) {
+		warnx("%s: %s", path, strerror(-r));
+		return 1;
+	}
+	return 0;
+}
+
+static void
+write_ops(struct fuse_operations *ops)
+{
+	ops->create = mfs_create_file;
+	ops->mknod = mfs_make_node;
+	ops->mkdir = mfs_make_dir;
+	ops->symlink = mfs_make_symlink;
+	ops->link = mfs_make_link;
+	ops->unlink = mfs_remove;
+	ops->rmdir = mfs_remove_dir;
+	ops->rename = mfs_move;
+	ops->chmod = op_chmod;
+	ops->chown = op_chown;
+	ops->truncate = op_truncate;
+	ops->utimens = op_utimens;
+	ops->write = mfs_write_file;
+	ops->fsync = mfs_sync_file;
 }
 
 int
 main(int argc, char **argv)
 {
 	static struct fuse_operations ops;
-	struct mfs_tracks tracks;
+	static struct mount m;
 	char *fargv[MAX_ARGS];
-	struct mfs fs;
-	const char *img;
+	struct options o;
 	int fargc, r;
 
 	if (argc < 3)
 		usage();
-	(void)memset(&tracks, 0, sizeof(tracks));
-	if ((img = split_args(argc, argv, fargv, &fargc, &tracks)) == NULL)
+	(void)memset(&o, 0, sizeof(o));
+	split_args(argc, argv, fargv, &fargc, &o);
+	if (o.image == NULL)
 		usage();
-	if ((r = mfs_open_tracks(&fs, img, 0, &tracks)) < 0) {
-		if (r == -EINVAL)
-			errx(1, "%s: not a MINIX file system", img);
-		errx(1, "%s: %s", img, strerror(-r));
+	open_image(&m, &o);
+	if (m.rw) {
+		fargv[3] = opt_rw;
+		write_ops(&ops);
 	}
-
 	ops.getattr = mfs_getattr;
 	ops.readlink = mfs_readlink;
 	ops.open = mfs_open_file;
@@ -347,7 +907,8 @@ main(int argc, char **argv)
 	ops.statfs = mfs_statfs;
 	ops.init = mfs_init;
 
-	r = fuse_main(fargc, fargv, &ops, &fs);
-	mfs_close(&fs);
+	r = fuse_main(fargc, fargv, &ops, &m);
+	if (close_image(&m, o.image) != 0)
+		r = 1;
 	return r == 0 ? 0 : 1;
 }

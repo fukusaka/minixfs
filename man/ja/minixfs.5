@@ -18,15 +18,21 @@
 MINIX のファイルシステムには V1・V2・V3 の 3 つの版があります。
 Linux は V1 と V2 に長い名前と状態語を持つ形を加え、\:Minix-vmd は V1 と V2 に独自の superblock とディレクトリを持つ形を加えました。
 このパッケージの道具は、\:そのすべて\:を\:どちらのバイト順で\:も読みます。
-.Xr minixfs 1 ,
-.Xr mount_minixfs 8 ,
+.Xr minixfs 1
+と
 .Xr dump_minixfs 8
 は読むだけで、\:
 .Xr newfs_minixfs 8 ,
 .Xr fsck_minixfs 8 ,
 .Xr tunefs_minixfs 8 ,
-.Xr restore_minixfs 8
+.Xr restore_minixfs 8 ,
+.Fl w
+を付けた
+.Xr mount_minixfs 8
 は書きもします。
+書き込む道具は、\:開いている間\:イメージを
+.Xr fcntl 2
+でロックし、\:ほかの道具が\:ロックしているイメージは\:拒みます。
 .Ss 配置
 ファイルシステムはブロックの並びです。
 ブロックは V1 と V2 では 1024 バイトで、\:V3 では superblock が示す大きさです。
