@@ -217,6 +217,24 @@ run sh -c "echo y | \"$MINIXFS\" put -i \"$T/img\" \"$T/old\" /f"
 check_status "$v: put -i asks, and y replaces it" 0
 run "$MINIXFS" cat "$T/img" /f
 check_out "$v: y replaced the contents" "$T/old"
+# An answer longer than is read is still one answer: the next question
+# gets the next line.
+rm -rf "$T/w"
+mkdir "$T/w"
+printf 'one\n' >"$T/w/p"
+printf 'one\n' >"$T/w/q"
+run "$MINIXFS" mkdir "$T/img" /w
+run "$MINIXFS" put "$T/img" "$T/w/p" "$T/w/q" /w
+printf 'two\n' >"$T/w/p"
+printf 'two\n' >"$T/w/q"
+# The script is for the sh -c.
+# shellcheck disable=SC2016
+run sh -c 'printf "nnnnnnnnnnnnnnnnnnnnnnnn\ny\n" |
+    "$1" put -i "$2" "$3/p" "$3/q" /w' sh "$MINIXFS" "$T/img" "$T/w"
+check_true "$v: a long no keeps the first" \
+    test "$("$MINIXFS" cat "$T/img" /w/p)" = one
+check_true "$v: and the second gets its own answer" \
+    test "$("$MINIXFS" cat "$T/img" /w/q)" = two
 run "$MINIXFS" mkdir "$T/img" /dir
 run "$MINIXFS" put "$T/img" "$T/old" /dir
 check_status "$v: put into a directory goes under the name of the file" 0

@@ -323,7 +323,7 @@ clear_way(struct put *p, uint32_t dir, const char *name, const char *path,
     int isdir, struct mfs_inode *ip, int *skip)
 {
 	char line[16];
-	int r;
+	int ch, r;
 
 	*skip = 0;
 	if ((r = entry_in(p->c, dir, name, ip)) == -ENOENT) {
@@ -344,8 +344,13 @@ clear_way(struct put *p, uint32_t dir, const char *name, const char *path,
 	}
 	if (p->ask) {
 		(void)fprintf(stderr, "overwrite %s:%s? ", p->c->image, path);
-		if (fgets(line, sizeof(line), stdin) == NULL ||
-		    (line[0] != 'y' && line[0] != 'Y')) {
+		if (fgets(line, sizeof(line), stdin) == NULL)
+			line[0] = '\0';
+		else if (strchr(line, '\n') == NULL)
+			/* The rest of the answer is no answer to the next. */
+			while ((ch = getchar()) != EOF && ch != '\n')
+				continue;
+		if (line[0] != 'y' && line[0] != 'Y') {
 			*skip = 1;
 			return 0;
 		}
