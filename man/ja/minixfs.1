@@ -30,6 +30,12 @@
 .Ar path
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Cm blocks
+.Op Fl r
+.Ar image
+.Ar path
+.Nm
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
 .Cm extract
 .Op Fl dv
 .Ar image
@@ -77,6 +83,26 @@ superblock を表示します。
 通常ファイル
 .Ar path
 を標準出力に写します。
+.It Cm blocks Oo Fl r Oc Ar image Ar path
+通常ファイル、\:ディレクトリ、\:シンボリックリンクの
+.Ar path
+を収めるブロックを、\:ファイルの順に、\:その大きさまで表示します。
+ファイルのブロックごとに 1 行で、\:ファイルの中での番号と、\:ブロックの番号、\:穴なら
+.Ql -
+です。
+.Fl r
+では、\:続いているブロックを、\:最初のブロックと数の連なりとして、\:ファイルの順に表示します。
+穴の連なりは、\:最初のブロックが
+.Ql -
+です。
+ブロックは
+.Cm info
+が示すブロックサイズのもので、\:ファイルシステムの先頭から数えます。
+.Fl M
+では、\:これは
+.Ar image
+の先頭ではありません。
+最後のブロックは一部しか使われていないことがあります。
 .It Cm extract Oo Fl dv Oc Ar image Ar dest Op Ar path
 ディレクトリ
 .Ar path
@@ -158,6 +184,11 @@ ustar に収まらない長い名前やリンク先は、\:pax の拡張ヘッ�
 .Bd -literal -offset indent
 $ minixfs ls -l root.img /etc
 $ minixfs cat root.img /etc/passwd > passwd
+.Ed
+.Pp
+MINIX の installboot がブートブロックに書き込むように、\:ブートプログラムの置き場所を調べます。
+.Bd -literal -offset indent
+$ minixfs blocks -r root.img /boot
 .Ed
 .Pp
 デバイスとハードリンクも含めて、\:木全体を新しいイメージに移します。

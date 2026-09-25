@@ -67,6 +67,7 @@ librefuse 向け）でビルドできます。
     minixfs [-M SIZE:HEADS:SIDE] info IMAGE
     minixfs [-M ...] ls [-lR] IMAGE [PATH]
     minixfs [-M ...] cat IMAGE PATH
+    minixfs [-M ...] blocks [-r] IMAGE PATH
     minixfs [-M ...] extract [-dv] IMAGE DEST [PATH]
     minixfs [-M ...] tar IMAGE [PATH] > ARCHIVE
 
@@ -77,7 +78,9 @@ librefuse 向け）でビルドできます。
 システムも現れます。どれもそれ自体は誤りではありません。
 
 `ls -l` は、モード、リンク数、所有者、グループ、大きさ（デバイスならメジャー番号とマイナー番号）、
-UTC の更新時刻を表示します。
+UTC の更新時刻を表示します。`blocks` は、ファイルを収めるファイルシステムのブロックを、ファイルの
+順に、穴は `-` として一覧します。`-r` では、MINIX の installboot がブートブロックに書き込むように、
+最初のブロックと数の連なりとして一覧します。
 
 `extract` はイメージからディレクトリのツリーを写します。アクセス許可（set-user-ID・set-group-ID・
 sticky ビットを除く）と時刻を保ち、リンクが 2 つ以上あるファイルの 2 つ目以降の名前はリンクとして

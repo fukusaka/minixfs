@@ -71,6 +71,7 @@ for older librefuse).
     minixfs [-M SIZE:HEADS:SIDE] info IMAGE
     minixfs [-M ...] ls [-lR] IMAGE [PATH]
     minixfs [-M ...] cat IMAGE PATH
+    minixfs [-M ...] blocks [-r] IMAGE PATH
     minixfs [-M ...] extract [-dv] IMAGE DEST [PATH]
     minixfs [-M ...] tar IMAGE [PATH] > ARCHIVE
 
@@ -82,7 +83,10 @@ written on shows as runs of one track, half of the image; a copy cut
 short or a file system smaller than its disk shows too.  None of this
 is an error in itself.  `ls -l` shows mode, links, owner, group,
 size (or major and minor numbers for devices) and modification time in
-UTC.  `extract` copies a directory tree out of the image, keeping
+UTC.  `blocks` lists the blocks of the file system that hold a file, in
+the order of the file, with `-` for holes, or with `-r` as runs of a
+first block and a count, as installboot of MINIX writes them into a boot
+block.  `extract` copies a directory tree out of the image, keeping
 permission bits (without set-uid, set-gid and sticky bits) and times,
 and the other names of a file with more than one link as links.
 It makes pipes, and devices only with `-d`, which takes root; devices

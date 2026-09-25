@@ -90,6 +90,58 @@ read_cat() {
 	check_err "$v: a name longer than any entry fails" "too long"
 }
 
+# Fold the output of blocks into that of blocks -r; a line out of order
+# is printed as it is.
+fold_runs() {
+	awk -F '\t' '
+	$1 != NR - 1 { print; next }
+	n > 0 && ($2 == "-" ? s == "-" : s != "-" && $2 == s + n) { n++; next }
+	{ if (n > 0) print s "\t" n; s = $2; n = 1 }
+	END { if (n > 0) print s "\t" n }'
+}
+
+# blocks, run on the image of the current variant $v: the blocks listed,
+# with zeros for the holes, put together, are the file up to a whole
+# block, and the list folds into what -r gives.
+read_blocks() {
+	for f in bin/sh etc/empty etc/b1025 etc/dindirect usr/holes \
+	    usr/sparse; do
+		run "$MINIXFS" blocks -r "$img" "/$f"
+		check_status "$v: blocks -r /$f" 0
+		cp "$T/out" "$T/runs"
+		while read -r _b _n; do
+			if [ "$_b" = - ]; then
+				dd if=/dev/zero bs="$bsize" count="$_n"
+			else
+				dd if="$img" bs="$bsize" skip="$_b" count="$_n"
+			fi
+		done <"$T/runs" >"$T/got" 2>/dev/null
+		cp "$exp/$f" "$T/want"
+		_blocks_r=$(($(wc -c <"$T/want") % bsize))
+		if [ "$_blocks_r" -gt 0 ]; then
+			dd if=/dev/zero bs=1 count=$((bsize - _blocks_r)) \
+			    2>/dev/null >>"$T/want"
+		fi
+		check_same_file "$v: the blocks of /$f hold the file" \
+		    "$T/want" "$T/got"
+
+		run "$MINIXFS" blocks "$img" "/$f"
+		fold_runs <"$T/out" >"$T/folded"
+		check_same_file "$v: blocks /$f, folded, is blocks -r" \
+		    "$T/runs" "$T/folded"
+	done
+
+	run "$MINIXFS" blocks -r "$img" /usr/holes
+	check_out_has "$v: blocks -r marks the holes" "^-	"
+	run "$MINIXFS" blocks "$img" /usr/a
+	check_true "$v: blocks of a directory" test "$(wc -l <"$T/out")" -eq 1
+	run "$MINIXFS" blocks "$img" /etc/sh.link
+	check_true "$v: blocks of a symbolic link" \
+	    test "$(wc -l <"$T/out")" -eq 1
+	run "$MINIXFS" blocks "$img" /dev/tty0
+	check_err "$v: blocks of a device fails" "has no blocks"
+}
+
 # extract, run on the image of the current variant $v.
 read_extract() {
 	_read_extract_made="^16 files, 7 directories, 1 symbolic links,"
@@ -215,6 +267,7 @@ for logzone in 0 1; do
 
 	read_ls
 	read_cat
+	read_blocks
 	read_extract
 done
 done

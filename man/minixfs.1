@@ -24,6 +24,12 @@
 .Ar path
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Cm blocks
+.Op Fl r
+.Ar image
+.Ar path
+.Nm
+.Op Fl M Ar size : Ns Ar heads : Ns Ar side
 .Cm extract
 .Op Fl dv
 .Ar image
@@ -76,6 +82,26 @@ lists subdirectories as well.
 Copy the regular file
 .Ar path
 to standard output.
+.It Cm blocks Oo Fl r Oc Ar image Ar path
+Print the blocks that hold the regular file, directory or symbolic link
+.Ar path ,
+in the order of the file and up to its size: a line for each block of
+the file, with its number in the file and the number of the block, or
+.Ql -
+for a hole.
+With
+.Fl r ,
+blocks that follow one another come as runs, the first block and the
+count, in the order of the file; a run of holes has
+.Ql -
+for its first block.
+Blocks are of the block size that
+.Cm info
+gives, counted from the start of the file system, which with
+.Fl M
+is not that of
+.Ar image .
+The last block may be in use in part only.
 .It Cm extract Oo Fl dv Oc Ar image Ar dest Op Ar path
 Copy the directory
 .Ar path ,
@@ -155,6 +181,12 @@ List an image and copy one file out of it:
 .Bd -literal -offset indent
 $ minixfs ls -l root.img /etc
 $ minixfs cat root.img /etc/passwd > passwd
+.Ed
+.Pp
+Find where the boot program lies, as installboot of MINIX writes it into
+the boot block:
+.Bd -literal -offset indent
+$ minixfs blocks -r root.img /boot
 .Ed
 .Pp
 Move the whole tree, devices and hard links included, onto a new image:

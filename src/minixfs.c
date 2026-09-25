@@ -7,6 +7,7 @@
  *	minixfs [-M SIZE:HEADS:SIDE] info IMAGE
  *	minixfs [-M ...] ls [-lR] IMAGE [PATH]
  *	minixfs [-M ...] cat IMAGE PATH
+ *	minixfs [-M ...] blocks [-r] IMAGE PATH
  *	minixfs [-M ...] extract [-dv] IMAGE DEST [PATH]
  *	minixfs [-M ...] tar IMAGE [PATH] > ARCHIVE
  *
@@ -78,6 +79,7 @@ usage(void)
 	    "usage: minixfs [-M SIZE:HEADS:SIDE] info IMAGE\n"
 	    "       minixfs [-M ...] ls [-lR] IMAGE [PATH]\n"
 	    "       minixfs [-M ...] cat IMAGE PATH\n"
+	    "       minixfs [-M ...] blocks [-r] IMAGE PATH\n"
 	    "       minixfs [-M ...] extract [-dv] IMAGE DEST [PATH]\n"
 	    "       minixfs [-M ...] tar IMAGE [PATH] > ARCHIVE\n");
 	exit(2);
@@ -691,6 +693,83 @@ cmd_cat(int argc, char **argv)
 			(void)copy_out(&c, &ino, STDOUT_FILENO,
 			    "standard output");
 	}
+	mfs_close(&c.fs);
+	return c.status;
+}
+
+/* A run of count blocks from start, or of holes if start is 0. */
+static void
+print_run(uint32_t start, uint32_t count)
+{
+	if (count == 0)
+		return;
+	if (start == 0)
+		(void)printf("-\t%" PRIu32 "\n", count);
+	else
+		(void)printf("%" PRIu32 "\t%" PRIu32 "\n", start, count);
+}
+
+/*
+ * blocks: the blocks of the file system that hold a file, in the order of
+ * the file, up to its size; a hole is "-".  With -r, runs of blocks that
+ * follow one another, as start and count.  Block 0 holds the boot block,
+ * so it stands for a hole.
+ */
+static int
+cmd_blocks(int argc, char **argv)
+{
+	struct mfs_inode ino;
+	struct cmd c;
+	uint32_t block, count, fblock, nblocks, start;
+	int ch, r, runs;
+
+	runs = 0;
+	optind = 1;
+	while ((ch = getopt(argc, argv, "r")) != -1) {
+		if (ch != 'r')
+			usage();
+		runs = 1;
+	}
+	argc -= optind;
+	argv += optind;
+	if (argc != 2)
+		usage();
+
+	open_image(&c, argv[0]);
+	if (lookup(&c, argv[1], &ino) < 0) {
+		mfs_close(&c.fs);
+		return c.status;
+	}
+	if (!mfs_is_reg(&ino) && !mfs_is_dir(&ino) && !mfs_is_lnk(&ino)) {
+		problem(&c, "%s:%s: has no blocks", c.image, argv[1]);
+		mfs_close(&c.fs);
+		return c.status;
+	}
+	nblocks = (uint32_t)(((uint64_t)ino.size + c.fs.block_size - 1) /
+	    c.fs.block_size);
+	start = count = 0;
+	for (fblock = 0; fblock < nblocks; fblock++) {
+		if ((r = mfs_bmap(&c.fs, &ino, fblock, &block)) < 0) {
+			problem(&c, "%s:%s: block %" PRIu32 ": %s", c.image,
+			    argv[1], fblock, strerror(-r));
+			break;
+		}
+		if (!runs) {
+			if (block == 0)
+				(void)printf("%" PRIu32 "\t-\n", fblock);
+			else
+				(void)printf("%" PRIu32 "\t%" PRIu32 "\n",
+				    fblock, block);
+		} else if (count > 0 &&
+		    (start == 0 ? block == 0 : block == start + count)) {
+			count++;
+		} else {
+			print_run(start, count);
+			start = block;
+			count = 1;
+		}
+	}
+	print_run(start, count);
 	mfs_close(&c.fs);
 	return c.status;
 }
@@ -1387,6 +1466,7 @@ main(int argc, char **argv)
 		{ "info", cmd_info },
 		{ "ls", cmd_ls },
 		{ "cat", cmd_cat },
+		{ "blocks", cmd_blocks },
 		{ "extract", cmd_extract },
 		{ "tar", cmd_tar }
 	};

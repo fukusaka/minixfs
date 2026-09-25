@@ -111,6 +111,12 @@ for side in 0 1; do
 	run "$MINIXFS" -M "$M_OPT" cat "$T/two" /big
 	check_out "side $side: cat with -M reads across tracks" "$T/exp/big"
 
+	run "$MINIXFS" blocks -r "$T/img" /big
+	cp "$T/out" "$T/want"
+	run "$MINIXFS" -M "$M_OPT" blocks -r "$T/two" /big
+	check_out "side $side: blocks with -M gives blocks of the file system" \
+	    "$T/want"
+
 	rm -rf "$T/x"
 	run "$MINIXFS" -M "$M_OPT" extract "$T/two" "$T/x"
 	check_status "side $side: extract with -M succeeds" 0
