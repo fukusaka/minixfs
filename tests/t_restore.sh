@@ -7,7 +7,9 @@
 # that mkimage makes of the same spec, and -t lists them.  Then what it
 # refuses: compressed dumps, full dumps into file systems that are not
 # empty, names, owners and devices that do not fit, file systems that are
-# not clean or have flex directories; -N writes nothing.
+# not clean or have flex directories; -N writes nothing.  While it writes,
+# the image is not marked clean, and the mark comes back unless an
+# operation on the image failed other than for a lack of room.
 
 # shellcheck source=tests/lib.sh
 . ./tests/lib.sh
@@ -94,6 +96,8 @@ run sh -c "\"$RESTORE_MINIXFS\" -r -s \"$T/symtab\" -f - \"$T/img\" \
 check_status "standard input: restore succeeds" 0
 run "$MINIXFS" tar "$T/img"
 check_out "standard input: the tree is that of the spec" "$T/ref.tar"
+check_info "standard input: the image is marked clean again" "$T/img" \
+    clean yes
 
 run "$RESTORE_MINIXFS" -r -s "$T/symtab" -f "$T/dump" "$T/img"
 check_err "a full dump goes only into an empty file system" \
@@ -118,6 +122,62 @@ check_same_file "cut short: from a file, nothing is written" \
 run "$FSCK_MINIXFS" "$T/img"
 check_status "cut short: what was written is in order" 0
 check_true "cut short: no table is written" test ! -e "$T/symtab"
+
+# From standard input, a dump cut short is found once files are written:
+# what was written is put in order, and the image marked clean again.
+fresh
+run sh -c "\"$RESTORE_MINIXFS\" -r -s \"$T/symtab\" -f - \"$T/img\" \
+    <\"$T/short\""
+check_err "standard input, cut short: fails" "ends before TS_END"
+check_info "standard input, cut short: the image is marked clean again" \
+    "$T/img" clean yes
+run "$FSCK_MINIXFS" "$T/img"
+check_status "standard input, cut short: what was written is in order" 0
+
+# While it writes, the image is not marked clean, and a restore killed
+# then leaves it so: the next is refused until fsck_minixfs puts it right.
+fresh
+rm -f "$T/fifo"
+mkfifo "$T/fifo"
+"$RESTORE_MINIXFS" -r -s "$T/symtab" -f - "$T/img" <"$T/fifo" \
+    >/dev/null 2>&1 &
+pid=$!
+exec 3>"$T/fifo"
+cat "$T/short" >&3
+n=0
+while [ "$(info_field "$T/img" clean)" != no ] && [ "$n" -lt 30 ]; do
+	sleep 1
+	n=$((n + 1))
+done
+check_info "while it writes, the image is not marked clean" "$T/img" \
+    clean no
+kill -9 "$pid"
+wait "$pid" 2>/dev/null
+exec 3>&-
+check_info "killed, it stays so" "$T/img" clean no
+must "$MKDUMP" "$T/spec" "$T/dump"
+run "$RESTORE_MINIXFS" -r -s "$T/symtab" -f "$T/dump" "$T/img"
+check_err "killed: the next restore is refused" "not marked clean"
+
+# An error of the image, here a zone number outside the data area that
+# the root lists past its first block, leaves the image not marked
+# clean, as such an error may leave anything.
+{
+	echo "fs version=2 order=le blocks=1440 inodes=128"
+	i=0
+	while [ "$i" -lt 70 ]; do
+		echo "file /f$i 0644 0 0 644198400 0 1"
+		i=$((i + 1))
+	done
+} >"$T/many.spec"
+must "$MKDUMP" "$T/many.spec" "$T/dump"
+fresh
+set_inode "$T/img" 1 zone1 $(($(info_field "$T/img" "first data zone") - 1))
+run "$RESTORE_MINIXFS" -r -s "$T/symtab" -f "$T/dump" "$T/img"
+check_err "a write that fails is reported" "Input/output error"
+check_true "and says the image is left not clean" \
+    grep -q "left marked not clean" "$T/err"
+check_info "the image is not marked clean" "$T/img" clean no
 
 # -N checks and writes nothing.
 fresh

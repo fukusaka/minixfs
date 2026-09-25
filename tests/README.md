@@ -139,8 +139,12 @@ top of `tests/mkimage.c`).  The scripts:
   that does not fit, a file system not marked clean and flex
   directories are refused, with nothing written; a dump in a file that
   is cut short is refused before anything is written, and leaves no
-  table; `-N` writes nothing;
-  sockets are left out.
+  table; `-N` writes nothing; sockets are left out.  While it writes
+  the image is not marked clean: a restore killed then leaves it so, and
+  the next is refused; one from standard input that is cut short leaves
+  it clean again and in order, as does one that runs out of room (in
+  `t_dump.sh`); an error of the image, such as a zone number outside
+  the data area, leaves it not clean.
 - `t_dump.sh` - `dump_minixfs` of the test tree in V1, V2 with 30
   characters, V3 with blocks of 4096 bytes, zones of two blocks and
   Minix-vmd, in either byte order, restores as the image itself, in the

@@ -39,10 +39,15 @@
  * are gone are removed, new ones made, and a file whose last name went
  * away is freed.  An incremental dump must follow the dump restored
  * last: its date of the dump before it is checked against the table of
- * -s.  Extended attributes, file flags and sockets have no place in a
- * MINIX file system and are left out with a warning, as are names of
- * files that a dump of part of a file system does not hold.  Exit
- * status: 0 on success, 1 if anything failed, 2 for a usage error.
+ * -s.  While it writes, the image is not marked clean; the mark comes
+ * back at the end, unless an operation on the image failed other than
+ * for a lack of room or a limit of the file system: a dump that ends
+ * too soon, or a file that does not fit, leaves what was written in
+ * order, but an error of the device may not.  Extended attributes, file
+ * flags and sockets have no place in a MINIX file system and are left
+ * out with a warning, as are names of files that a dump of part of a
+ * file system does not hold.  Exit status: 0 on success, 1 if anything
+ * failed, 2 for a usage error.
  */
 
 #include "compat.h"
@@ -142,6 +147,7 @@ struct restore {
 	int		seekable;	/* the dump can be read twice */
 	int		cut;		/* the dump ends too soon */
 	int		status;
+	int		broken;		/* an operation on the image failed */
 	struct dump_header tape;	/* TS_TAPE */
 	struct dump_header next;	/* a header read ahead */
 	int		have_next;
@@ -197,6 +203,26 @@ problem(struct restore *r, const char *fmt, ...)
 	vwarnx(fmt, ap);
 	va_end(ap);
 	r->status = 1;
+}
+
+/*
+ * Whether the failure e of an operation on the image, a negative errno
+ * value, may leave it out of order.  A lack of room or a limit of the
+ * file system refuses before it writes, or gives back what it took; any
+ * other failure, such as an error of the device, may leave anything.
+ */
+static int
+breaks(int e)
+{
+	switch (e) {
+	case -ENOSPC:
+	case -EMLINK:
+	case -ENAMETOOLONG:
+	case -EFBIG:
+		return 0;
+	default:
+		return 1;
+	}
 }
 
 static void *
@@ -408,6 +434,8 @@ take_record(struct restore *r, struct sink *s, const unsigned char *rec,
 	} else if (s->ip != NULL &&
 	    (e = mfs_pwrite(&r->fs, s->ip, rec, len, (uint32_t)pos)) < 0) {
 		problem(r, "%s: %s", s->path, strerror(-e));
+		if (breaks(e))
+			r->broken = 1;
 		s->failed = 1;
 	}
 }
@@ -1149,6 +1177,7 @@ read_entries(struct restore *r, uint32_t m, struct entries *es,
 	    (e = mfs_readdir(&r->fs, dp, collect_fn, es)) < 0) {
 		problem(r, "%s: inode %" PRIu32 ": %s", r->o->image, m,
 		    strerror(-e));
+		r->broken = 1;
 		free(es->e);
 		es->e = NULL;
 		return -1;
@@ -1220,11 +1249,16 @@ check(struct restore *r)
  * Writing into the image.
  */
 
-/* Report the failure e, a negative errno value, and return -1. */
+/*
+ * Report the failure e of an operation on the image, a negative errno
+ * value, and return -1.
+ */
 static int
 failed(struct restore *r, const char *path, int e)
 {
 	problem(r, "%s: %s", path, strerror(-e));
+	if (breaks(e))
+		r->broken = 1;
 	return -1;
 }
 
@@ -1867,7 +1901,7 @@ static void
 write_all(struct restore *r)
 {
 	size_t i;
-	int e;
+	int e, synced;
 
 	free_gone(r);
 	/* What was written is put in order whatever failed. */
@@ -1880,10 +1914,25 @@ write_all(struct restore *r)
 			r->cut = 1;
 	}
 	collect(r);
-	if ((e = mfs_sync(&r->fs)) < 0) {
+	/*
+	 * The clean mark goes back once the rest is on the disk, unless an
+	 * operation on the image failed as breaks() tells: what the dump
+	 * lacked or the room refused is put in order, but an error of the
+	 * device may leave anything.
+	 */
+	if ((synced = mfs_sync(&r->fs)) < 0)
+		(void)failed(r, r->o->image, synced);
+	else if (fsync(r->fs.fd) == -1)
+		(void)failed(r, r->o->image, -errno);
+	else if (!r->broken && (e = mfs_mark_clean(&r->fs, 1)) < 0)
 		(void)failed(r, r->o->image, e);
+	else if (!r->broken && fsync(r->fs.fd) == -1)
+		(void)failed(r, r->o->image, -errno);
+	if (r->broken)
+		warnx("warning: %s is left marked not clean; check it with "
+		    "fsck_minixfs -y", r->o->image);
+	if (synced < 0)
 		return;
-	}
 	/*
 	 * The table follows the image whatever failed, but the next
 	 * incremental dump follows only a whole restore: after a failure it
@@ -1902,6 +1951,7 @@ static void
 run_restore(struct restore *r)
 {
 	struct ddir *root;
+	int e;
 
 	open_fs(r);
 	if (read_start(r) == -1 || start_from(r) == -1 || read_dirs(r) == -1)
@@ -1918,6 +1968,11 @@ run_restore(struct restore *r)
 	if (r->o->dry_run) {
 		(void)fprintf(stderr, "%s: %zu directories and the files "
 		    "they name can be restored\n", r->o->image, r->dirs.n);
+		return;
+	}
+	/* The clean mark is away while the image is written. */
+	if ((e = mfs_mark_in_use(&r->fs)) < 0) {
+		problem(r, "%s: %s", r->o->image, strerror(-e));
 		return;
 	}
 	write_all(r);

@@ -236,6 +236,8 @@ check_true "out of room: it says to restore it again" \
     grep -q "restore it again" "$T/err"
 run "$FSCK_MINIXFS" "$T/img"
 check_status "out of room: fsck finds nothing wrong" 0
+check_info "out of room: the image is marked clean again" "$T/img" clean \
+    yes
 check_true "out of room: the table still follows level 0" \
     test "$(sed -n 's/^date //p' "$T/symtab")" = "$date0"
 must "$TUNEFS_MINIXFS" -s 400 "$T/img"

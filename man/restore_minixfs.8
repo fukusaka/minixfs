@@ -115,6 +115,15 @@ by which the same dump follows again, once what failed is put right.
 .Pp
 The file system has to be marked clean, and not to have the flex
 directories of Minix-vmd.
+While it is written the clean mark is away, and it comes back once the
+restore is on the disk.
+A restore cut short, or one in which an operation on the image failed
+other than for a lack of room or a limit of the file system, such as an
+error of the device, leaves it away: check the file system with
+.Nm fsck_minixfs Fl y
+then.
+A dump that ends too soon or is damaged, or a file system that runs out
+of room, does not, as what was written is left in order.
 .Pp
 Extended attributes, file flags and sockets have no place in a MINIX
 file system, and are left out with a warning.
