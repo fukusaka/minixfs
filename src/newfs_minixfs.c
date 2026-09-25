@@ -195,7 +195,7 @@ static int
 open_image(struct options *o, uint32_t block_size)
 {
 	struct stat st;
-	int fd, flags;
+	int fd, flags, r;
 
 	flags = o->dry_run ? O_RDONLY : O_RDWR;
 	if (o->sized && !o->dry_run)
@@ -208,6 +208,8 @@ open_image(struct options *o, uint32_t block_size)
 			    o->image);
 		err(1, "%s", o->image);
 	}
+	if (!o->dry_run && (r = mfs_lock(fd)) < 0)
+		errx(1, "%s: %s", o->image, strerror(-r));
 	if (fstat(fd, &st) == -1)
 		err(1, "%s", o->image);
 	if (o->sized)

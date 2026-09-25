@@ -61,6 +61,36 @@ take_bit(const struct mfs *fs, unsigned char *map, uint32_t n,
 	return 0;
 }
 
+/*
+ * With maps_through, write the block of a map that holds bit at once,
+ * rather than at mfs_sync().
+ */
+static int
+map_changed(struct mfs *fs, enum mfs_map which, uint32_t bit)
+{
+	const unsigned char *map;
+	uint32_t block, start;
+
+	if (!fs->maps_through)
+		return 0;
+	block = bit / (fs->block_size * 8);
+	if (which == MFS_IMAP) {
+		map = fs->imap;
+		start = START_BLOCK;
+	} else {
+		map = fs->zmap;
+		start = START_BLOCK + fs->imap_blocks;
+	}
+	return mfs_write_block(fs, start + block,
+	    map + (size_t)block * fs->block_size);
+}
+
+void
+mfs_maps_through(struct mfs *fs, int on)
+{
+	fs->maps_through = on;
+}
+
 int
 mfs_alloc_inode(struct mfs *fs, uint32_t *ino)
 {
@@ -72,7 +102,7 @@ mfs_alloc_inode(struct mfs *fs, uint32_t *ino)
 	if ((bit = take_bit(fs, fs->imap, fs->ninodes, &fs->inext)) == 0)
 		return -ENOSPC;
 	*ino = bit;
-	return 0;
+	return map_changed(fs, MFS_IMAP, bit);
 }
 
 int
@@ -88,6 +118,8 @@ mfs_alloc_zone(struct mfs *fs, uint32_t *zone)
 	if (bit == 0)
 		return -ENOSPC;
 	z = fs->firstdatazone + bit - 1;
+	if ((r = map_changed(fs, MFS_ZMAP, bit)) < 0)
+		return r;
 	(void)memset(fs->dbuf, 0, fs->block_size);
 	for (i = 0; i < 1U << fs->log_zone_size; i++) {
 		r = mfs_write_block(fs, (z << fs->log_zone_size) + i,
@@ -109,7 +141,7 @@ mfs_free_inode(struct mfs *fs, uint32_t ino)
 	if (ino == 0 || ino > fs->ninodes)
 		return -EIO;
 	mfs_set_map_bit(fs, fs->imap, ino, 0);
-	return 0;
+	return map_changed(fs, MFS_IMAP, ino);
 }
 
 int
@@ -122,7 +154,7 @@ mfs_free_zone(struct mfs *fs, uint32_t zone)
 	if (zone < fs->firstdatazone || zone >= fs->nzones)
 		return -EIO;
 	mfs_set_map_bit(fs, fs->zmap, zone - fs->firstdatazone + 1, 0);
-	return 0;
+	return map_changed(fs, MFS_ZMAP, zone - fs->firstdatazone + 1);
 }
 
 static int
@@ -242,6 +274,174 @@ file_zone(struct mfs *fs, struct mfs_inode *ip, uint64_t n, int take,
 			return r;
 		n %= per;
 	}
+	return 0;
+}
+
+static uint32_t
+get_ref(const struct mfs *fs, const unsigned char *p)
+{
+	return fs->zone_num_size == 2 ? load16(fs->order, p) :
+	    load32(fs->order, p);
+}
+
+static void
+put_ref(const struct mfs *fs, unsigned char *p, uint32_t zone)
+{
+	if (fs->zone_num_size == 2)
+		put16(fs->order, p, zone);
+	else
+		put32(fs->order, p, zone);
+}
+
+/* Free a zone of a file; a number outside the data area is dropped. */
+static int
+drop_zone(struct mfs *fs, uint32_t zone)
+{
+	if (zone < fs->firstdatazone || zone >= fs->nzones)
+		return 0;
+	return mfs_free_zone(fs, zone);
+}
+
+/*
+ * Free what the indirect zone *zp of the given level lists from file zone
+ * keep on, counted from the first zone it covers, and the indirect zone
+ * itself if nothing is left in it.  Each level reads into a buffer of
+ * its own, since the levels below use the one of the file system.
+ */
+static int
+trunc_indirect(struct mfs *fs, uint32_t *zp, uint32_t level, uint64_t keep)
+{
+	unsigned char *buf, *p;
+	uint64_t per, start;
+	uint32_t i, sub, z;
+	int changed, r, used;
+
+	if (*zp < fs->firstdatazone || *zp >= fs->nzones) {
+		*zp = 0;
+		return 0;
+	}
+	for (per = 1, i = 1; i < level; i++)
+		per *= fs->nindirs;
+	if ((buf = malloc(fs->block_size)) == NULL)
+		return -ENOMEM;
+	if ((r = mfs_read_block(fs, *zp << fs->log_zone_size, buf)) < 0)
+		goto out;
+	changed = used = 0;
+	for (i = 0; i < fs->nindirs && r == 0; i++) {
+		p = buf + (size_t)i * fs->zone_num_size;
+		if ((z = get_ref(fs, p)) == 0)
+			continue;
+		start = (uint64_t)i * per;
+		if (start + per <= keep) {
+			used = 1;
+			continue;
+		}
+		sub = z;
+		if (level == 1) {
+			r = drop_zone(fs, z);
+			sub = 0;
+		} else {
+			r = trunc_indirect(fs, &sub, level - 1,
+			    keep > start ? keep - start : 0);
+		}
+		if (sub != z) {
+			put_ref(fs, p, sub);
+			changed = 1;
+		}
+		used |= sub != 0;
+	}
+	if (r == 0 && !used) {
+		r = drop_zone(fs, *zp);
+		*zp = 0;
+	} else if (r == 0 && changed) {
+		r = mfs_write_block(fs, *zp << fs->log_zone_size, buf);
+	}
+out:
+	free(buf);
+	return r;
+}
+
+/* Free the zones of the file *ip from file zone keep on. */
+static int
+free_from(struct mfs *fs, struct mfs_inode *ip, uint64_t keep)
+{
+	uint64_t base, per;
+	uint32_t i, level, slot;
+	int r;
+
+	for (i = (uint32_t)(keep < fs->ndzones ? keep : fs->ndzones);
+	    i < fs->ndzones; i++) {
+		if ((r = drop_zone(fs, ip->zone[i])) < 0)
+			return r;
+		ip->zone[i] = 0;
+	}
+	base = fs->ndzones;
+	per = 1;
+	for (level = 1; level <= fs->nlevels; level++) {
+		per *= fs->nindirs;
+		slot = fs->ndzones + level - 1;
+		if (ip->zone[slot] != 0 &&
+		    (r = trunc_indirect(fs, &ip->zone[slot], level,
+		    keep > base ? keep - base : 0)) < 0)
+			return r;
+		base += per;
+	}
+	return 0;
+}
+
+/*
+ * Clear the bytes of the file *ip from byte from to the end of its zone,
+ * so that growing the file later shows zeros there.
+ */
+static int
+zero_tail(struct mfs *fs, struct mfs_inode *ip, uint32_t from)
+{
+	uint64_t zbytes;
+	uint32_t block, in, n, zone;
+	int r;
+
+	zbytes = (uint64_t)fs->block_size << fs->log_zone_size;
+	if (from % zbytes == 0)
+		return 0;
+	if ((r = file_zone(fs, ip, from / zbytes, 0, &zone)) < 0 || zone == 0)
+		return r;
+	in = (uint32_t)(from % zbytes);
+	for (n = in / fs->block_size; n < 1U << fs->log_zone_size; n++) {
+		block = (zone << fs->log_zone_size) + n;
+		if ((r = mfs_read_block(fs, block, fs->dbuf)) < 0)
+			return r;
+		if (n == in / fs->block_size)
+			(void)memset(fs->dbuf + in % fs->block_size, 0,
+			    fs->block_size - in % fs->block_size);
+		else
+			(void)memset(fs->dbuf, 0, fs->block_size);
+		if ((r = mfs_write_block(fs, block, fs->dbuf)) < 0)
+			return r;
+	}
+	return 0;
+}
+
+int
+mfs_resize(struct mfs *fs, struct mfs_inode *ip, uint32_t size)
+{
+	uint64_t zbytes;
+	int r;
+
+	if ((r = load_maps(fs)) < 0)
+		return r;
+	if (mfs_is_dev(ip))
+		return -EINVAL;
+	if (size > fs->max_file)
+		return -EFBIG;
+	zbytes = (uint64_t)fs->block_size << fs->log_zone_size;
+	if (size < ip->size) {
+		if ((r = free_from(fs, ip, (size + zbytes - 1) / zbytes)) < 0 ||
+		    (r = zero_tail(fs, ip, size)) < 0)
+			return r;
+	} else if (size > ip->size && (r = zero_tail(fs, ip, ip->size)) < 0) {
+		return r;
+	}
+	ip->size = size;
 	return 0;
 }
 

@@ -139,6 +139,17 @@ top of `tests/mkimage.c`).  The scripts:
   and restore one after the other as the second image, with files
   removed, added, changed, renamed and turned from a directory into a
   file, while a dump restored twice or out of order is refused.
+- `t_ops.sh` - the library changes names and files as mount_minixfs -w
+  does, driven by `tests/mfsop`: the same commands run on a directory of
+  the host (mkdir, mknod, ln, ln -s, mv, rm, rmdir, writes and truncates
+  across the indirect zones, chmod), and the image then extracts as that
+  directory, with the same modes, link counts and contents, and passes
+  `fsck_minixfs`, in every version and byte order, empty and on the test
+  tree, and with zones of two blocks.  Each refusal gives the error of
+  the system call; a file system that fills up with zones or inodes
+  stays consistent; a writer killed after a change leaves the maps right
+  with `-a` and behind the inodes without; and a writer holds a lock that
+  `tunefs_minixfs` and `newfs_minixfs` meet, but not a reader.
 - `t_fuse.sh` - where `mount_minixfs` is built and mounting is allowed:
   the tree read through the kernel in four formats, with its names,
   contents, modes, owners, inode numbers and device numbers.  Skipped
@@ -153,5 +164,6 @@ top of `tests/mkimage.c`).  The scripts:
     run.sh          runs every t_*.sh; tap2junit.awk turns TAP into JUnit
     mkimage.c       the independent image writer
     mkdump.c        the independent writer of dumps of BSD and Linux
+    mfsop.c         a driver of the library for t_ops.sh
     tree.spec       the tree that t_read.sh and t_fuse.sh read
     tree.names      the names in that tree

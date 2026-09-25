@@ -114,6 +114,9 @@ mounts the image read-only.  Inode numbers, modes, owners, times and
 device numbers are those of the image.  Unmount it with `fusermount3 -u
 MOUNTPOINT` on Linux or `umount MOUNTPOINT` on the BSDs.
 
+The commands that write an image lock it with fcntl(2) while they have
+it open, and refuse an image that another holds.
+
     newfs_minixfs -V version [-N] [-B le|be] [-b block-size]
         [-d directory [-F specfile [-P dbdir] [-x]] [-o uid:gid]]
         [-i inodes] [-l name-length] [-s blocks] [-t time]
@@ -299,7 +302,10 @@ sanitizers, other shells and JUnit output.
                             file system
     src/mfs_tune.c          library: changing a file system in place
     src/mfs_write.c         library: taking and freeing inodes and
-                            zones, writing files and directory entries
+                            zones, writing and resizing files, adding
+                            directory entries
+    src/mfs_ops.c           library: making, linking, removing and
+                            renaming files and directories
     src/layout.h            the on-disk layout
     src/compat.h            the differences between systems
     tests/                  the test suite; see tests/README.md

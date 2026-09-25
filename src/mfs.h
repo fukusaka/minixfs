@@ -86,6 +86,7 @@ struct mfs {
 	unsigned char	*zmap;
 	uint32_t	inext;		/* where to look for a free inode */
 	uint32_t	znext;		/* and for a free zone, as map bits */
+	int		maps_through;	/* write a changed map block at once */
 	int		version;	/* 1, 2 or 3 */
 
 	/* From the super block. */
@@ -153,7 +154,11 @@ typedef int (*mfs_dirent_fn)(const struct mfs_dirent *, void *);
  */
 int	mfs_open(struct mfs *, const char *);
 
-/* As mfs_open(), for reading and writing. */
+/*
+ * As mfs_open(), for reading and writing.  The image is locked for
+ * writing with fcntl(2) until mfs_close(); -EBUSY if another program
+ * holds the lock.
+ */
 int	mfs_open_rw(struct mfs *, const char *);
 
 /*
@@ -168,6 +173,14 @@ int	mfs_open_tracks(struct mfs *, const char *, int,
  * text is not three numbers, SIZE is 0 or SIDE is not below HEADS.
  */
 int	mfs_parse_tracks(const char *, struct mfs_tracks *);
+
+/*
+ * Lock the image open as fd for writing with fcntl(2), so that two
+ * programs do not change it at the same time; programs that only read
+ * take no lock.  The lock goes when the program closes any descriptor of
+ * the image.  Returns 0, -EBUSY if another program holds it, or -errno.
+ */
+int	mfs_lock(int);
 
 /* Release what mfs_open() acquired. */
 void	mfs_close(struct mfs *);
@@ -302,8 +315,9 @@ int	mfs_load_map(struct mfs *, enum mfs_map, unsigned char **);
 int	mfs_map_bit(const struct mfs *, const unsigned char *, uint32_t);
 
 /*
- * Count the inodes and zones that the bit maps mark free.  Returns 0 or a
- * negative errno value.
+ * Count the inodes and zones that the bit maps mark free: those that
+ * mfs_write.c keeps in memory, if it does.  Returns 0 or a negative errno
+ * value.
  */
 int	mfs_count_free(struct mfs *, uint32_t *, uint32_t *);
 
@@ -330,6 +344,14 @@ int	mfs_put_super(struct mfs *);
  * the clean flag of MINIX 3.  Returns 0 or -errno.
  */
 int	mfs_mark_clean(struct mfs *, int);
+
+/*
+ * Take the clean mark away while the file system is mounted for writing,
+ * as Linux and MINIX 3 do: in V1 and V2 the valid bit of the state goes,
+ * and no mark of errors comes.  mfs_mark_clean(fs, 1) puts it back.
+ * Returns 0 or -errno.
+ */
+int	mfs_mark_in_use(struct mfs *);
 
 /* Write *ip back to inode number ip->num.  Returns 0 or -errno. */
 int	mfs_put_inode(struct mfs *, const struct mfs_inode *);
@@ -425,8 +447,75 @@ int	mfs_free_zone(struct mfs *, uint32_t);
  */
 int	mfs_truncate(struct mfs *, struct mfs_inode *);
 
+/*
+ * With on set, write each block of a bit map as it changes, rather than
+ * all of them at mfs_sync(), so that the maps on the image are right
+ * even if the program dies.
+ */
+void	mfs_maps_through(struct mfs *, int);
+
+/*
+ * Make the file *ip size bytes long: the zones past the new end are
+ * freed, indirect zones that list nothing more with them, and the rest
+ * of the last zone is cleared, so that the file reads as zeros where it
+ * grows.  *ip changes in memory only, for the caller to write back with
+ * mfs_put_inode().  Returns 0, -EINVAL for a device, -EFBIG past the reach
+ * of the zones, or another negative errno value.
+ */
+int	mfs_resize(struct mfs *, struct mfs_inode *, uint32_t);
+
 /* Write the bit maps back.  Returns 0 or -errno. */
 int	mfs_sync(struct mfs *);
+
+/*
+ * Changing names (mfs_ops.c), as the system calls of the same names do.
+ * Directories are given by inode number; names are single components.
+ * Each returns 0 or a negative errno value: -EEXIST, -ENOENT, -ENOTDIR,
+ * -EISDIR, -ENOTEMPTY, -EMLINK, -ENAMETOOLONG, -ENOSPC, or -ENOTSUP for
+ * the flex directories of Minix-vmd, among others.  Times are those to
+ * give the inodes that change.
+ */
+
+/* What a new inode gets. */
+struct mfs_new {
+	uint32_t	rdev;		/* of a device */
+	uint32_t	time;		/* atime, mtime and ctime */
+	uint16_t	mode;		/* type and permissions */
+	uint16_t	uid;
+	uint16_t	gid;
+};
+
+/*
+ * Make name in directory dir: a regular file, a directory, a pipe, a
+ * socket or a device, as the type of n->mode says, and read it into *ip.
+ * A directory gets "." and "..", and its parent one more link.
+ */
+int	mfs_make(struct mfs *, uint32_t, const char *, const struct mfs_new *,
+	    struct mfs_inode *);
+
+/*
+ * Make name in directory dir a symbolic link to target, which has to be
+ * shorter than a block, and read it into *ip; the mode of n is ignored.
+ */
+int	mfs_symlink(struct mfs *, uint32_t, const char *, const char *,
+	    const struct mfs_new *, struct mfs_inode *);
+
+/* Give inode ino, which is not a directory, one more name, in dir. */
+int	mfs_link(struct mfs *, uint32_t, uint32_t, const char *, uint32_t);
+
+/* Remove name from dir, and free its inode if that was its last name. */
+int	mfs_unlink(struct mfs *, uint32_t, const char *, uint32_t);
+
+/* Remove the empty directory name from dir. */
+int	mfs_rmdir(struct mfs *, uint32_t, const char *, uint32_t);
+
+/*
+ * Rename oname in odir to nname in ndir, replacing a file of that name,
+ * or an empty directory in place of a directory, unless noreplace is set
+ * (then -EEXIST).  A directory cannot move below itself (-EINVAL).
+ */
+int	mfs_rename(struct mfs *, uint32_t, const char *, uint32_t,
+	    const char *, int, uint32_t);
 
 /*
  * Changing file systems in place (mfs_tune.c).  These need a file system

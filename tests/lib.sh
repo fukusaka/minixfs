@@ -20,6 +20,7 @@
 : "${DUMP_MINIXFS:=./dump_minixfs}"
 : "${RESTORE_MINIXFS:=./restore_minixfs}"
 : "${MKDUMP:=./tests/mkdump}"
+: "${MFSOP:=./tests/mfsop}"
 
 # The sanitizers are told to exit with this status, so that a sanitizer
 # report can be told apart from an ordinary failure (status 1).
@@ -255,6 +256,29 @@ check_none() {
 	else
 		fail "$1" "$2 problems; see the lines above"
 	fi
+}
+
+# tree_listing DIR - each name below DIR with its mode; for what is not a
+# directory, its link count; for a regular file, its checksum; for a
+# symbolic link, its target.  Pipes and dangling links are compared this
+# way, which diff -r cannot.
+tree_listing() {
+	(cd "$1" && find . ! -name . | sort | while read -r _tree_listing_f; do
+		_tree_listing_l=$(ls -ld "$_tree_listing_f")
+		# The fields are split on purpose.
+		# shellcheck disable=SC2086
+		set -- $_tree_listing_l
+		printf '%s %s' "$_tree_listing_f" "$1"
+		if [ -d "$_tree_listing_f" ]; then
+			echo
+		elif [ -h "$_tree_listing_f" ]; then
+			echo " $2 -> ${_tree_listing_l##* -> }"
+		elif [ -f "$_tree_listing_f" ]; then
+			echo " $2 $(cksum <"$_tree_listing_f")"
+		else
+			echo " $2"
+		fi
+	done)
 }
 
 # Images.

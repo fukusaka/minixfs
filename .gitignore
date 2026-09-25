@@ -7,5 +7,6 @@
 /newfs_minixfs
 /restore_minixfs
 /tests/mkdump
+/tests/mfsop
 /tests/mkimage
 /tunefs_minixfs

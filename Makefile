@@ -9,7 +9,10 @@ WARNFLAGS =	-std=c99 -D_XOPEN_SOURCE=700 -Wall -Wextra -Wshadow \
 		-Wstrict-prototypes -Wmissing-prototypes -Wpointer-arith \
 		-Wcast-qual -Wwrite-strings
 
-LIBOBJS =	src/mfs.o src/mfs_format.o src/mfs_tune.o src/mfs_write.o
+LIBOBJS =	src/mfs.o src/mfs_format.o src/mfs_ops.o src/mfs_tune.o \
+		src/mfs_write.o
+LIBSRCS =	src/mfs.c src/mfs_format.c src/mfs_ops.c src/mfs_tune.c \
+		src/mfs_write.c
 PROG =		minixfs
 NEWFS =		newfs_minixfs
 FSCK =		fsck_minixfs
@@ -18,6 +21,7 @@ DUMP =		dump_minixfs
 RESTORE =	restore_minixfs
 MKIMAGE =	tests/mkimage
 MKDUMP =	tests/mkdump
+MFSOP =		tests/mfsop
 
 # mount_minixfs needs a FUSE library, so it is built on request: "make
 # fuse".  FUSE_CFLAGS and FUSE_LIBS come from pkg-config where libfuse 3
@@ -58,6 +62,9 @@ $(MKIMAGE): tests/mkimage.c
 $(MKDUMP): tests/mkdump.c
 	$(CC) $(CFLAGS) $(WARNFLAGS) -o $(MKDUMP) tests/mkdump.c
 
+$(MFSOP): tests/mfsop.c $(LIBOBJS)
+	$(CC) $(CFLAGS) $(WARNFLAGS) -o $(MFSOP) tests/mfsop.c $(LIBOBJS)
+
 $(PROG): src/minixfs.o $(LIBOBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $(PROG) src/minixfs.o $(LIBOBJS)
 
@@ -86,6 +93,7 @@ $(RESTORE): src/restore_minixfs.o src/dumpfmt.o $(LIBOBJS)
 src/mfs.o: src/mfs.h src/layout.h
 src/mfs_format.o: src/mfs.h src/layout.h
 src/mfs_tune.o: src/mfs.h src/layout.h
+src/mfs_ops.o: src/mfs.h src/layout.h
 src/mfs_write.o: src/mfs.h src/layout.h
 src/minixfs.o: src/mfs.h
 src/newfs_minixfs.o: src/mfs.h src/spec.h src/tree.h
@@ -105,36 +113,32 @@ $(FUSEPROG): src/mount_minixfs.c src/compat.h src/mfs.h $(LIBOBJS)
 	    -o $(FUSEPROG) src/mount_minixfs.c $(LIBOBJS) $(LDFLAGS) \
 	    $(FUSE_LIBS)
 
-check: all $(MKIMAGE) $(MKDUMP)
+check: all $(MKIMAGE) $(MKDUMP) $(MFSOP)
 	MINIXFS=./$(PROG) NEWFS_MINIXFS=./$(NEWFS) FSCK_MINIXFS=./$(FSCK) \
 	    TUNEFS_MINIXFS=./$(TUNEFS) DUMP_MINIXFS=./$(DUMP) \
-	    RESTORE_MINIXFS=./$(RESTORE) sh tests/run.sh
+	    RESTORE_MINIXFS=./$(RESTORE) MFSOP=./$(MFSOP) sh tests/run.sh
 
 # Build with AddressSanitizer and UBSan in a separate directory, then run
 # the whole test suite against that binary.
 check-sanitize: $(MKIMAGE) $(MKDUMP)
 	rm -rf build-san && mkdir build-san
 	$(CC) $(SANFLAGS) $(WARNFLAGS) -o build-san/$(PROG) \
-	    src/minixfs.c src/mfs.c src/mfs_format.c \
-	    src/mfs_tune.c src/mfs_write.c
+	    src/minixfs.c $(LIBSRCS)
 	$(CC) $(SANFLAGS) $(WARNFLAGS) -o build-san/$(NEWFS) \
-	    src/newfs_minixfs.c src/tree.c src/spec.c src/mfs.c \
-	    src/mfs_format.c src/mfs_tune.c src/mfs_write.c
+	    src/newfs_minixfs.c src/tree.c src/spec.c $(LIBSRCS)
 	$(CC) $(SANFLAGS) $(WARNFLAGS) -o build-san/$(FSCK) \
-	    src/fsck_minixfs.c src/mfs.c src/mfs_format.c \
-	    src/mfs_tune.c src/mfs_write.c
+	    src/fsck_minixfs.c $(LIBSRCS)
 	$(CC) $(SANFLAGS) $(WARNFLAGS) -o build-san/$(TUNEFS) \
-	    src/tunefs_minixfs.c src/mfs.c src/mfs_format.c \
-	    src/mfs_tune.c src/mfs_write.c
+	    src/tunefs_minixfs.c $(LIBSRCS)
 	$(CC) $(SANFLAGS) $(WARNFLAGS) -o build-san/$(DUMP) \
-	    src/dump_minixfs.c src/dumpfmt.c src/mfs.c src/mfs_format.c \
-	    src/mfs_tune.c src/mfs_write.c
+	    src/dump_minixfs.c src/dumpfmt.c $(LIBSRCS)
 	$(CC) $(SANFLAGS) $(WARNFLAGS) -o build-san/$(RESTORE) \
-	    src/restore_minixfs.c src/dumpfmt.c src/mfs.c \
-	    src/mfs_format.c src/mfs_tune.c src/mfs_write.c
+	    src/restore_minixfs.c src/dumpfmt.c $(LIBSRCS)
+	$(CC) $(SANFLAGS) $(WARNFLAGS) -o build-san/mfsop \
+	    tests/mfsop.c $(LIBSRCS)
 	if [ -n "$(SAN_POSTLINK)" ]; then \
 	    for p in $(PROG) $(NEWFS) $(FSCK) $(TUNEFS) $(DUMP) \
-		$(RESTORE); do \
+		$(RESTORE) mfsop; do \
 		$(SAN_POSTLINK) build-san/$$p || exit 1; \
 	    done; \
 	fi
@@ -142,7 +146,8 @@ check-sanitize: $(MKIMAGE) $(MKDUMP)
 	    FSCK_MINIXFS=./build-san/$(FSCK) \
 	    TUNEFS_MINIXFS=./build-san/$(TUNEFS) \
 	    DUMP_MINIXFS=./build-san/$(DUMP) \
-	    RESTORE_MINIXFS=./build-san/$(RESTORE) sh tests/run.sh
+	    RESTORE_MINIXFS=./build-san/$(RESTORE) \
+	    MFSOP=./build-san/mfsop sh tests/run.sh
 
 # mount_minixfs goes in too if "make fuse" built it.
 install: all
@@ -173,7 +178,7 @@ lint-man:
 
 clean:
 	rm -f $(PROG) $(NEWFS) $(FSCK) $(TUNEFS) $(DUMP) $(RESTORE) \
-	    src/*.o $(MKIMAGE) $(MKDUMP) $(FUSEPROG)
+	    src/*.o $(MKIMAGE) $(MKDUMP) $(MFSOP) $(FUSEPROG)
 	rm -rf build-san
 
 .PHONY: all check check-sanitize clean fuse install lint-man

@@ -106,6 +106,9 @@ superblock は正しい位置にあるので、`info` は正しく見えます�
 イメージのとおりです。アンマウントは、Linux では `fusermount3 -u MOUNTPOINT`、BSD では
 `umount MOUNTPOINT` で行います。
 
+イメージに書き込むコマンドは、開いている間イメージを fcntl(2) でロックし、ほかのコマンドが
+ロックしているイメージは拒みます。
+
     newfs_minixfs -V version [-N] [-B le|be] [-b block-size]
         [-d directory [-F specfile [-P dbdir] [-x]] [-o uid:gid]]
         [-i inodes] [-l name-length] [-s blocks] [-t time]
@@ -264,7 +267,10 @@ dump_minixfs(8)、restore_minixfs(8)、ファイルシステムの形式につ�
     src/mfs_format.c        ライブラリ: 新しいファイルシステムの配置と書き込み
     src/mfs_tune.c          ライブラリ: ファイルシステムのその場での変更
     src/mfs_write.c         ライブラリ: inode と zone の確保と解放、
-                            ファイルとディレクトリ項目の書き込み
+                            ファイルの書き込みと大きさの変更、
+                            ディレクトリ項目の追加
+    src/mfs_ops.c           ライブラリ: ファイルとディレクトリの作成、
+                            リンク、削除、名前の変更
     src/layout.h            ディスク上の配置
     src/compat.h            システムごとの違い
     tests/                  テスト。tests/README.md を参照

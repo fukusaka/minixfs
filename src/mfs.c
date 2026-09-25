@@ -362,6 +362,21 @@ mfs_parse_tracks(const char *s, struct mfs_tracks *t)
 }
 
 int
+mfs_lock(int fd)
+{
+	struct flock fl;
+
+	(void)memset(&fl, 0, sizeof(fl));
+	fl.l_type = F_WRLCK;
+	fl.l_whence = SEEK_SET;
+	fl.l_start = 0;
+	fl.l_len = 0;
+	if (fcntl(fd, F_SETLK, &fl) == 0)
+		return 0;
+	return errno == EACCES || errno == EAGAIN ? -EBUSY : -errno;
+}
+
+int
 mfs_open_tracks(struct mfs *fs, const char *path, int rw,
     const struct mfs_tracks *tracks)
 {
@@ -375,6 +390,8 @@ mfs_open_tracks(struct mfs *fs, const char *path, int rw,
 	if ((fs->fd = open(path, rw ? O_RDWR : O_RDONLY)) == -1)
 		return -errno;
 	fs->writable = rw;
+	if (rw && (r = mfs_lock(fs->fd)) < 0)
+		goto fail;
 	if (fstat(fs->fd, &st) == -1) {
 		r = -errno;
 		goto fail;
@@ -910,17 +927,22 @@ static int
 count_clear(struct mfs *fs, enum mfs_map which, uint32_t nbits,
     uint32_t *count)
 {
-	unsigned char *map;
+	unsigned char *map, *kept;
 	uint32_t bit;
 	int r;
 
-	if ((r = mfs_load_map(fs, which, &map)) < 0)
+	/* The maps that mfs_write.c keeps are newer than those on disk. */
+	kept = which == MFS_IMAP ? fs->imap : fs->zmap;
+	if (kept != NULL)
+		map = kept;
+	else if ((r = mfs_load_map(fs, which, &map)) < 0)
 		return r;
 	*count = 0;
 	for (bit = 1; bit <= nbits; bit++)
 		if (!mfs_map_bit(fs, map, bit))
 			(*count)++;
-	free(map);
+	if (map != kept)
+		free(map);
 	return 0;
 }
 
@@ -967,6 +989,18 @@ mfs_put_super(struct mfs *fs)
 		put16(fs->order, sb + SB12_STATE, fs->state);
 	}
 	return dev_write(fs, sb, sizeof(sb), SUPER_OFFSET);
+}
+
+int
+mfs_mark_in_use(struct mfs *fs)
+{
+	if (fs->vmd)
+		fs->state &= (uint16_t)~MFS_VMD_CLEAN;
+	else if (fs->version == 3)
+		fs->state &= (uint16_t)~MFS_FLAG_CLEAN;
+	else
+		fs->state &= (uint16_t)~MFS_STATE_VALID;
+	return mfs_put_super(fs);
 }
 
 int
