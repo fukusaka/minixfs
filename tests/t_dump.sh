@@ -205,6 +205,21 @@ check_err "level 1: it needs the table of the restore before" \
     "needs the table of the restores before it"
 
 
+# An image whose path holds a blank is found in the dumpdates file too:
+# a dump of level 1 follows that of level 0, and -u once more replaces
+# its own line.
+cp "$T/fs.img" "$T/a b.img"
+rm -f "$T/dumpdates5"
+must "$DUMP_MINIXFS" -0 -u -D "$T/dumpdates5" -f "$T/b0" "$T/a b.img"
+sleep 1
+run "$DUMP_MINIXFS" -1 -u -D "$T/dumpdates5" -f "$T/b1" "$T/a b.img"
+check_status "a blank in the path: level 1 is dumped" 0
+check_true "a blank in the path: it follows level 0" \
+    grep -q "last level 0 dump: [A-Z]" "$T/err"
+run "$DUMP_MINIXFS" -1 -u -D "$T/dumpdates5" -f "$T/b1" "$T/a b.img"
+check_true "a blank in the path: -u replaces the line of the level" \
+    test "$(wc -l <"$T/dumpdates5")" -eq 2
+
 # A level 1 that runs out of room fails, but leaves the file system in
 # order and the table following level 0, and restores once there is room.
 cat >"$T/a4.spec" <<EOF

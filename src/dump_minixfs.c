@@ -242,14 +242,47 @@ parse(int argc, char **argv, struct options *o)
  * to DATES_NAME characters, the level and the date as ctime(3) prints it.
  */
 
+/*
+ * Take a line of the dumpdates file apart: the name, which may hold
+ * blanks, padded with blanks, a blank, the level, a blank and the date.
+ * The level is the last digit between blanks that a date follows.
+ * Returns 0, or -1 for a line of another form.
+ */
+static int
+dates_line(const char *line, size_t *namelen, int *level, int64_t *t)
+{
+	size_t i, len;
+
+	len = strlen(line);
+	for (i = len; i-- > 2; ) {
+		if (line[i - 1] != ' ' || line[i] < '0' || line[i] > '9' ||
+		    line[i + 1] != ' ' || (*t = parse_date(line + i + 2)) < 0)
+			continue;
+		for (len = i - 1; len > 0 && line[len - 1] == ' '; len--)
+			continue;
+		*namelen = len;
+		*level = line[i] - '0';
+		return 0;
+	}
+	return -1;
+}
+
+/* Whether the line of the dumpdates file names image. */
+static int
+dates_for(const char *line, const char *image, size_t namelen)
+{
+	return strlen(image) == namelen && strncmp(line, image, namelen) == 0;
+}
+
 /* The date of the last dump of image of a lower level, or 0. */
 static int64_t
 last_date(struct dump *d, int *lastlevel)
 {
-	char line[DATES_LINE], name[DATES_NAME + 1], date[64];
+	char line[DATES_LINE];
 	int64_t best, t;
+	size_t namelen;
 	FILE *fp;
-	char lv;
+	int lv;
 
 	best = 0;
 	*lastlevel = -1;
@@ -259,13 +292,12 @@ last_date(struct dump *d, int *lastlevel)
 		return 0;
 	}
 	while (fgets(line, sizeof(line), fp) != NULL) {
-		if (sscanf(line, "%511s %c %63[^\n]", name, &lv, date) != 3 ||
-		    strcmp(name, d->o->image) != 0 || lv < '0' || lv > '9' ||
-		    lv - '0' >= d->o->level || (t = parse_date(date)) < 0 ||
-		    t <= best)
+		if (dates_line(line, &namelen, &lv, &t) < 0 ||
+		    !dates_for(line, d->o->image, namelen) ||
+		    lv >= d->o->level || t <= best)
 			continue;
 		best = t;
-		*lastlevel = lv - '0';
+		*lastlevel = lv;
 	}
 	(void)fclose(fp);
 	return best;
@@ -275,10 +307,12 @@ last_date(struct dump *d, int *lastlevel)
 static void
 note_date(struct dump *d)
 {
-	char line[DATES_LINE], name[DATES_NAME + 1], tmp[PATH_MAX];
+	char line[DATES_LINE], tmp[PATH_MAX];
 	FILE *in, *out;
+	int64_t when;
+	size_t namelen;
 	time_t t;
-	char lv;
+	int lv;
 
 	if ((size_t)snprintf(tmp, sizeof(tmp), "%s.tmp", d->o->dates) >=
 	    sizeof(tmp) || (out = fopen(tmp, "w")) == NULL) {
@@ -287,9 +321,9 @@ note_date(struct dump *d)
 	}
 	if ((in = fopen(d->o->dates, "r")) != NULL) {
 		while (fgets(line, sizeof(line), in) != NULL) {
-			if (sscanf(line, "%511s %c", name, &lv) == 2 &&
-			    strcmp(name, d->o->image) == 0 &&
-			    lv - '0' == d->o->level)
+			if (dates_line(line, &namelen, &lv, &when) == 0 &&
+			    dates_for(line, d->o->image, namelen) &&
+			    lv == d->o->level)
 				continue;
 			(void)fputs(line, out);
 		}
