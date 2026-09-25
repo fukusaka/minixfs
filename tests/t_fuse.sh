@@ -141,9 +141,6 @@ can_write() {
 
 # read_mount: the checks on the mount $mnt of variant $v.
 read_mount() {
-	as_mounter find "$mnt" ! -path "$mnt" | sed "s|^$mnt/||" | sort \
-	    >"$T/found"
-	check_same_file "$v: every name is there" "$T/sorted" "$T/found"
 
 	# $T/files is a list of names, split on purpose.
 	for f in $(cat "$T/files"); do
@@ -181,6 +178,19 @@ read_mount() {
 
 	check_true "$v: the mount cannot be written" \
 	    test "$(can_write "$mnt/new" && echo yes)" != yes
+
+	# Last, as find(1) looks up "..", after which librefuse of NetBSD
+	# 10.1 has freed the root and the other lookups fail (BUGS in
+	# mount_minixfs(8)).
+	if [ "$(uname -s)" = NetBSD ]; then
+		skip "$v: every name is there" \
+		    "librefuse of NetBSD frees the root on a lookup of .."
+	else
+		as_mounter find "$mnt" ! -path "$mnt" | sed "s|^$mnt/||" |
+		    sort >"$T/found"
+		check_same_file "$v: every name is there" "$T/sorted" \
+		    "$T/found"
+	fi
 }
 
 if [ ! -x "$MINIXFS_FUSE" ]; then
@@ -257,8 +267,14 @@ done
 # Writing.  The same commands run on the mount and on a copy of the tree
 # on the host; the image is then a copy of that.
 change() {
+	# The copy on the host is changed by who runs the test, not through
+	# FUSE_SUDO, so that it can read and remove it.
 	for _change_d in "$mnt" "$H"; do
-		as_mounter sh -c '
+		_change_as=as_mounter
+		if [ "$_change_d" = "$H" ]; then
+			_change_as=
+		fi
+		$_change_as sh -c '
 			cd "$1" || exit 1
 			mkdir -p new/deep &&
 			cp "$2" new/data &&
