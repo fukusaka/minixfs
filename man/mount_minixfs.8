@@ -98,6 +98,24 @@ Take an image that holds the file system in the tracks of one side of a
 disk only, as
 .Xr minixfs 1
 does.
+.It Fl o Ar options
+Besides the options of FUSE, the comma-separated list may hold those of
+.Nm ,
+as
+.Xr mount 8
+gives them:
+.Cm rw
+for
+.Fl w ,
+.Cm ro
+to take that back,
+.Cm update= Ns Ar X
+for
+.Fl u Ar X
+and
+.Cm tracks= Ns Ar X
+for
+.Fl M Ar X .
 .El
 .Pp
 The file system is unmounted with
@@ -105,6 +123,36 @@ The file system is unmounted with
 on Linux, or with
 .Xr umount 8
 on the BSDs.
+.Ss MINIX 3
+On MINIX 3,
+.Nm
+is a service that
+.Xr mount 8
+starts, not a command.
+It is built with
+.Ql make fuse-minix
+and installed as
+.Pa /usr/pkg/service/minixfs ,
+and
+.Pa /etc/system.conf
+is given an entry
+.Ql service minixfs ,
+a copy of that of ntfs-3g.
+The image is mounted from a vnd device, with the options in
+.Fl o :
+.Bd -literal -offset indent
+# vndconfig vnd0 usr.img
+# mount -t minixfs -o rw /dev/vnd0 /mnt
+# umount /mnt
+# vndconfig -u vnd0
+.Ed
+.Pp
+Run by hand,
+.Nm
+shows how to mount and exits with 2.
+A service has no standard error, so its warnings are not seen, and the
+lock is on the vnd device, not on
+.Ar image .
 .Sh EXIT STATUS
 .Nm
 exits with 0 when the file system has been unmounted, 1 if the image
@@ -132,6 +180,11 @@ $ fusermount3 -u /mnt
 .Sh AUTHORS
 .An Shoichi Fukusaka
 .Sh BUGS
+On MINIX 3, writing is not reliable, as libpuffs gets the new nodes
+wrong: a symbolic link made through the mount loses its target, a pipe
+is made with no valid type, and a character device is made a block
+device.
+.Pp
 On
 .Nx
 10.1, looking up

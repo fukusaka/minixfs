@@ -113,6 +113,14 @@ $(FUSEPROG): src/mount_minixfs.c src/compat.h src/mfs.h $(LIBOBJS)
 	    -o $(FUSEPROG) src/mount_minixfs.c $(LIBOBJS) $(LDFLAGS) \
 	    $(FUSE_LIBS)
 
+# MINIX 3 runs a FUSE file system as a service that mount(8) starts:
+# its librefuse has the interface of FUSE 2, its libpuffs has the main()
+# of the program (PUFFS_SERVICE), and services are linked statically.
+fuse-minix:
+	$(MAKE) fuse FUSE_VERSION=26 LDFLAGS=-static \
+	    FUSE_CFLAGS=-DPUFFS_SERVICE \
+	    FUSE_LIBS="-lrefuse -lpuffs -lfsdriver -lsys -ltimers"
+
 check: all $(MKIMAGE) $(MKDUMP) $(MFSOP)
 	MINIXFS=./$(PROG) NEWFS_MINIXFS=./$(NEWFS) FSCK_MINIXFS=./$(FSCK) \
 	    TUNEFS_MINIXFS=./$(TUNEFS) DUMP_MINIXFS=./$(DUMP) \
@@ -181,4 +189,4 @@ clean:
 	    src/*.o $(MKIMAGE) $(MKDUMP) $(MFSOP) $(FUSEPROG)
 	rm -rf build-san
 
-.PHONY: all check check-sanitize clean fuse install lint-man
+.PHONY: all check check-sanitize clean fuse fuse-minix install lint-man

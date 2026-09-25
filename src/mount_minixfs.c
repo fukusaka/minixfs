@@ -55,6 +55,10 @@
 
 #include "mfs.h"
 
+#ifdef PUFFS_SERVICE
+#include <lib.h>
+#endif
+
 #define MAX_ARGS	64		/* arguments handed on to FUSE */
 
 /* Add one directory entry through the filler of readdir. */
@@ -85,7 +89,16 @@ struct mount {
 	int		rw;		/* -w, and the image allows it */
 	long		every;		/* -u seconds, or 0 */
 	int64_t		flushed;	/* when the maps last went out */
+	const char	*path;		/* of the image */
+	int		closed;		/* by close_image() */
+	int		failed;		/* close_image() could not write */
 };
+
+/*
+ * The mount, for mfs_destroy(): librefuse of MINIX 3 gives that its own
+ * struct fuse in place of the private data.
+ */
+static struct mount *the_mount;
 
 static struct mount *
 mount_of(void)
@@ -764,17 +777,54 @@ flush_option(const char *s, struct options *o)
 }
 
 /*
- * Take IMAGE, the first argument that is not an option, and -M, -w and
- * -u out of argv, and build the arguments for FUSE in fargv: the rest,
- * with a single-threaded mount, read-only unless -w says otherwise, in
- * place of the "ro" left for main() to change.  FUSE options that take a
- * value ("-o x") are passed on as they are.
+ * Take the options of mount_minixfs out of the list of -o, as mount(8)
+ * gives them, on MINIX 3 the only way: rw for -w, ro, update=X for -u X
+ * and tracks=X for -M X.  The rest stays in list, for FUSE.  Returns the
+ * value of update=, or NULL.
+ */
+static const char *
+mount_opts(char *list, struct options *o)
+{
+	const char *u;
+	char *next, *p, *w;
+
+	u = NULL;
+	w = list;
+	for (p = list; p != NULL; p = next) {
+		if ((next = strchr(p, ',')) != NULL)
+			*next++ = '\0';
+		if (strcmp(p, "rw") == 0) {
+			o->write = 1;
+		} else if (strcmp(p, "ro") == 0) {
+			o->write = 0;
+		} else if (strncmp(p, "update=", 7) == 0) {
+			u = p + 7;
+		} else if (strncmp(p, "tracks=", 7) == 0) {
+			if (mfs_parse_tracks(p + 7, &o->tracks) < 0)
+				usage();
+		} else if (*p != '\0') {
+			if (w != list)
+				*w++ = ',';
+			(void)memmove(w, p, strlen(p) + 1);
+			w += strlen(w);
+		}
+	}
+	*w = '\0';
+	return u;
+}
+
+/*
+ * Take IMAGE, the first argument that is not an option, and -M, -w, -u
+ * and the options of -o that mount_opts() knows out of argv, and build
+ * the arguments for FUSE in fargv: the rest, with a single-threaded
+ * mount, read-only unless -w says otherwise, in place of the "ro" left
+ * for main() to change.
  */
 static void
 split_args(int argc, char **argv, char **fargv, int *fargc,
     struct options *o)
 {
-	const char *u;
+	const char *ou, *u;
 	int i, n;
 
 	u = NULL;
@@ -794,8 +844,12 @@ split_args(int argc, char **argv, char **fargv, int *fargc,
 		} else if (strcmp(argv[i], "-w") == 0) {
 			o->write = 1;
 		} else if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
-			fargv[n++] = argv[i++];
-			fargv[n++] = argv[i];
+			if ((ou = mount_opts(argv[++i], o)) != NULL)
+				u = ou;
+			if (argv[i][0] != '\0') {
+				fargv[n++] = argv[i - 1];
+				fargv[n++] = argv[i];
+			}
 		} else if (argv[i][0] == '-' || o->image != NULL) {
 			fargv[n++] = argv[i];
 		} else {
@@ -842,22 +896,40 @@ open_image(struct mount *m, const struct options *o)
 	m->flushed = now();
 }
 
-/* After the unmount: the maps out, and the clean mark back. */
+/*
+ * After the unmount: the maps out, the clean mark back, and the image
+ * closed, once.  Returns 1 if they could not be written.
+ */
 static int
-close_image(struct mount *m, const char *path)
+close_image(struct mount *m)
 {
 	int r;
 
+	if (m->closed)
+		return m->failed;
+	m->closed = 1;
 	r = 0;
 	if (m->rw && (r = mfs_sync(&m->fs)) == 0 &&
 	    (r = mfs_mark_clean(&m->fs, 1)) == 0 && fsync(m->fs.fd) == -1)
 		r = -errno;
 	mfs_close(&m->fs);
 	if (r < 0) {
-		warnx("%s: %s", path, strerror(-r));
-		return 1;
+		warnx("%s: %s", m->path, strerror(-r));
+		m->failed = 1;
 	}
-	return 0;
+	return m->failed;
+}
+
+/*
+ * The unmount.  On MINIX 3 this is the last the service hears before
+ * mount(8) is told the file system is gone, and it lives on until it is
+ * stopped; so the image is closed here, and not after fuse_main().
+ */
+static void
+mfs_destroy(void *data)
+{
+	(void)data;
+	(void)close_image(the_mount);
 }
 
 static void
@@ -879,6 +951,44 @@ write_ops(struct fuse_operations *ops)
 	ops->fsync = mfs_sync_file;
 }
 
+#ifdef PUFFS_SERVICE
+/*
+ * Built as a service of MINIX 3 (make fuse-minix): libpuffs has the
+ * main() of the program, __wrap_main(), which starts the service and
+ * calls __real_main() with the arguments that mount(8) gave.  Started
+ * from a shell, the service cannot start, and hangs without a word.  One
+ * that the reincarnation server started has none of the standard
+ * descriptors open, so an open one says it was not, and how to mount is
+ * shown instead.  The exit is asked of the process manager, as _exit()
+ * of libc does, since libsys puts in its place one that only a service
+ * can use.
+ */
+int __wrap_main(int, char **);
+int __real_main(int, char **);
+
+int
+main(int argc, char **argv)
+{
+	message m;
+
+	if (fcntl(STDERR_FILENO, F_GETFD) != -1) {
+		(void)fprintf(stderr,
+		    "usage: mount -t minixfs [-o OPTIONS] SPECIAL NODE\n"
+		    "       OPTIONS: rw, ro, update=always|sync|SECONDS, "
+		    "tracks=SIZE:HEADS:SIDE\n"
+		    "mount_minixfs is a service that mount(8) starts; "
+		    "see mount_minixfs(8).\n");
+		(void)memset(&m, 0, sizeof(m));
+		m.m_lc_pm_exit.status = 2;
+		(void)_syscall(PM_PROC_NR, PM_EXIT, &m);
+		abort();
+	}
+	return __wrap_main(argc, argv);
+}
+
+#define main	__real_main
+#endif
+
 int
 main(int argc, char **argv)
 {
@@ -895,6 +1005,8 @@ main(int argc, char **argv)
 	if (o.image == NULL)
 		usage();
 	open_image(&m, &o);
+	m.path = o.image;
+	the_mount = &m;
 	if (m.rw) {
 		fargv[3] = opt_rw;
 		write_ops(&ops);
@@ -906,9 +1018,11 @@ main(int argc, char **argv)
 	ops.readdir = mfs_read_dir;
 	ops.statfs = mfs_statfs;
 	ops.init = mfs_init;
+	ops.destroy = mfs_destroy;
 
 	r = fuse_main(fargc, fargv, &ops, &m);
-	if (close_image(&m, o.image) != 0)
+	/* Where FUSE did not mount, or did not say it unmounted. */
+	if (close_image(&m) != 0)
 		r = 1;
 	return r == 0 ? 0 : 1;
 }

@@ -101,6 +101,24 @@ fuse2fs と同じく
 ディスクの片面のトラックだけに\:ファイルシステムが\:あるイメージを\:、\:
 .Xr minixfs 1
 と同じように扱います。
+.It Fl o Ar options
+コンマで区切ったこの並びには、\:FUSE のオプションのほかに、\:
+.Xr mount 8
+が渡す形で\:
+.Nm
+のオプションも書けます。
+.Cm rw
+は
+.Fl w ,
+.Cm ro
+はその取り消し、\:
+.Cm update= Ns Ar X
+は
+.Fl u Ar X ,
+.Cm tracks= Ns Ar X
+は
+.Fl M Ar X
+です。
 .El
 .Pp
 アンマウントは、\:Linux では
@@ -108,6 +126,36 @@ fuse2fs と同じく
 で、\:BSD では
 .Xr umount 8
 で行います。
+.Ss MINIX 3
+MINIX 3 では、\:
+.Nm
+はコマンドではなく、\:
+.Xr mount 8
+が起動するサービスです。
+.Ql make fuse-minix
+でビルドして
+.Pa /usr/pkg/service/minixfs
+として置き、\:
+.Pa /etc/system.conf
+に ntfs-3g の項目を写した
+.Ql service minixfs
+の項目を加えます。
+イメージは vnd デバイスから、\:オプションは
+.Fl o
+でマウントします。
+.Bd -literal -offset indent
+# vndconfig vnd0 usr.img
+# mount -t minixfs -o rw /dev/vnd0 /mnt
+# umount /mnt
+# vndconfig -u vnd0
+.Ed
+.Pp
+手で起動すると、\:
+.Nm
+はマウントの仕方を示して 2 で終了します。
+サービスには標準エラーがないので\:警告は見えず、\:ロックは
+.Ar image
+ではなく\:vnd デバイスに掛かります。
 .Sh EXIT STATUS
 .Nm
 は、\:ファイルシステムがアンマウントされれば 0、\:イメージを開けないか、\:FUSE が失敗するか、\:イメージに書き戻せなければ 1、\:使い方の誤りなら 2 で終了します。
@@ -133,6 +181,9 @@ $ fusermount3 -u /mnt
 .Sh AUTHORS
 .An Shoichi Fukusaka
 .Sh BUGS
+MINIX 3 では、\:libpuffs が新しい節を誤って扱うので、\:書き込みは当てになりません。
+マウントを通して作ったシンボリックリンクは\:リンク先を失い、\:FIFO は有効な種類なしに作られ、\:文字デバイスは\:ブロックデバイスとして作られます。
+.Pp
 .Nx
 10.1 では、\:ルートのすぐ下のディレクトリで
 .Ql \&..

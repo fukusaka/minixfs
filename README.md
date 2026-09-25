@@ -59,6 +59,7 @@ POSIX.1-2008 interfaces and needs no libraries.
     make fuse                                           # libfuse 3
     make fuse FUSE_LIBS="-lrefuse -lpuffs"              # NetBSD
     make fuse FUSE_LIBS="-lrefuse -lpuffs" FUSE_VERSION=26   # FUSE 2
+    make fuse-minix                                     # MINIX 3
 
 `FUSE_CFLAGS` and `FUSE_LIBS` default to what `pkg-config fuse3` says.
 The source uses only the high-level FUSE API, in its FUSE 3 form
@@ -123,7 +124,12 @@ directories, is mounted read-only with a warning.  `-u` says when the
 bit maps go to the image: at fsync and unmount (`sync`, the default),
 as they change (`always`), or also after so many seconds.  Unmount it
 with `fusermount3 -u MOUNTPOINT` on Linux or `umount MOUNTPOINT` on the
-BSDs.
+BSDs.  `-o rw,ro,update=X,tracks=X` stand for `-w`, read-only, `-u X`
+and `-M X`, as mount(8) gives options.  On MINIX 3 it is a service that
+mount(8) starts on a vnd device (`mount -t minixfs -o rw /dev/vnd0
+/mnt`), installed as mount_minixfs(8) says; writing is not reliable
+there, as libpuffs gets new symbolic links, pipes and character devices
+wrong.
 
 The commands that write an image lock it with fcntl(2) while they have
 it open, and refuse an image that another holds.

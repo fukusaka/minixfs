@@ -56,6 +56,7 @@ Makefile は GNU make でも BSD make でも動きます。コードは C99 と 
     make fuse                                           # libfuse 3
     make fuse FUSE_LIBS="-lrefuse -lpuffs"              # NetBSD
     make fuse FUSE_LIBS="-lrefuse -lpuffs" FUSE_VERSION=26   # FUSE 2
+    make fuse-minix                                     # MINIX 3
 
 `FUSE_CFLAGS` と `FUSE_LIBS` の既定は `pkg-config fuse3` の出力です。ソースは FUSE の高水準 API
 だけを使い、FUSE 3 の形（`FUSE_VERSION=31`、既定）か FUSE 2 の形（`FUSE_VERSION=26`、古い
@@ -112,6 +113,10 @@ superblock は正しい位置にあるので、`info` は正しく見えます�
 警告を出して読み出し専用でマウントします。`-u` はビットマップをいつイメージに書くかで、fsync と
 アンマウントのとき（`sync`、既定）、変わるたび（`always`）、またはそれに加えて指定の秒数ごとです。
 アンマウントは、Linux では `fusermount3 -u MOUNTPOINT`、BSD では `umount MOUNTPOINT` で行います。
+`-o rw,ro,update=X,tracks=X` は、mount(8) が渡す形で `-w`、読み出し専用、`-u X`、`-M X` を
+表します。MINIX 3 では、mount(8) が vnd デバイスの上で起動するサービスで
+（`mount -t minixfs -o rw /dev/vnd0 /mnt`）、置き方は mount_minixfs(8) のとおりです。そこでは
+libpuffs が新しいシンボリックリンク、FIFO、文字デバイスを誤って扱うので、書き込みは当てになりません。
 
 イメージに書き込むコマンドは、開いている間イメージを fcntl(2) でロックし、ほかのコマンドが
 ロックしているイメージは拒みます。

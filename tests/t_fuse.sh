@@ -8,15 +8,33 @@
 # checks need a FUSE build ("make fuse") and the right to mount; without
 # them they are skipped.
 #
+# On MINIX 3, mount_minixfs is a service that mount(8) starts on a vnd
+# device ("make fuse-minix", and installed as mount_minixfs(8) says); the
+# checks then need it installed as MINIXFS_FUSE was built, and root or
+# FUSE_SUDO for vndconfig and mount, and are skipped otherwise.  What only
+# a command run by hand can show is not checked there, but that such a
+# command shows how to mount; nor is writing, which libpuffs of MINIX 3
+# gets wrong (see BUGS in mount_minixfs(8)).
+#
 #   MINIXFS_FUSE  the mount_minixfs to test (default: ./mount_minixfs)
 #   FUSE_SUDO     a command to mount, unmount and read the mount with,
 #                 where users cannot mount, such as "sudo" on NetBSD
 #                 (default: none)
+#   MINIXFS_TYPE  on MINIX 3, the type it is installed as (default:
+#                 minixfs, as /usr/pkg/service/minixfs)
+#   MINIXFS_VND   on MINIX 3, the vnd device to use (default: vnd0)
 
 . ./tests/lib.sh
 
 : "${MINIXFS_FUSE:=./mount_minixfs}"
 : "${FUSE_SUDO:=}"
+: "${MINIXFS_TYPE:=minixfs}"
+: "${MINIXFS_VND:=vnd0}"
+
+minix=no
+if [ "$(uname -s)" = Minix ]; then
+	minix=yes
+fi
 
 # as_mounter CMD ARGS... - run a command as the user who mounted.
 as_mounter() {
@@ -25,9 +43,43 @@ as_mounter() {
 	$FUSE_SUDO "$@"
 }
 
+# The options of mount_minixfs as MINIX 3 takes them: "-w -u X" as
+# "-o rw,update=X".
+minix_opts() {
+	_minix_opts_o=
+	while [ $# -gt 0 ]; do
+		case $1 in
+		-w)
+			_minix_opts_o="$_minix_opts_o,rw"
+			;;
+		-u)
+			_minix_opts_o="$_minix_opts_o,update=$2"
+			shift
+			;;
+		esac
+		shift
+	done
+	if [ -n "$_minix_opts_o" ]; then
+		echo "-o ${_minix_opts_o#,}"
+	fi
+}
+
 # mount_image IMAGE DIR [OPTIONS] - mount in the background and wait until
 # the root directory shows the tree.  Sets fuse_pid; returns 1 on failure.
 mount_image() {
+	fuse_pid=
+	if [ "$minix" = yes ]; then
+		as_mounter vndconfig "$MINIXFS_VND" "$1" 2>"$T/fuse.err" ||
+		    return 1
+		# The options are several words or none, split on purpose.
+		# shellcheck disable=SC2046
+		if ! as_mounter mount -t "$MINIXFS_TYPE" $(minix_opts $3) \
+		    "/dev/$MINIXFS_VND" "$2" >"$T/fuse.err" 2>&1; then
+			as_mounter vndconfig -u "$MINIXFS_VND"
+			return 1
+		fi
+		return 0
+	fi
 	# OPTIONS are several words or none, split on purpose.
 	# shellcheck disable=SC2086
 	as_mounter "$MINIXFS_FUSE" -f $3 "$1" "$2" 2>"$T/fuse.err" &
@@ -43,10 +95,24 @@ mount_image() {
 	return 1
 }
 
+# Stop a mount_minixfs that did not mount.
+kill_mount() {
+	if [ -n "$fuse_pid" ]; then
+		kill "$fuse_pid" 2>/dev/null
+	fi
+}
+
 # unmount_image DIR - unmount and wait for mount_minixfs to exit.  Sets
 # status to the exit status of the unmount command, and fuse_status to
 # that of mount_minixfs.
 unmount_image() {
+	if [ "$minix" = yes ]; then
+		# The service is out of sight: its status is that of umount.
+		run as_mounter umount "$1"
+		fuse_status=$status
+		as_mounter vndconfig -u "$MINIXFS_VND"
+		return
+	fi
 	if command -v fusermount3 >/dev/null 2>&1; then
 		run fusermount3 -u "$1"
 	elif command -v fusermount >/dev/null 2>&1; then
@@ -116,6 +182,23 @@ if [ ! -x "$MINIXFS_FUSE" ]; then
 	skip "mount_minixfs" "no $MINIXFS_FUSE; build it with \"make fuse\""
 	finish
 fi
+# Run by hand on MINIX 3, the service says how to mount.
+if [ "$minix" = yes ]; then
+	run "$MINIXFS_FUSE" -w "$T/img" "$T/mnt"
+	check_status "run by hand, the service exits with 2" 2
+	check_true "run by hand, the service shows how to mount" \
+	    grep -q "usage: mount -t minixfs" "$T/err"
+fi
+if [ "$minix" = yes ] &&
+    ! cmp -s "$MINIXFS_FUSE" "/usr/pkg/service/$MINIXFS_TYPE"; then
+	skip "mount_minixfs" "$MINIXFS_FUSE is not installed as\
+ /usr/pkg/service/$MINIXFS_TYPE; see mount_minixfs(8)"
+	finish
+fi
+if [ "$minix" = yes ] && [ "$(id -u)" -ne 0 ] && [ -z "$FUSE_SUDO" ]; then
+	skip "mount_minixfs" "mounting takes root on MINIX 3; see FUSE_SUDO"
+	finish
+fi
 
 grep -v '^#' tests/tree.names | sort >"$T/sorted"
 touch -t 200001010000 "$T/y2000"
@@ -123,11 +206,14 @@ mnt="$T/mnt"
 mkdir "$mnt"
 
 dd if=/dev/zero of="$T/zero" bs=1024 count=64 2>/dev/null
-run "$MINIXFS_FUSE" "$T/zero" "$mnt"
-check_err "a file of zeros is refused" "not a MINIX file system"
+# On MINIX 3, mount_minixfs runs only as a service.
+if [ "$minix" = no ]; then
+	run "$MINIXFS_FUSE" "$T/zero" "$mnt"
+	check_err "a file of zeros is refused" "not a MINIX file system"
 
-run "$MINIXFS_FUSE" "$T/zero"
-check_status "no mount point is a usage error" 2
+	run "$MINIXFS_FUSE" "$T/zero"
+	check_status "no mount point is a usage error" 2
+fi
 
 mounted=0
 for variant in "version=1 namelen=14:be:1024" \
@@ -147,7 +233,7 @@ for variant in "version=1 namelen=14:be:1024" \
 	(cd "$exp" && find . -type f | sed 's|^\./||' | sort) >"$T/files"
 
 	if ! mount_image "$T/img" "$mnt"; then
-		kill "$fuse_pid" 2>/dev/null
+		kill_mount
 		if [ "$mounted" -eq 0 ]; then
 			why=$(head -1 "$T/fuse.err")
 			skip "mount_minixfs" "cannot mount: $why"
@@ -207,7 +293,7 @@ writable() {
 	run "$NEWFS_MINIXFS" $2 -d "$exp" -s 8192 "$T/img"
 	cp -R "$exp" "$H"
 	if ! mount_image "$T/img" "$mnt" "-w -u $3"; then
-		kill "$fuse_pid" 2>/dev/null
+		kill_mount
 		fail "$v: the image is mounted for writing" \
 		    "$(head -5 "$T/fuse.err")"
 		return
@@ -240,25 +326,37 @@ writable() {
 	    "$T/want" "$T/got"
 }
 
-# V1 keeps a group of a byte: the tree gets group 0.
-writable "V1/le" "-V 1 -o $(id -u):0" sync 1
-writable "V2/be, 30-character names" "-V 2 -l 30 -B be" always 0
-writable "V3/le" "-V 3" 1 0
+if [ "$minix" = yes ]; then
+	skip "mount_minixfs -w" "writing is not reliable on MINIX 3; see\
+ BUGS in mount_minixfs(8)"
+else
+	# V1 keeps a group of a byte: the tree gets group 0.
+	writable "V1/le" "-V 1 -o $(id -u):0" sync 1
+	writable "V2/be, 30-character names" "-V 2 -l 30 -B be" always 0
+	writable "V3/le" "-V 3" 1 0
+fi
 
 # A file system not marked clean is mounted read-only.
 run "$TUNEFS_MINIXFS" -c dirty "$T/img"
 if mount_image "$T/img" "$mnt" -w; then
-	check_true "-w, not clean: the warning says so" \
-	    grep -q "not marked clean; check it with fsck_minixfs" \
-	    "$T/fuse.err"
+	# A service of MINIX 3 has no standard error to warn on.
+	if [ "$minix" = no ]; then
+		check_true "-w, not clean: the warning says so" \
+		    grep -q "not marked clean; check it with fsck_minixfs" \
+		    "$T/fuse.err"
+	fi
 	check_true "-w, not clean: the mount cannot be written" \
 	    test "$(can_write "$mnt/new" && echo yes)" != yes
 	unmount_image "$mnt"
 else
-	kill "$fuse_pid" 2>/dev/null
+	kill_mount
 	fail "-w, not clean: the image is mounted" "$(head -5 "$T/fuse.err")"
 fi
-run "$MINIXFS_FUSE" -u always "$T/img" "$mnt"
-check_status "-u without -w is a usage error" 2
+if [ "$minix" = no ]; then
+	run "$MINIXFS_FUSE" -u always "$T/img" "$mnt"
+	check_status "-u without -w is a usage error" 2
+	run "$MINIXFS_FUSE" -o update=always "$T/img" "$mnt"
+	check_status "update= without rw is a usage error" 2
+fi
 
 finish
