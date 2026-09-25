@@ -267,6 +267,12 @@ tree_kinds() {
 	fi
 	run "$NEWFS_MINIXFS" -V 2 -o 0:0 -s 100 "$T/img"
 	check_status "-o without -d is a usage error" 2
+	for owner in 4294967296:0 0:4294967296 x:0 7 :3 7:; do
+		rm -f "$T/img"
+		run "$NEWFS_MINIXFS" -V 2 -d "$T/t" -o "$owner" "$T/img"
+		check_status "-o $owner is a usage error" 2
+		check_true "-o $owner makes no image" test ! -e "$T/img"
+	done
 
 	if command -v fakeroot >/dev/null 2>&1; then
 		rm -f "$T/img"

@@ -264,7 +264,9 @@ plan(const struct options *o, struct mfs_layout *l)
 static void
 tree_shape(const struct options *o, uint32_t block_size, struct tree_fs *f)
 {
+	unsigned long v;
 	const char *gid;
+	char *end;
 
 	(void)memset(f, 0, sizeof(*f));
 	f->exclude = o->exclude;
@@ -285,10 +287,13 @@ tree_shape(const struct options *o, uint32_t block_size, struct tree_fs *f)
 		errx(2, "%s: give the owner as uid:gid", o->owner);
 	f->owned = 1;
 	f->gid = number("group", gid + 1);
-	f->uid = (uint32_t)strtoul(o->owner, NULL, 10);
-	if (o->owner[0] < '0' || o->owner[0] > '9' ||
-	    strspn(o->owner, "0123456789") != (size_t)(gid - o->owner))
+	/* The number before the colon, checked as number() checks one. */
+	errno = 0;
+	v = strtoul(o->owner, &end, 10);
+	if (errno != 0 || end != gid || end == o->owner ||
+	    o->owner[0] < '0' || o->owner[0] > '9' || v > UINT32_MAX)
 		errx(2, "%s: bad owner", o->owner);
+	f->uid = (uint32_t)v;
 }
 
 /* Walk the directory of -d, and stop if any of it cannot be copied. */
