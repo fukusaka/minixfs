@@ -487,8 +487,9 @@ struct mfs_new {
 
 /*
  * Make name in directory dir: a regular file, a directory, a pipe, a
- * socket or a device, as the type of n->mode says, and read it into *ip.
- * A directory gets "." and "..", and its parent one more link.
+ * socket or a device, as the type of n->mode says, and read it into *ip;
+ * any other type is -EINVAL.  A directory gets "." and "..", and its
+ * parent one more link.
  */
 int	mfs_make(struct mfs *, uint32_t, const char *, const struct mfs_new *,
 	    struct mfs_inode *);

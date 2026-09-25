@@ -251,10 +251,18 @@ int
 mfs_make(struct mfs *fs, uint32_t dir, const char *name,
     const struct mfs_new *n, struct mfs_inode *ip)
 {
-	if ((n->mode & MFS_S_IFMT) == MFS_S_IFLNK ||
-	    (n->mode & MFS_S_IFMT) == 0)
+	/* Symbolic links take mfs_symlink(); no other type is made. */
+	switch (n->mode & MFS_S_IFMT) {
+	case MFS_S_IFIFO:
+	case MFS_S_IFCHR:
+	case MFS_S_IFDIR:
+	case MFS_S_IFBLK:
+	case MFS_S_IFREG:
+	case MFS_S_IFSOCK:
+		return make_node(fs, dir, name, n, NULL, ip);
+	default:
 		return -EINVAL;
-	return make_node(fs, dir, name, n, NULL, ip);
+	}
 }
 
 int
