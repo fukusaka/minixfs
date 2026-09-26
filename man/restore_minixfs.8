@@ -1,6 +1,6 @@
 .\" SPDX-License-Identifier: BSD-2-Clause
 .\" Copyright (c) 2026 Shoichi Fukusaka
-.Dd September 25, 2026
+.Dd September 26, 2026
 .Dt RESTORE_MINIXFS 8
 .Os
 .Sh NAME
@@ -21,23 +21,23 @@
 .Ar image
 .Sh DESCRIPTION
 .Nm
-reads a dump in the format of BSD
-.Xr dump 8 :
-those of
-.Xr dump_minixfs 8 ,
-those of
+reads BSD dumps in either byte order and restores them into a MINIX
+file system of any version; see
+.Xr minixfs 5 .
+Supported dumps include:
+.Bl -bullet -compact
+.It
+.Xr dump_minixfs 8 ;
+.It
 .Nx
 and
 .Fx
-of UFS1 and UFS2, those of the dump of Linux of ext2, ext3 and ext4, and
-those of 4.2BSD and 4.3BSD of their file system and of the older one,
-in either byte order.
-With
-.Fl r
-it writes the dump into the MINIX file system in
-.Ar image ,
-of any version; see
-.Xr minixfs 5 .
+UFS1 and UFS2 dumps;
+.It
+Linux ext2, ext3 and ext4 dumps;
+.It
+4.2BSD and 4.3BSD dumps, including older file system formats.
+.El
 .Pp
 The options are:
 .Bl -tag -width Ds
@@ -80,50 +80,47 @@ and
 .Ar gid ,
 numbers both.
 .It Fl s Ar symtable
-The file where
-.Fl r
-keeps which inode of the image each inode of the dump went to, for the
-next dump of a higher level, and the date of the dump it restored.
+Record the dump-to-image inode mapping and the restored dump's date in
+.Ar symtable
+for subsequent incremental restores.
 The default is
-.Pa restoresymtable ,
-as that of
-.Xr restore 8 .
+.Pa restoresymtable .
 .It Fl v
 Name each directory and file as it is restored.
 .El
 .Pp
-A dump holds its directories before its other files.
-Having read them,
+Before writing,
 .Fl r
-checks the names against the length the file system takes, and the
-number of inodes needed against those free, and writes nothing if
-anything is wrong.
-From a file, rather than standard input, it also reads through the other
-files first and checks their owners, device numbers and sizes;
-from standard input, a file that does not fit is left out when it comes,
-with its names, and the rest goes in.
-Device numbers are taken as major \(mu 256 + minor, and have to be below
-65536.
+checks name lengths and the number of available inodes.
+If either check fails, nothing is written.
+When reading a file, it also checks owners, device numbers and file sizes
+in advance; any error prevents writing.
+When reading standard input, it skips files that exceed these limits,
+including their names, and continues restoring the rest.
+Device numbers use major \(mu 256 + minor and must be below 65536.
 .Pp
-A dump of a higher level has to follow the dump restored last: its date
-of the dump before it has to be the date in
+An incremental dump's previous-dump date must match the date in
 .Ar symtable .
-A restore that fails, or a dump that ends too soon, leaves what was
-written in order, and a
-.Ar symtable
-by which the same dump follows again, once what failed is put right.
+After a recoverable failure, the table allows the same dump to be retried.
+Keep it between restores.
 .Pp
-The file system has to be marked clean, and not to have the flex
-directories of Minix-vmd.
-While it is written the clean mark is away, and it comes back once the
-restore is on the disk.
-A restore cut short, or one in which an operation on the image failed
-other than for a lack of room or a limit of the file system, such as an
-error of the device, leaves it away: check the file system with
+The destination must be marked clean and must not use Minix-vmd flex
+directories.
+It is locked with
+.Xr fcntl 2
+while it is written, and one that another program holds is refused.
+The clean flag is cleared during writing and restored after the data
+reaches disk.
+Failures due to space or file system limits, or a truncated or damaged
+dump, leave the written data consistent.
+After correcting the cause, retry the same dump.
+.Pp
+An I/O error or forced termination may leave an inconsistent image with
+the clean flag cleared.
+Run
 .Nm fsck_minixfs Fl y
-then.
-A dump that ends too soon or is damaged, or a file system that runs out
-of room, does not, as what was written is left in order.
+before further writes.
+If the image or restore table cannot be recovered, restart from the full dump.
 .Pp
 Extended attributes, file flags and sockets have no place in a MINIX
 file system, and are left out with a warning.

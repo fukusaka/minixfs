@@ -1,6 +1,6 @@
 .\" SPDX-License-Identifier: BSD-2-Clause
 .\" Copyright (c) 2026 Shoichi Fukusaka
-.Dd September 25, 2026
+.Dd September 26, 2026
 .Dt DUMP_MINIXFS 8
 .Os
 .Sh NAME
@@ -22,20 +22,16 @@ writes the MINIX file system in
 .Ar image
 to
 .Ar file
-as the
-.Nx
-.Xr dump 8
-writes a UFS1 file system, so that the
-.Xr restore 8
-of
-.Nx
-and
+in NetBSD's UFS1 dump format.
+The dump can be read by
 .Xr restore_minixfs 8
-read it.
-It reads any version of the file system, in either byte order, and that
-of Minix-vmd; see
+and the
+.Xr restore 8
+commands of NetBSD, FreeBSD and Linux.
+All MINIX versions, both byte orders and Minix-vmd are supported;
+see
 .Xr minixfs 5 .
-It never writes to the image.
+The source image is not modified.
 .Pp
 The dump is in the byte order of the image.
 Inode
@@ -135,12 +131,5 @@ $ dump_minixfs -f - old.img | restore_minixfs -r -f - new.img
 .Sh CAVEATS
 V1 keeps no ctime, so a change of mode, owner or name alone does not put
 a file in a dump of a higher level.
-.Pp
-The restore of Linux does not read the dump: it takes the date that
-.Nx
-keeps in the header for a record count of its own, as it does with
-the dumps that
-.Nx
-makes of UFS1.
 .Pp
 A dump goes on one file; it is never split over volumes.

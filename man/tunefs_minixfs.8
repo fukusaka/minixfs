@@ -1,6 +1,6 @@
 .\" SPDX-License-Identifier: BSD-2-Clause
 .\" Copyright (c) 2026 Shoichi Fukusaka
-.Dd September 25, 2026
+.Dd September 26, 2026
 .Dt TUNEFS_MINIXFS 8
 .Os
 .Sh NAME
@@ -29,6 +29,9 @@ file size with the one MINIX works out, and the bits of the maps past
 the last inode or zone.
 Each change is printed as the old and the new value.
 The byte order is changed first, then the name length, then the size.
+The image is locked with
+.Xr fcntl 2
+while it is written, and one that another program holds is refused.
 .Pp
 The options are:
 .Bl -tag -width Ds
@@ -53,18 +56,18 @@ Grow or shrink the file system, and the image file with it unless
 is given or the image is a device, to
 .Ar blocks
 blocks, cut down to whole zones.
-To grow, the zone map takes more blocks if it has no room for the new
-zones, and the inode table and every data zone in use then move up, with
-every zone number changed to match.
-To shrink, the zones in use past the new end move to free zones before
-it, with the zone numbers that name them, and the zone map keeps its
-blocks, which
+Used zones are relocated as needed, and growing the zone map may
+require additional space for relocating metadata and data.
+If there is insufficient space, resizing makes no changes.
+Earlier changes may remain when combined with
+.Fl l ;
+see
+.Sx CAVEATS .
+Shrinking keeps the zone map's block count, which
 .Nm fsck_minixfs Fl w
-notes.
-What is in use has to fit, or nothing changes.
-An image that keeps its size has to hold the new size already, or
-nothing changes; the size of a device is asked of the system, and one
-that cannot be told does not grow.
+may report as excessive.
+If the image size is retained, it must already hold the requested size.
+A device whose size cannot be determined cannot be grown.
 .It Fl k
 With
 .Fl s ,
@@ -80,7 +83,7 @@ and
 all the same; see
 .Sx CAVEATS .
 .It Fl c Cm clean | dirty
-Mark the file system clean or dirty: in V1 and V2 in the state word
+Mark the file system clean or dirty: in V1 and V2 in the state field
 that Linux keeps, in V3 in the flags of MINIX 3, which mounts a file
 system that is not clean read-only, and in Minix-vmd in its flags.
 .It Fl e Cm 0 | 1
@@ -93,6 +96,9 @@ from the zones that the double indirect zone reaches, to what Linux and
 write, or to
 .Ar bytes ,
 from 1 to 2147483647.
+Linux keeps files to it; the tools of this package do not.
+See CAVEATS in
+.Xr minixfs 5 .
 .It Fl M Ar size : Ns Ar heads : Ns Ar side
 Change an image that holds the file system in the tracks of one side of
 a disk only, as for

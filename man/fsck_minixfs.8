@@ -1,6 +1,6 @@
 .\" SPDX-License-Identifier: BSD-2-Clause
 .\" Copyright (c) 2026 Shoichi Fukusaka
-.Dd September 25, 2026
+.Dd September 26, 2026
 .Dt FSCK_MINIXFS 8
 .Os
 .Sh NAME
@@ -23,7 +23,7 @@ It checks:
 .It
 the super block: a maximum file size that makes sense, an image that
 holds the whole file system, where the size of a device can be told,
-and the errors that Linux records in the state word of V1 and V2;
+and the errors that Linux records in the state field of V1 and V2;
 .It
 directory entries: inode numbers in range, entries that name a free
 inode or one of no valid type, names that are empty or hold
@@ -40,13 +40,13 @@ share, device files with zone numbers besides the device number, and
 symbolic links that are empty, longer than Linux writes or cut short by
 a NUL byte;
 .It
-link counts against the entries that name each inode, inodes in use
-that no directory names, both bit maps, and bit 0 of each map, which is
+link counts against the entries that name each inode, unreferenced
+inodes (inodes in use that no directory names), both bit maps, and bit 0 of each map, which is
 never used but must be set.
 .El
 .Pp
-The walk goes breadth first and reads each directory once, so that
-neither depth nor loops of directories can stop it.
+Neither the depth of the directory tree nor loops of directories stop
+the check.
 Each problem is printed on a line of its own, then a summary of the
 inodes and zones in use and the problems found.
 A file system that is not marked clean is noted, but is not a problem in
@@ -68,9 +68,9 @@ are pointed where they belong or put back, moving an entry that holds
 their place and giving the directory a zone if it has none; zone numbers
 outside the data area and the second use of a zone are cleared; sizes
 are cut to what the zones reach, to whole entries and to the text of a
-symbolic link; link counts are set; inodes that no directory names are
-freed; the bit maps are made to match; and the super block gets a
-sensible maximum file size.
+symbolic link.
+Link counts and bit maps are corrected, unreferenced inodes are freed,
+and the maximum file size in the super block is corrected.
 A root that is not a directory and an image shorter than the file
 system are left.
 Each problem is followed by
@@ -81,10 +81,13 @@ The image is then checked again and marked clean if nothing is left \(em
 in V1 and V2 as Linux marks it, in V3 with the clean flag of MINIX 3,
 which otherwise mounts the file system read-only \(em or marked as
 having errors if problems remain.
+The image is locked with
+.Xr fcntl 2
+while it is written, and one that another program holds is refused.
 .It Fl l
 With
 .Fl y ,
-link inodes that no directory names into
+link unreferenced inodes into
 .Pa /lost+found
 as
 .Ql #

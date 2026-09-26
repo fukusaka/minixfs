@@ -1,6 +1,6 @@
 .\" SPDX-License-Identifier: BSD-2-Clause
 .\" Copyright (c) 2026 Shoichi Fukusaka
-.Dd September 25, 2026
+.Dd September 26, 2026
 .Dt MOUNT_MINIXFS 8
 .Os
 .Sh NAME
@@ -22,13 +22,9 @@ mounts the MINIX file system in
 .Ar image
 on
 .Ar mountpoint
-through the high-level FUSE interface, which libfuse on Linux and
-.Fx
-and librefuse on
-.Nx
-and MINIX 3 provide.
-Every version, V1, V2 and V3, in either byte order, and the file systems
-of Minix-vmd are read; see
+through FUSE.
+It supports V1, V2, V3 and Minix-vmd in either byte order;
+see
 .Xr minixfs 5 .
 .Pp
 The mount is read-only unless
@@ -44,7 +40,7 @@ with
 are always given to FUSE.
 Inode numbers, modes, link counts, owners, times and device numbers are
 those of the image.
-The image is opened before FUSE takes over, so a relative path works.
+The image may be given as a relative path.
 Other options, such as
 .Fl f
 to stay in the foreground or
@@ -86,26 +82,24 @@ A file system that is not marked clean, or that has the flex directories
 of Minix-vmd, which this cannot write, is mounted read-only with a
 warning.
 .It Fl u Cm always | sync | Ar seconds
-When the bit maps, which say which inodes and zones are in use, go to
-the image: at
+Set when inode and zone bit maps are written:
+.Bl -tag -width seconds -compact
+.It Cm sync
+At
 .Xr fsync 2
-and unmount, as fuse2fs does
-.Pq Cm sync , No the default ;
-as they change, as ntfs-3g does
-.Pq Cm always ;
-or, besides, with the first change after
+and unmount (the default).
+.It Cm always
+After every change.
+.It Ar seconds
+At fsync and unmount, and on the first change after
 .Ar seconds
-have gone since they last did, as
-.Xr update 8
-of MINIX writes everything every 30 seconds.
-Everything else goes to the image as it changes.
-If
-.Nm
-dies, the image is left not marked clean, and with
-.Cm sync
-the maps may be behind the inodes;
-.Nm fsck_minixfs Fl y
-puts them right.
+have elapsed since the last bit map write.
+.El
+Data and other metadata are written as they change.
+An interrupted mount leaves the image unclean; deferred bit maps may
+not match the inodes.
+Check and repair it with
+.Nm fsck_minixfs Fl y .
 .It Fl M Ar size : Ns Ar heads : Ns Ar side
 Take an image that holds the file system in the tracks of one side of a
 disk only, as

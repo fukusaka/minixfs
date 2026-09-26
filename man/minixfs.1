@@ -1,11 +1,11 @@
 .\" SPDX-License-Identifier: BSD-2-Clause
 .\" Copyright (c) 2026 Shoichi Fukusaka
-.Dd September 25, 2026
+.Dd September 26, 2026
 .Dt MINIXFS 1
 .Os
 .Sh NAME
 .Nm minixfs
-.Nd inspect and extract MINIX file system images
+.Nd read and write MINIX file system images
 .Sh SYNOPSIS
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
@@ -110,21 +110,19 @@ they start with
 The commands are:
 .Bl -tag -width Ds
 .It Cm info
-Print the super block: version, byte order, magic number, name length,
-block size, the numbers of inodes and zones, the sizes of the bit maps,
-the first data zone, the zone size, the maximum file size, whether the
-file system is marked clean, and for Minix-vmd the variant.
-Then the size of the image against that of the file system, and how
-much of the image is sectors of nothing but 0xe5 or 0xa5, which formats
-leave and nothing else writes, with the commonest length of such runs.
-A disk read with more sides than it was written on shows as runs of one
-track making up half of the image; a copy cut short, or a file system
-smaller than its disk, shows too.
-None of this is an error in itself.
-The size of a device is asked of the system, and shown as unknown where
-it cannot be told; a device is read for such sectors only as far as the
-file system.
-Last come the free inodes and zones that the bit maps count.
+Display the super block fields: version, byte order, magic number, name
+length, block size, inode and zone counts, bit map sizes, first data
+zone, zone size, maximum file size and clean flag.
+For Minix-vmd, also identify the variant.
+.Pp
+Display the image and file system sizes, free inode and zone counts,
+and the number of sectors filled with 0xe5 or 0xa5, including the most
+common length of consecutive runs.
+These fill patterns can indicate unused tracks, such as a single-sided
+disk read as double-sided.
+A size mismatch or fill pattern is not itself an error.
+Device size is shown as unknown if it cannot be determined;
+fill patterns on devices are counted only within the file system.
 .It Cm ls Oo Fl lR Oc Ar image Op Ar path
 List the directory
 .Ar path ,
@@ -283,13 +281,12 @@ or
 the image knows no names.
 .El
 .Pp
-What the commands make belongs to the directory it is made in, since the
-owner of a file in an image is a matter of the system that will use the
-image, not of who runs
-.Nm ;
+Files created in the image inherit their parent directory's owner and
+group, unless
 .Fl o
-gives another owner, with numbers that the inodes can hold (a group of
-a byte in V1).
+specifies numeric IDs.
+The IDs must fit the inode fields; V1 group IDs are limited to 255.
+.Pp
 The image is locked while a command has it open, as
 .Nm mount_minixfs Fl w
 locks it, and its clean mark is away until the command is done, so that

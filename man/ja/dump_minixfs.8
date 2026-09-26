@@ -3,7 +3,7 @@
 .\"
 .\" 節の名前は mandoc が見分ける英語のままにする。日本語の文は途中で
 .\" 改行すると空白が入るので、1 文を 1 行に書く。
-.Dd September 25, 2026
+.Dd September 26, 2026
 .Dt DUMP_MINIXFS 8
 .Os
 .\" 日本語では両端をそろえると空白が大きく開くので、groff には左だけ
@@ -26,24 +26,18 @@
 .Nm
 は、\:
 .Ar image
-の MINIX ファイルシステムを、\:
-.Nx
-の
-.Xr dump 8
-が UFS1 を書くのと同じ形式で\:
+の MINIX ファイルシステムを NetBSD の UFS1 dump 形式で
 .Ar file
-に書きます。
-.Nx
-の
-.Xr restore 8
-と
+に書き出します。
 .Xr restore_minixfs 8
-で読めます。
-どの版のファイルシステムも、\:どちらのバイト順でも、\:Minix-vmd のものも読みます。
+と NetBSD・FreeBSD・Linux の
+.Xr restore 8
+で読み込めます。
+MINIX の全バージョン、\:両方のバイト順、\:Minix-vmd に対応します。
 形式は
 .Xr minixfs 5
 を参照してください。
-イメージに書き込むことはありません。
+元のイメージは変更しません。
 .Pp
 dump はイメージのバイト順で書きます。
 .Xr restore 8
@@ -52,7 +46,7 @@ dump はイメージのバイト順で書きます。
 は dump では inode
 .Em n
 + 1 になります。
-ディレクトリは、\:イメージの項目の形に\:かかわらず\:4.4BSD の形で書きます。
+ディレクトリは、\:イメージの項目の形に\:かかわらず 4.4BSD の形で書きます。
 UFS ではファイルの最後のブロックが必ずあるので、\:各ファイルの最後のレコードは、\:穴の中でも書きます。
 .Pp
 レベル 0 の dump はファイルシステム全体を持ちます。
@@ -68,7 +62,7 @@ BSD の dump と同じく、\:mtime か ctime がその日時より前でない�
 .It Fl u
 dump が済んだら、\:与えたとおりの
 .Ar image
-の名前で、\:同じレベルの記録に代えて\:dumpdates ファイルに記録します。
+の名前で、\:同じレベルの記録に代えて dumpdates ファイルに記録します。
 .It Fl D Ar dumpdates
 dumpdates ファイルです。
 イメージとレベルごとに、\:名前、\:レベル、\:
@@ -135,11 +129,5 @@ $ dump_minixfs -f - old.img | restore_minixfs -r -f - new.img
 .An Shoichi Fukusaka
 .Sh CAVEATS
 V1 には ctime がないので、\:モード、\:所有者、\:名前だけの変更では、\:ファイルは\:高いレベルの dump に入りません。
-.Pp
-Linux の restore はこの dump を読みません。
-.Nx
-がヘッダに持つ日時を\:自分のレコード数として\:受け取るためで、\:
-.Nx
-が UFS1 について作る dump も同じです。
 .Pp
 dump は 1 つのファイルに書き、\:複数のボリュームには分けません。
