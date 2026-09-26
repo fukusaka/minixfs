@@ -220,6 +220,10 @@ SEE ALSO
      Implementation, second and third editions.
 
 HISTORY
+     Years and versions are those of the sources at hand; a change may be
+     older.  A year is that of the release, or of the change where there is
+     none (1994, 2015).
+
      1987  V1 is the file system of MINIX 1.0, of the first edition of the
            book.
 

@@ -227,6 +227,9 @@ SEE ALSO
      Implementation, second and third editions.
 
 HISTORY
+     年と版は手元のソースで確かめたもので、実際はもっと前のこともあります。
+     年は版の年で、版のないもの（1994 年、2015 年）は変更の年です。
+
      1987  V1 は、書籍の初版の MINIX 1.0 のファイルシステムです。
 
      1991  Linux は、最初の版の 0.01 から V1 を使います。 V1
