@@ -79,23 +79,22 @@ top of `tests/mkimage.c`).  The scripts:
 - `t_fsck.sh` - `fsck_minixfs` passes the test tree in every format and
   an empty file system, and finds each kind of damage in every version
   and byte order: a bad maximum file size, which becomes MINIX's, a
-  short image, the clean mark
-  and the errors Linux records, bit maps that disagree with the files
-  and a clear bit 0, wrong link counts, zones outside the data area or
-  used twice, inodes that no directory names or with no valid type, bad
-  directory and file sizes, device files with zones, symbolic links that
-  are empty, too long or hold a NUL byte, "." that names another inode,
-  missing "." and "..", and entries naming inodes past the last, free
-  inodes, names with "/" and directories listed twice; `-y` repairs
-  each of them so that a second check finds nothing, and leaves a
-  consistent image as it was.  `-y -l` links trees that nothing names,
-  also in a loop, into a `/lost+found` that it makes or finds; `-e`
-  checks and sets the bits past the end of the maps; `-w` notes spare
-  map blocks, a gap before the data zones, a maximum file size other
-  than MINIX's and a file past the maximum file size, and nothing about
-  a layout as MINIX makes it.  A
-  directory holding more directories than the walk first has room for
-  is checked too.
+  short image, the clean mark and the errors Linux records, bit maps
+  that disagree with the files and a clear bit 0, wrong link counts,
+  zones outside the data area or used twice, inodes that no directory
+  names or with no valid type, bad directory and file sizes, device
+  files with zones, symbolic links that are empty, too long or hold a
+  NUL byte, "." that names another inode, missing "." and "..", and
+  entries naming inodes past the last, free inodes, names with "/" and
+  directories listed twice; `-y` repairs each of them so that a second
+  check finds nothing, and leaves a consistent image as it was.  `-y -l`
+  links trees that nothing names, also in a loop, into a `/lost+found`
+  that it makes or finds; `-e` checks and sets the bits past the end of
+  the maps; `-w` notes spare map blocks, a gap before the data zones, a
+  maximum file size other than MINIX's, a file past the maximum file
+  size and set map tail bits, these not for names of 30 characters, and
+  nothing about a layout as MINIX makes it.  A directory holding more
+  directories than the walk first has room for is checked too.
 - `t_tunefs.sh` - `tunefs_minixfs` prints the settings, `-N` writes
   nothing, and `-c`, `-m` and `-e` each leave a file system that
   `fsck_minixfs` passes and that has what was asked for, in several

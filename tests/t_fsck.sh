@@ -440,9 +440,9 @@ run "$FSCK_MINIXFS" "$T/img"
 check_out_has "an empty file system from newfs_minixfs is consistent" \
     "1 of 704 inodes and 1 of 2033 zones in use, 0 problems\$"
 
-# -w notes what the fsck of MINIX 3 warns about, and none of it is a
-# problem.
-spec_small "version=3 block=4096 order=le" >"$T/spec"
+# -w notes what the fsck of MINIX 3 warns about or reports, and none of it
+# is a problem.
+spec_small "version=3 block=4096 order=le end=0" >"$T/spec"
 mkimage "$T/spec" "$T/img"
 run "$FSCK_MINIXFS" -w "$T/img"
 check_true "-w notes nothing about a layout as MINIX makes it" \
@@ -468,6 +468,17 @@ run "$FSCK_MINIXFS" -w "$T/img"
 check_out_has "-w notes a maximum file size other than MINIX's" \
     ": warning: the maximum file size is 1000000, where MINIX works out \
 2147483647\$"
+check_out_has "-w notes bits set past the end of the inode map" \
+    ": warning: [0-9]* bits past the last inode in the inode map are set, \
+which the fsck of MINIX reports as inodes missing\$"
+check_out_has "-w notes bits set past the end of the zone map" \
+    ": warning: [0-9]* bits past the last zone in the zone map are set, \
+which the fsck of MINIX reports as zones missing\$"
+spec_small "version=2 namelen=30 order=le" >"$T/spec"
+mkimage "$T/spec" "$T/img"
+run "$FSCK_MINIXFS" -w "$T/img"
+check_true "-w does not note them for names of 30, which MINIX does not \
+read" test "$(grep -c ' bits past the last ' "$T/out")" -eq 0
 
 # A file past the maximum file size is whole, but Linux maps no block
 # past it and none of the systems lets it grow: -w notes it, and it is no

@@ -69,11 +69,13 @@ DESCRIPTION
              problem; see minixfs(5).
 
      -w      Note, as warnings that are not problems, what the fsck of MINIX 3
-             warns about: map blocks beyond what the maps need, a first data
-             zone later than the inode table allows, a maximum file size other
-             than the one MINIX works out, and zones of more than 256 blocks;
-             and files larger than the maximum file size, past which Linux
-             maps no block.
+             warns about or reports: map blocks beyond what the maps need, a
+             first data zone later than the inode table allows, a maximum file
+             size other than the one MINIX works out, zones of more than 256
+             blocks, and, without -e, bits set past the end of the maps; and
+             files larger than the maximum file size, past which Linux maps no
+             block.  The bits are not noted for names of 30 characters, which
+             MINIX does not read.
 
      -M size:heads:side
              Check an image containing the file system on one disk side.  See

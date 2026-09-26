@@ -27,7 +27,9 @@
  *	  which is never used but must be set;
  *	- with -e, the bits of each map past the last inode or zone, which
  *	  must be 0 or 1 as given.  The mkfs of MINIX leaves them clear and
- *	  that of Linux sets them, so they are not checked without -e.
+ *	  that of Linux sets them, so they are not checked without -e; -w
+ *	  notes those set, which the fsck of MINIX reports, but for names
+ *	  of 30 characters, which MINIX does not read.
  *
  * The walk goes breadth first and reads each directory once, so that
  * neither depth nor loops of directories can stop it; a directory that a
@@ -1195,27 +1197,38 @@ check_bit0(struct check *c, unsigned char *map, const char *name,
  * With -e, the bits of a map past the last inode or zone, from bit first
  * to the end of its blocks.  The mkfs of MINIX leaves them clear and that
  * of Linux sets them, so neither is wrong unless -e says which to expect.
+ * Without -e, -w notes those set, which the fsck of MINIX takes for
+ * inodes or zones missing, in a file system that MINIX reads.
  */
 static void
 check_end(struct check *c, unsigned char *map, uint32_t nblocks,
     uint32_t first, const char *name, int *dirty)
 {
 	uint64_t bit, n, wrong;
+	int want;
 
-	if (c->end == -1)
+	if (c->end == -1 && (!c->warn ||
+	    mfs_default_map_end(c->fs.version, c->fs.namelen)))
 		return;
+	want = c->end == -1 ? 0 : c->end;
 	n = (uint64_t)nblocks * c->fs.block_size * 8;
 	wrong = 0;
 	for (bit = first; bit < n; bit++) {
-		if (mfs_map_bit(&c->fs, map, (uint32_t)bit) != c->end) {
+		if (mfs_map_bit(&c->fs, map, (uint32_t)bit) != want) {
 			wrong++;
-			if (c->repair)
+			if (c->repair && c->end != -1)
 				mfs_set_map_bit(&c->fs, map, (uint32_t)bit,
 				    c->end);
 		}
 	}
 	if (wrong == 0)
 		return;
+	if (c->end == -1) {
+		warning(c, "%" PRIu64 " bits past the last %s in the %s map "
+		    "are set, which the fsck of MINIX reports as %ss missing",
+		    wrong, name, name, name);
+		return;
+	}
 	if (c->repair)
 		*dirty = 1;
 	problem(c, 0, "%" PRIu64 " bits past the last %s in the %s map are "
