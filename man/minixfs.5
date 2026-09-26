@@ -1,6 +1,6 @@
 .\" SPDX-License-Identifier: BSD-2-Clause
 .\" Copyright (c) 2026 Shoichi Fukusaka
-.Dd September 25, 2026
+.Dd September 26, 2026
 .Dt MINIXFS 5
 .Os
 .Sh NAME
@@ -8,25 +8,11 @@
 .Nd format of MINIX file systems
 .Sh DESCRIPTION
 MINIX has had three versions of its file system, V1, V2 and V3.
-Linux added forms of V1 and V2 with longer names and a state word, and
-Minix-vmd a form of V1 and V2 with a super block and directories of its
-own.
-The tools of this package read all of them in either byte order;
-.Xr minixfs 1
-and
-.Xr dump_minixfs 8
-read,
-.Xr newfs_minixfs 8 ,
-.Xr fsck_minixfs 8 ,
-.Xr tunefs_minixfs 8 ,
-.Xr restore_minixfs 8
-and, with
-.Fl w ,
-.Xr mount_minixfs 8
-also write.
-Those that write an image lock it with
-.Xr fcntl 2
-while they have it open, and refuse one that another holds.
+Linux added to V1 and V2 names of 30 characters and a state field in the
+super block, and Minix-vmd flags in the super block and flex
+directories, whose entries are as long as their names.
+The tools support both byte orders.
+See the command manuals for supported operations and restrictions.
 .Ss Layout
 A file system is a sequence of blocks, of 1024 bytes in V1 and V2 and of
 the size its super block gives in V3:
@@ -34,8 +20,8 @@ the size its super block gives in V3:
 .It Sy Block Ta Sy Contents
 .It 0 Ta boot block
 .It 1 Ta super block, at byte 1024 in every version
-.It 2 Ta inode bit map, imap blocks
-.It 2 + imap blocks Ta zone bit map, zmap blocks
+.It 2 Ta inode map, imap blocks
+.It 2 + imap blocks Ta zone map, zmap blocks
 .It after the maps Ta inode table
 .It first data zone Ta data zones, to the end
 .El
@@ -51,13 +37,15 @@ The magic number tells the version, the name length and the byte order:
 .Bl -column "0x138f" "Version" "Names" -offset indent
 .It Sy Magic Ta Sy Version Ta Sy Names Ta Sy Origin
 .It 0x137f Ta V1 Ta 14 Ta MINIX
+.It 0x137f Ta V1 Ta 14, 60 Ta Minix-vmd
 .It 0x138f Ta V1 Ta 30 Ta Linux
 .It 0x2468 Ta V2 Ta 14 Ta MINIX
+.It 0x2468 Ta V2 Ta 14, 60 Ta Minix-vmd
 .It 0x2478 Ta V2 Ta 30 Ta Linux
 .It 0x4d5a Ta V3 Ta 60 Ta MINIX 3
 .El
 .Pp
-The super block of V1 and V2 holds, at these byte offsets:
+V1 and V2 share one super block, which holds, at these byte offsets:
 .Bl -column "Offset" "Bytes" -offset indent
 .It Sy Offset Ta Sy Bytes Ta Sy Field
 .It 0 Ta 2 Ta inodes
@@ -68,11 +56,23 @@ The super block of V1 and V2 holds, at these byte offsets:
 .It 10 Ta 2 Ta log2 of blocks in a zone
 .It 12 Ta 4 Ta maximum file size
 .It 16 Ta 2 Ta magic number
-.It 18 Ta 2 Ta zero in MINIX; state in Linux: 1 cleanly unmounted, 2 errors found
+.It 18 Ta 2 Ta 0
 .It 20 Ta 4 Ta zones (V2)
 .El
 .Pp
-The super block of V3 holds:
+Linux and Minix-vmd use this super block too, and differ from it here:
+.Bl -bullet -compact
+.It
+Linux keeps at 18 a state field, s_state: 1 cleanly unmounted, 2 errors
+found.
+.It
+Minix-vmd keeps the zone size in byte 10 alone and flags in byte 11,
+0x01 for flex directories and 0x02 for clean, and 0x7f, 0x13 at 18
+where its clean flag is enabled; see
+.Sx Minix-vmd .
+.El
+.Pp
+The super block of V3 has a layout of its own:
 .Bl -column "Offset" "Bytes" -offset indent
 .It Sy Offset Ta Sy Bytes Ta Sy Field
 .It 0 Ta 4 Ta inodes
@@ -91,6 +91,9 @@ MINIX 3 mounts a file system that is not marked clean read-only.
 The maximum file size limits files; MINIX works it out from what the
 double indirect zone reaches, while Linux writes 2147483647 in V2 and V3.
 .Ss Bit maps
+There are two bit maps, right after the super block: the inode map
+(imap), of as many blocks as the super block gives for it, then the zone
+map (zmap).
 Bit
 .Em i
 of the inode map is set when inode
@@ -144,46 +147,103 @@ A free inode has the mode 0.
 Zone 0 in a zone slot is a hole, which reads as zeros.
 An indirect zone lists zone numbers of 16 bits in V1 and 32 bits in V2
 and V3, in its first block.
-MINIX never uses the triple indirect zone; Linux does.
+MINIX never uses the triple indirect zone, and follows only the zones
+the double indirect zone reaches; Linux and this package use it too.
+Without it a file can have up to these sizes, which the mkfs of MINIX
+writes as the maximum file size; zones of 2 to the power
+.Em k
+blocks reach 2 to the power
+.Em k
+times as far, up to 2147483647:
+.Bl -column "V2, V3 (1024-byte blocks)" -offset indent
+.It Sy Kind Ta Sy Bytes
+.It V1 Ta 268966912
+.It V2, V3 (1024-byte blocks) Ta 67378176
+.It V3 (2048-byte blocks) Ta 537933824
+.It V3 (4096 bytes and larger) Ta 2147483647
+.El
+.Pp
 A device keeps its device number, major times 256 plus minor, in its
 first zone slot.
 A symbolic link keeps its target in its data, without a NUL.
 .Ss Directories
-A directory is a file of entries, the first two being
+A directory is a file of entries.
+The first entry is
 .Ql \&.
-and
+and the second
 .Ql \&.. ,
-which names the directory itself in the root.
-An entry is an inode number followed by a name, which fills its field or
-ends with a NUL:
-.Bl -column "V1, V2 (Linux)" "Entry" -offset indent
-.It Sy Version Ta Sy Entry
-.It V1, V2 Ta 2 + 14 bytes
-.It V1, V2 (Linux) Ta 2 + 30 bytes
-.It V3 Ta 4 + 60 bytes
+which in the root is the root itself.
+The kind of entry follows from the magic number and, in Minix-vmd, from
+the flex flag, 0x01 in byte 11 of the super block.
+Offsets are in bytes from the start of the entry:
+.Bl -column "Minix-vmd flex" "0x137f, 0x2468" "Size" "0-1" -offset indent
+.It Sy Kind Ta Sy Magic Ta Sy Size Ta Sy Inode Ta Sy Name
+.It MINIX Ta 0x137f, 0x2468 Ta 16 Ta 0\(en1 Ta 2\(en15
+.It Linux Ta 0x138f, 0x2478 Ta 32 Ta 0\(en1 Ta 2\(en31
+.It MINIX 3 Ta 0x4d5a Ta 64 Ta 0\(en3 Ta 4\(en63
+.It Minix-vmd flex Ta 0x137f, 0x2468 Ta 8\(en64 Ta 0\(en1 Ta 3\(enend
 .El
 .Pp
-An entry of inode 0 is free.
-.Ss Minix-vmd
-Minix-vmd, the MINIX derivative of Philip Homburg and Kees Bot, writes V1
-and V2 with the magic numbers of MINIX and a super block of its own:
-byte 10 holds the zone size alone, byte 11 flags (0x01 flex directories,
-0x02 clean), and bytes 18 and 19 the values 0x7f and 0x13, by which it is
-known.
+In MINIX, Linux and MINIX 3, every entry is of the size in the table.
+The name is padded with NUL bytes to the end of its field, and has no
+NUL when it fills the field.
 .Pp
-With the flex flag, its directories are made of slots of 8 bytes.
-An entry takes one slot holding the inode number in 2 bytes, the number
-of slots that follow in 1 byte and the first 5 bytes of the name, and the
-following slots for the rest of the name, which ends with a NUL.
+A flex entry is 1 to 8 slots of 8 bytes:
+.Bl -column "8 to end" "Bytes" -offset indent
+.It Sy Offset Ta Sy Bytes Ta Sy Field
+.It 0 Ta 2 Ta inode number
+.It 2 Ta 1 Ta number of slots after the first, 0 to 7
+.It 3 Ta 5 Ta the first 5 bytes of the name
+.It 8 to end Ta 8 each Ta the rest of the name, then NUL bytes
+.El
+.Pp
 A name of
 .Em n
-characters takes (
-.Em n
-+ 3) / 8 more slots, and names have up to 60 characters.
-An entry does not cross a block.
-A slot of inode 0 is free; removing an entry frees each of its slots,
-setting its inode number and count to 0, and an entry is added where
-enough free slots follow one another.
+characters takes 1 +
+.No \&( Ns Em n No + 3) / 8
+slots, the division rounded down, which leaves room for at least one
+NUL, and is padded with NUL bytes to the end of the last slot.
+An entry lies within one block.
+.Pp
+An entry whose inode number is 0 is free.
+Minix-vmd frees a flex entry by setting bytes 0 to 2 of each of its
+slots to 0, and adds an entry at the first run of free slots in one
+block that is long enough, or else in a new block.
+.Ss Minix-vmd
+Minix-vmd, the MINIX derivative of Philip Homburg and Kees Bot, writes V1
+and V2 with the magic numbers of MINIX.
+Its super block and flex directories are described above.
+Its clean flag is kept on the disk only where bytes 18 and 19 of the
+super block hold 0x7f and 0x13: its mkfs writes them for flex
+directories, and
+.Ql fsck -c
+writes or clears them.
+The tools of this package know Minix-vmd by these bytes; a file system
+without them is read as one of MINIX.
+.Ss Systems
+The systems read and write these kinds:
+.Bl -column "MINIX 3 after 3.3.0" -offset indent
+.It Sy System Ta Sy Kinds
+.It MINIX 1.0 to 1.5 Ta MINIX V1
+.It MINIX 1.6.23 to 2.0.4 Ta MINIX V1, V2
+.It Minix-vmd 1.7.0 Ta MINIX V1, V2, and flex directories
+.It MINIX 3 to 3.2.1 Ta MINIX V1, V2, V3
+.It MINIX 3.3.0 Ta V3
+.It MINIX 3 after 3.3.0 Ta V3 with zones of one block
+.It Linux Ta MINIX and Linux V1, V2; V3 from 2.6.21
+.It this package Ta all, but flex directories are only read
+.El
+.Pp
+The extension of Linux, names of 30 characters, is thus read and
+written only by Linux and by this package.
+MINIX 3 after 3.3.0 refuses zones of more than one block because its MFS
+has come to handle zones as blocks; the check, added in 2015, keeps it
+from failing later instead.
+MINIX from 1.6.23 reads V1 and V2 in either byte order; Linux, and
+MINIX 3 for V3, only in that of the machine.
+Linux takes V3 blocks only up to the page size, 4096 on the PC.
+The mkfs of MINIX 3 makes V3 only from 3.2.1; that of Linux, mkfs.minix
+of util-linux, makes V2 from 1994 and V3 from 2.20.
 .Ss Images of one side of a disk
 A disk written on one side and read as double-sided, as some of the
 Atari ST, holds the file system in every other track of the image.
@@ -206,6 +266,71 @@ of the tools reads such an image; see
 .%O second and third editions
 .Re
 .Sh HISTORY
-V1 is the file system of the first versions of MINIX.
-V2 added 32-bit zone numbers and the times of access and status change,
-and V3, of MINIX 3, blocks of other sizes and 60-character names.
+.Bl -tag -width "1991"
+.It 1987
+V1 is the file system of MINIX 1.0, of the first edition of the book.
+.It 1991
+Linux uses V1 from its first release, 0.01.
+MINIX 1.5 for the Atari ST, the Amiga and the Macintosh, 68000 ports
+that write V1 big-endian, is distributed.
+.It 1992
+V2, with 32-bit zone numbers and the times of access and status change,
+is in MINIX 1.6.23, which also takes a file system made on a machine of
+the other byte order, whose magic number then reads with its bytes
+swapped, 0x7f13 for 0x137f.
+.It 1993
+Linux adds 30-character names, magic 0x138f, by 0.99.7, and the state
+field by 0.99.15.
+.It 1994
+mkfs.minix of Linux makes V2.
+.It 1996
+Linux reads V2, and V2 with 30-character names, magic 0x2478, by 2.0,
+and uses the triple indirect zone that MINIX leaves unused.
+Minix-vmd 1.7.0, based on MINIX 1.7, has the flags in its super block
+and flex directories; no later release of Minix-vmd was published.
+.It 1997
+V2 is the file system of MINIX 2.0, of the second edition of the book.
+.It 2005
+V3, with blocks of other sizes and 60-character names, is the file
+system of MINIX 3.
+.It 2007
+Linux reads V3 from 2.6.21.
+.It 2010
+MINIX 3.1.6 writes 0 as the first data zone of V3 where it does not fit
+in 16 bits, and takes it to follow the inode table.
+.It 2011
+mkfs.minix of util-linux makes V3 from 2.20.
+.It 2012
+MINIX 3.2.0 keeps a clean flag in the flags of V3.
+.It 2013
+The mkfs of MINIX 3.2.1 makes V3 only, where that of 3.0 to 3.2.0 also
+made V1 and V2.
+.It 2014
+MINIX 3.3.0 reads V3 only.
+.It 2015
+MINIX 3 after 3.3.0 refuses zones of more than one block.
+.El
+.Sh CAVEATS
+MINIX reads the part of a file past what the double indirect zone
+reaches as zeros, without an error.
+In V2 and V3, Linux writes past it, through the triple indirect zone,
+up to the maximum file size in the super block, which its mkfs.minix
+and
+.Xr newfs_minixfs 8
+set to 2147483647; this package writes past it whatever that size is.
+A file over 67378176 bytes in V2 with 1024-byte blocks is thus not read
+in full by MINIX.
+.Ql tunefs_minixfs -m minix
+keeps Linux to what MINIX reads.
+.Pp
+MINIX 3 after 3.3.0 does not mount a file system whose zones are of more
+than one block, as
+.Xr newfs_minixfs 8
+.Fl z
+makes.
+.Sh BUGS
+A file system of Minix-vmd with flex directories whose clean flag was
+disabled with
+.Ql fsck -c
+lacks the bytes 0x7f and 0x13, and is refused as not a MINIX file
+system: read as one of MINIX, its flags make the zone size too large.

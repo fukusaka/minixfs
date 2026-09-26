@@ -3,7 +3,7 @@
 .\"
 .\" 節の名前は mandoc が見分ける英語のままにする。日本語の文は途中で
 .\" 改行すると空白が入るので、1 文を 1 行に書く。
-.Dd September 25, 2026
+.Dd September 26, 2026
 .Dt MINIXFS 5
 .Os
 .\" 日本語では両端をそろえると空白が大きく開くので、groff には左だけ
@@ -16,23 +16,9 @@
 .Nd MINIX ファイルシステムの形式
 .Sh DESCRIPTION
 MINIX のファイルシステムには V1・V2・V3 の 3 つの版があります。
-Linux は V1 と V2 に長い名前と状態語を持つ形を加え、\:Minix-vmd は V1 と V2 に独自の superblock とディレクトリを持つ形を加えました。
-このパッケージの道具は、\:そのすべて\:を\:どちらのバイト順で\:も読みます。
-.Xr minixfs 1
-と
-.Xr dump_minixfs 8
-は読むだけで、\:
-.Xr newfs_minixfs 8 ,
-.Xr fsck_minixfs 8 ,
-.Xr tunefs_minixfs 8 ,
-.Xr restore_minixfs 8 ,
-.Fl w
-を付けた
-.Xr mount_minixfs 8
-は書きもします。
-書き込む道具は、\:開いている間\:イメージを
-.Xr fcntl 2
-でロックし、\:ほかの道具が\:ロックしているイメージは\:拒みます。
+Linux は V1 と V2 に、\:30 文字の名前と superblock の状態欄を加え、\:Minix-vmd は、\:superblock のフラグと、\:項目が名前の長さに合わせて\:伸び縮みする flex ディレクトリを加えました。
+各コマンドは両方のバイト順に対応します。
+操作と制限は各コマンドの man を参照してください。
 .Ss 配置
 ファイルシステムはブロックの並びです。
 ブロックは V1 と V2 では 1024 バイトで、\:V3 では superblock が示す大きさです。
@@ -40,8 +26,8 @@ Linux は V1 と V2 に長い名前と状態語を持つ形を加え、\:Minix-v
 .It Sy ブロック Ta Sy 中身
 .It 0 Ta ブートブロック
 .It 1 Ta superblock（どの版でもバイト 1024 から）
-.It 2 Ta inode ビットマップ（imap ブロック数）
-.It 2 + imap ブロック数 Ta zone ビットマップ（zmap ブロック数）
+.It 2 Ta inode マップ（imap ブロック数）
+.It 2 + imap ブロック数 Ta zone マップ（zmap ブロック数）
 .It マップの後 Ta inode 表
 .It 最初のデータ zone Ta データ zone（末尾まで）
 .El
@@ -55,13 +41,15 @@ PC ではリトルエンディアン、\:68000 の機械（Atari ST、\:Amiga、
 .Bl -column "xxxxxxxxxxxx" "xxxx" "xxxx" -offset indent
 .It Sy マジック番号 Ta Sy 版 Ta Sy 名前 Ta Sy 出どころ
 .It 0x137f Ta V1 Ta 14 Ta MINIX
+.It 0x137f Ta V1 Ta 14、60 Ta Minix-vmd
 .It 0x138f Ta V1 Ta 30 Ta Linux
 .It 0x2468 Ta V2 Ta 14 Ta MINIX
+.It 0x2468 Ta V2 Ta 14、60 Ta Minix-vmd
 .It 0x2478 Ta V2 Ta 30 Ta Linux
 .It 0x4d5a Ta V3 Ta 60 Ta MINIX 3
 .El
 .Pp
-V1 と V2 の superblock には、\:次のバイト位置に次のものがあります。
+V1 と V2 は同じ superblock を使い、\:次のバイト位置に次のものがあります。
 .Bl -column "xxxx" "xxxxxx" -offset indent
 .It Sy 位置 Ta Sy バイト Ta Sy 欄
 .It 0 Ta 2 Ta inode 数
@@ -72,11 +60,22 @@ V1 と V2 の superblock には、\:次のバイト位置に次のものがあ�
 .It 10 Ta 2 Ta 1 zone のブロック数の log2
 .It 12 Ta 4 Ta 最大ファイルサイズ
 .It 16 Ta 2 Ta マジック番号
-.It 18 Ta 2 Ta MINIX では 0、Linux では状態（1 正常にアンマウント、2 エラーあり）
+.It 18 Ta 2 Ta 0
 .It 20 Ta 4 Ta zone 数（V2）
 .El
 .Pp
-V3 の superblock には、\:次のものがあります。
+Linux と Minix-vmd もこの superblock を使い、\:次の所だけが違います。
+.Bl -bullet -compact
+.It
+Linux は、\:18 に状態欄 s_state（1 正常にアンマウント、\:2 エラーあり）を持ちます。
+.It
+Minix-vmd は、\:zone の大きさをバイト 10 だけに持ち、\:バイト 11 にフラグ（0x01 flex ディレクトリ、\:0x02 clean）を持ちます。
+clean フラグを使うときは、\:18 に 0x7f と 0x13 を持ちます。
+.Sx Minix-vmd
+を参照してください。
+.El
+.Pp
+V3 の superblock は、\:独自の配置です。
 .Bl -column "xxxx" "xxxxxx" -offset indent
 .It Sy 位置 Ta Sy バイト Ta Sy 欄
 .It 0 Ta 4 Ta inode 数
@@ -95,6 +94,7 @@ MINIX 3 は、\:clean の印のないファイルシステムを\:読み出し�
 最大ファイルサイズは\:ファイルの大きさを\:制限します。
 MINIX は二重間接 zone の届く範囲からこれを計算し、\:Linux は V2 と V3 に 2147483647 を書きます。
 .Ss ビットマップ
+ビットマップは 2 つあり、\:superblock の直後に inode マップ（imap）、\:続いて zone マップ（zmap）が、\:それぞれ superblock が示す\:ブロック数だけ並びます。
 inode マップのビット
 .Em i
 は、\:inode
@@ -144,42 +144,91 @@ V2 と V3 の inode は 64 バイトです。
 .Pp
 zone の欄の 0 は穴で、\:ゼロとして読めます。
 間接 zone は、\:その最初のブロックに zone 番号を並べたもので、\:番号は V1 では 16 ビット、\:V2 と V3 では 32 ビットです。
-MINIX は三重間接 zone を使いませんが、\:Linux は使います。
+MINIX は三重間接 zone を使わず、\:二重間接 zone が届く範囲の zone だけを辿ります。
+Linux と\:このパッケージは\:三重間接 zone も使います。
+三重間接 zone を使わないとき、\:ファイルの大きさは\:次の値までで、\:MINIX の mkfs は\:この値を\:最大ファイルサイズとして書きます。
+2 の
+.Em k
+乗ブロックの zone では、\:2 の
+.Em k
+乗倍まで届き、\:上限は 2147483647 です。
+.Bl -column "xxxxxxxxxxxxxxxxxxxxxxxxxxx" -offset indent
+.It Sy 種類 Ta Sy バイト
+.It V1 Ta 268966912
+.It V2・V3（1024 バイトのブロック） Ta 67378176
+.It V3（2048 バイトのブロック） Ta 537933824
+.It V3（4096 バイト以上のブロック） Ta 2147483647
+.El
+.Pp
 デバイスは、\:最初の zone の欄にデバイス番号（メジャー番号 × 256 + マイナー番号）を持ちます。
 シンボリックリンクは、\:リンク先の文字列を NUL なしでデータに持ちます。
 .Ss ディレクトリ
-ディレクトリは項目を並べたファイルで、\:先頭の 2 つが
-.Ql \&.
-と
+ディレクトリは項目を並べたファイルです。
+最初の項目は
+.Ql \&. ,
+2 番目は
 .Ql \&..
-です。
-ルートでは
+で、\:ルートの
 .Ql \&..
-もルート自身を指します。
-項目は inode 番号とそれに続く名前で、\:名前は欄を埋めるか NUL で終わります。
-.Bl -column "xxxxxxxxxxxxxxx" "x" -offset indent
-.It Sy 版 Ta Sy 項目
-.It V1・V2 Ta 2 + 14 バイト
-.It V1・V2（Linux） Ta 2 + 30 バイト
-.It V3 Ta 4 + 60 バイト
+はルート自身です。
+項目の種類は、\:マジック番号と、\:Minix-vmd では superblock のバイト 11 の flex フラグ 0x01 で決まります。
+位置は項目の先頭からのバイト数です。
+.Bl -column "Minix-vmd flex" "0x137f, 0x2468" "xxxxxx" "xxxx" -offset indent
+.It Sy 種類 Ta Sy マジック番号 Ta Sy 大きさ Ta Sy inode Ta Sy 名前
+.It MINIX Ta 0x137f, 0x2468 Ta 16 Ta 0\(en1 Ta 2\(en15
+.It Linux Ta 0x138f, 0x2478 Ta 32 Ta 0\(en1 Ta 2\(en31
+.It MINIX 3 Ta 0x4d5a Ta 64 Ta 0\(en3 Ta 4\(en63
+.It Minix-vmd flex Ta 0x137f, 0x2468 Ta 8\(en64 Ta 0\(en1 Ta 3\(en末尾
 .El
 .Pp
-inode 0 の項目は空きです。
-.Ss Minix-vmd
-Philip Homburg と Kees Bot による MINIX の派生 Minix-vmd は、\:MINIX のマジック番号を持つ V1 と V2 を、\:独自の superblock で書きます。
-バイト 10 は zone の大きさだけを持ち、\:バイト 11 はフラグ（0x01 flex ディレクトリ、\:0x02 clean）を持ちます。
-バイト 18 と 19 には値 0x7f と 0x13 があり、\:これで見分けます。
+MINIX、\:Linux、\:MINIX 3 では、\:どの項目も表の大きさです。
+名前は欄の終わりまで NUL で埋め、\:欄を埋める名前は NUL を持ちません。
 .Pp
-flex のフラグがあると、\:ディレクトリは 8 バイトのスロットでできています。
-項目は、\:inode 番号（2 バイト）、\:後に続くスロットの数（1 バイト）、\:名前の最初の 5 バイトを持つ 1 スロットと、\:名前の残りを持つ後続のスロットからなり、\:名前は NUL で終わります。
+flex の項目は 8 バイトのスロット 1〜8 個です。
+.Bl -column "xxxxxxx" "xxxxxx" -offset indent
+.It Sy 位置 Ta Sy バイト Ta Sy 欄
+.It 0 Ta 2 Ta inode 番号
+.It 2 Ta 1 Ta 最初のスロットの後のスロット数（0〜7）
+.It 3 Ta 5 Ta 名前の最初の 5 バイト
+.It 8〜末尾 Ta 8 ずつ Ta 名前の残りと、\:それに続く NUL
+.El
+.Pp
 .Em n
-文字の名前は、\:(
-.Em n
-+ 3) / 8 個の後続スロットを使い、\:名前は 60 文字までです。
-項目はブロックをまたぎません。
-inode 0 のスロットは空きです。
-項目を\:消すときは\:そのすべて\:のスロットを\:空きに\:し、\:inode 番号とスロットの数を 0 にします。
-項目は、\:空きスロットが\:必要なだけ続くところに\:入れます。
+文字の名前は 1 +
+.No \&( Ns Em n No + 3) / 8
+個（割り算は切り捨て）のスロットを使い、\:NUL が少なくとも 1 つ入ります。
+名前は最後のスロットの終わりまで NUL で埋めます。
+項目は 1 つのブロックの中に収まります。
+.Pp
+inode 番号が 0 の項目は空きです。
+Minix-vmd は、\:flex の項目を消すときは\:各スロットのバイト 0〜2 を 0 にし、\:項目を足すときは 1 つのブロックの中で\:必要な数の空きスロットが続く\:最初の場所に、\:なければ新しいブロックに置きます。
+.Ss Minix-vmd
+Philip Homburg と Kees Bot による MINIX の派生 Minix-vmd は、\:MINIX のマジック番号で V1 と V2 を書きます。
+superblock と flex ディレクトリは上で説明したとおりです。
+clean フラグは、\:superblock のバイト 18 と 19 が 0x7f と 0x13 のときだけ\:ディスクに保ちます。
+この値は、\:mkfs が flex ディレクトリの\:ファイルシステムを作るときに書き、\:
+.Ql fsck -c
+が書いたり消したりします。
+このパッケージの道具は、\:この値で Minix-vmd を見分け、\:値のないファイルシステムは MINIX のものとして読みます。
+.Ss システム
+各システムが読み書きする種類は次のとおりです。
+.Bl -column "MINIX 1.6.23 to 2.0.4" -offset indent
+.It Sy システム Ta Sy 種類
+.It MINIX 1.0〜1.5 Ta MINIX の V1
+.It MINIX 1.6.23〜2.0.4 Ta MINIX の V1・V2
+.It Minix-vmd 1.7.0 Ta MINIX の V1・V2 と flex ディレクトリ
+.It MINIX 3〜3.2.1 Ta MINIX の V1・V2・V3
+.It MINIX 3.3.0 Ta V3
+.It 3.3.0 より後の MINIX 3 Ta 1 ブロックの zone の V3
+.It Linux Ta MINIX と Linux の V1・V2、\:2.6.21 からは V3
+.It このパッケージ Ta すべて（flex ディレクトリは読むだけ）
+.El
+.Pp
+そのため、\:Linux の拡張（30 文字の名前）を\:読み書きするのは、\:Linux とこのパッケージだけです。
+3.3.0 より後の MINIX 3 が\:複数ブロックの zone を拒むのは、\:MFS が zone を\:ブロックと同じものとして\:扱うようになったためで、\:2015 年に入った検査は、\:後で失敗する代わりに\:マウントで拒みます。
+1.6.23 以降の MINIX は、\:V1 と V2 を\:どちらのバイト順でも読み、\:Linux と、\:V3 の MINIX 3 は、\:その機械のバイト順のものだけを読みます。
+Linux は、\:V3 のブロックを\:ページの大きさ（PC では 4096）までしか受け付けません。
+MINIX 3 の mkfs は 3.2.1 から V3 だけを作り、\:Linux の mkfs（util-linux の mkfs.minix）は 1994 年から V2 を、\:2.20 から V3 を作ります。
 .Ss ディスクの片面のイメージ
 片面に書かれ、\:両面として読み取られたディスク（Atari ST のものの一部など）は、\:イメージのトラック 1 つおきにファイルシステムを持ちます。
 道具の
@@ -202,5 +251,61 @@ inode 0 のスロットは空きです。
 .%O second and third editions
 .Re
 .Sh HISTORY
-V1 は、\:MINIX の初期の版のファイルシステムです。
-V2 は 32 ビットの zone 番号とアクセス時刻・状態変更時刻を加え、\:MINIX 3 の V3 はほかの大きさのブロックと 60 文字の名前を加えました。
+.Bl -tag -width "1991"
+.It 1987
+V1 は、\:書籍の初版の MINIX 1.0 のファイルシステムです。
+.It 1991
+Linux は、\:最初の版の 0.01 から V1 を使います。
+V1 をビッグエンディアンで書く 68000 への移植版、\:Atari ST・Amiga・Macintosh の MINIX 1.5 が\:配布されます。
+.It 1992
+32 ビットの zone 番号と\:アクセス時刻・状態変更時刻を持つ V2 が、\:MINIX 1.6.23 に入ります。
+この版は、\:バイト順の違う機械で作った\:ファイルシステムも読みます。
+そのマジック番号は\:バイトが入れ替わって\:見えます（0x137f なら 0x7f13）。
+.It 1993
+Linux は、\:0.99.7 までに 30 文字の名前（マジック番号 0x138f）を、\:0.99.15 までに状態欄を加えます。
+.It 1994
+Linux の mkfs.minix が V2 を作るようになります。
+.It 1996
+Linux は、\:2.0 までに V2 と、\:30 文字の名前の V2（マジック番号 0x2478）を読むようになり、\:MINIX が使わない\:三重間接 zone も使います。
+MINIX 1.7 を元にした Minix-vmd 1.7.0 は、\:superblock のフラグと flex ディレクトリを持ちます。
+Minix-vmd の公開版は\:これより後にはありません。
+.It 1997
+V2 は、\:書籍の第 2 版の MINIX 2.0 のファイルシステムです。
+.It 2005
+ほかの大きさのブロックと 60 文字の名前を持つ V3 は、\:MINIX 3 のファイルシステムです。
+.It 2007
+Linux は、\:2.6.21 から V3 を読みます。
+.It 2010
+MINIX 3.1.6 は、\:V3 の最初のデータ zone が 16 ビットに収まらないとき 0 を書き、\:inode 表の直後とみなします。
+.It 2011
+util-linux の mkfs.minix が、\:2.20 から V3 を作ります。
+.It 2012
+MINIX 3.2.0 は、\:V3 のフラグに clean の印を持ちます。
+.It 2013
+MINIX 3.2.1 の mkfs は V3 だけを作ります。
+3.0〜3.2.0 の mkfs は V1 と V2 も作りました。
+.It 2014
+MINIX 3.3.0 は V3 だけを読みます。
+.It 2015
+3.3.0 より後の MINIX 3 は、\:複数ブロックの zone を拒みます。
+.El
+.Sh CAVEATS
+MINIX は、\:ファイルのうち\:二重間接 zone が\:届く範囲より先を、\:エラーなしで 0 として読みます。
+V2 と V3 では、\:Linux は\:三重間接 zone を使って、\:superblock の最大ファイルサイズまで\:その先を書きます。
+mkfs.minix と
+.Xr newfs_minixfs 8
+は、\:この値を 2147483647 にします。
+このパッケージは、\:この値に\:かかわらず\:その先を書きます。
+そのため、\:1024 バイトのブロックの V2 で 67378176 バイトを超えるファイルは、\:MINIX では全部は読めません。
+.Ql tunefs_minixfs -m minix
+で、\:Linux が書く大きさを MINIX が読める範囲に\:抑えられます。
+.Pp
+3.3.0 より後の MINIX 3 は、\:
+.Xr newfs_minixfs 8
+の
+.Fl z
+で作る、\:複数ブロックの zone を持つ\:ファイルシステムをマウントしません。
+.Sh BUGS
+.Ql fsck -c
+で clean フラグを使わなくした、\:flex ディレクトリを持つ Minix-vmd のファイルシステムは、\:0x7f と 0x13 のバイトを持たないので、\:MINIX のファイルシステムでないとして\:拒みます。
+MINIX のものとして読むと、\:フラグのために zone の大きさが\:大きすぎるためです。
