@@ -1,0 +1,157 @@
+MOUNT_MINIXFS(8)            System Manager's Manual           MOUNT_MINIXFS(8)
+
+NAME
+     mount_minixfs – MINIX ファイルシステムのイメージを FUSE でマウントする
+
+SYNOPSIS
+     mount_minixfs [-w [-u always | sync | seconds]] [-M size:heads:side]
+                   [FUSE options] image mountpoint
+
+DESCRIPTION
+     mount_minixfs は、 image の MINIX ファイルシステムを FUSE で mountpoint
+     にマウントします。 V1・V2・V3 と Minix-vmd
+     を、どちらのバイト順でも扱います。 形式は minixfs(5) を参照してください。
+
+     マウントは、 -w がなければ読み出し専用で、単一スレッドです。 FUSE
+     には常に -s と、 -o ro （ -w なら -o rw,default_permissions
+     ）を渡します。 inode
+     番号、モード、リンク数、所有者、時刻、デバイス番号はイメージのとおりです。
+     イメージは相対パスでも指定できます。 ほかのオプションは FUSE に渡します。
+     たとえば、前面で動かし続ける -f や、 -o allow_other です。
+
+     オプションは次のとおりです。
+
+     -w      ファイルシステムを書き込みでマウントします。
+             ファイル、ディレクトリ、シンボリックリンク、ハードリンク、FIFO、デバイスを、作り、消し、名前を変え、変更できます。
+             アクセス許可は、イメージのモードと所有者に照らしてカーネルが検査します。
+             新しいファイルは呼び出し元のものになりますが、ディレクトリが set-
+             group-ID
+             のとき（新しいディレクトリはそのビットも受け継ぎます）と、inode
+             が呼び出し元のグループを持てないときは、そのディレクトリのグループになります。
+             V1 の inode はグループを 1
+             バイトで持つので、多くの場合こうなります。 変わったものの mtime
+             と ctime を設定し、atime は変えません。
+             開いたまま消したファイルは、閉じられるまで名前のないまま inode
+             と中身を保ち、閉じられたときに消えます。 その間、Linux と FreeBSD
+             の libfuse は、それを自前の名前（ ‘.fuse_hidden’ と 16 桁の 16
+             進数）で隠します。 名前が 14
+             文字のファイルシステムではこの名前が入らないので、ディレクトリには置かずにメモリに持ちます。
+             名前がそれより長いときは、 hide=memory
+             を指定しない限り、閉じられるまでディレクトリに置かれます。
+
+             マウントしている間、 image は、 fsck_minixfs -y
+             のような書き込むほかのプログラムに対してロックされます。
+             また、Linux と MINIX 3 と同じく clean
+             の印を外し、アンマウントで付け直します。
+             ただし、デバイスのエラーのように、イメージを乱したかもしれない変更の失敗があったときは付け直しません。
+             clean の印のないファイルシステムや、書き込めない Minix-vmd の
+             flex
+             ディレクトリのものは、警告を出して読み出し専用でマウントします。
+
+     -u always | sync | seconds
+             inode と zone のビットマップを書き込むタイミングを指定します。
+             sync     fsync(2) とアンマウント時（既定）。
+             always   変更のたび。
+             seconds  fsync
+                      とアンマウント時、および前回のビットマップ書き込みから
+                      seconds 秒が経過した後の最初の変更時。
+             データとその他のメタデータは、変更のたびに書き込みます。
+             中断したマウントは clean でない状態で残り、遅延したビットマップが
+             inode と一致しない場合があります。 fsck_minixfs -y
+             で検査・修復してください。
+
+     -M size:heads:side
+             ディスクの片面のトラックだけにファイルシステムがあるイメージを、
+             minixfs(1) と同じように扱います。
+
+     -o options
+             コンマで区切ったこの並びには、FUSE のオプションのほかに、
+             mount(8) が渡す形で mount_minixfs のオプションも書けます。 rw は
+             -w, ro はその取り消し、 update=X は -u X, tracks=X は -M X です。
+             hide=memory は、開いたまま消したファイルを libfuse
+             が隠す名前を、名前が 14
+             文字より長いファイルシステムでもメモリに持ちます。 hide=disk
+             （既定）は、そこではディレクトリに置きます。
+
+     アンマウントは、Linux では ‘fusermount3 -u mountpoint’ で、BSD では
+     umount(8) で行います。
+
+   MINIX 3
+     MINIX 3 では、 mount_minixfs はコマンドではなく、 mount(8)
+     が起動するサービスです。 ‘make fuse-minix’ でビルドして
+     /usr/pkg/service/minixfs として置き、 /etc/system.conf に ntfs-3g
+     の項目を写した ‘service minixfs’ の項目を加えます。 イメージは vnd
+     デバイスから、オプションは -o でマウントします。
+
+           # vndconfig vnd0 usr.img
+           # mount -t minixfs -o rw /dev/vnd0 /mnt
+           # umount /mnt
+           # vndconfig -u vnd0
+
+     手で起動すると、 mount_minixfs はマウントの仕方を示して 2 で終了します。
+     サービスには標準エラーがないので警告は見えず、ロックは image ではなく vnd
+     デバイスに掛かります。
+
+EXIT STATUS
+     mount_minixfs は、ファイルシステムがアンマウントされれば
+     0、イメージを開けないか、FUSE が失敗するか、イメージに書き戻せなければ
+     1、使い方の誤りなら 2 で終了します。
+
+EXAMPLES
+     イメージを見ます。
+
+           $ mount_minixfs usr.img /mnt
+           $ ls -l /mnt
+           $ fusermount3 -u /mnt
+
+     ビットマップを変わるたびに書きながら、ディレクトリツリーをイメージに写します。
+
+           $ mount_minixfs -w -u always usr.img /mnt
+           $ cp -R src /mnt
+           $ fusermount3 -u /mnt
+
+SEE ALSO
+     minixfs(1), minixfs(5), fsck_minixfs(8), newfs_minixfs(8)
+
+AUTHORS
+     Shoichi Fukusaka
+
+BUGS
+     MINIX 3 では、libpuffs
+     が新しい節を誤って扱うので、書き込みは当てになりません。
+     マウントを通して作ったシンボリックリンクはリンク先を失い、FIFO
+     は有効な種類なしに作られ、文字デバイスはブロックデバイスとして作られます。
+
+     NetBSD では、set-group-ID
+     のディレクトリに作ったディレクトリは、グループは受け継ぎますが set-group-
+     ID ビットは受け継ぎません。 librefuse
+     が、ディレクトリを作ったあとでカーネルの渡したモードを設定し直すためです。
+
+     NetBSD 10.0 以降では、ルートのすぐ下のディレクトリで ‘..’
+     を引くと失敗し、以後マウントはまともに動きません。 librefuse
+     を通すファイルシステムすべてに起こります。 ソースの
+     docs/netbsd-refuse-dotdot.md を参照してください。
+
+     NetBSD と MINIX 3 の librefuse は、重なって開かれたファイルの最初の open
+     しか伝えず、最初の close で閉じられたと伝えます。
+     そのため、開いたまま消したファイルは、閉じられるまでではなくアンマウントまで残ります。
+     また、二度開いて一度閉じてから消したファイルはすぐに消えるので、もう一方の記述子を通した書き込みは、空いた
+     inode か、それを使った別のファイルを変えてしまいます。
+
+     FreeBSD では、マウントを通した ln(1) が EIO
+     で失敗しますが、リンクはできています。 libfuse
+     はハードリンクの応答に新しい名前のための自前のノード番号を返し、 FreeBSD
+     の fusefs は元のファイルと違うノード番号の応答を失敗とみなすためです。
+
+     libfuse
+     が隠す名前をメモリに持つとき、開いているファイルを利用者がその形の名前へ
+     rename すると、libfuse が隠すものとみなします。
+     その名前はアンマウントで消え、ほかに名前がなければファイルも消えます。
+     開いていないファイルは、ほかの名前と同じように rename します。
+
+     libfuse
+     は、開いたまま消したファイルのリンク数を、そのファイルを通してモード、所有者、時刻を変えた後しばらく、1
+     多く返します。 fstat(2)
+     に返す数からは隠す名前の分を引きますが、変更の応答として返してカーネルが持つ数からは引かないためです。
+
+minixfs                       September 26, 2026                       minixfs

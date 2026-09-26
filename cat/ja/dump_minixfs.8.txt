@@ -1,0 +1,94 @@
+DUMP_MINIXFS(8)             System Manager's Manual            DUMP_MINIXFS(8)
+
+NAME
+     dump_minixfs – MINIX ファイルシステムを BSD の dump の形式で書き出す
+
+SYNOPSIS
+     dump_minixfs [-0123456789u] [-D dumpdates] [-L label]
+                  [-M size:heads:side] [-T date] -f file image [path]
+
+DESCRIPTION
+     dump_minixfs は、 image の MINIX ファイルシステムを NetBSD の UFS1 dump
+     形式で file に書き出します。 restore_minixfs(8) と NetBSD・FreeBSD・Linux
+     の restore(8) で読み込めます。 MINIX
+     の全バージョン、両方のバイト順、Minix-vmd に対応します。 形式は
+     minixfs(5) を参照してください。 元のイメージは変更しません。
+
+     dump はイメージのバイト順で書きます。 restore(8) はルートを 2
+     とするので、イメージの inode n は dump では inode n + 1 になります。
+     ディレクトリは、イメージの項目の形にかかわらず 4.4BSD の形で書きます。
+     UFS
+     ではファイルの最後のブロックが必ずあるので、各ファイルの最後のレコードは、穴の中でも書きます。
+
+     レベル 0 の dump はファイルシステム全体を持ちます。 レベル n の dump
+     は、dumpdates ファイルにあるそれより低いレベルの最後の dump
+     の後に変わったものを持ちます。 BSD の dump と同じく、mtime か ctime
+     がその日時より前でないファイル、それを持つディレクトリ、下にディレクトリを持つディレクトリです。
+
+     オプションは次のとおりです。
+
+     -0 .. -9
+             レベルで、既定は 0 です。
+
+     -u      dump が済んだら、与えたとおりの image
+             の名前で、同じレベルの記録に代えて dumpdates
+             ファイルに記録します。
+
+     -D dumpdates
+             dumpdates ファイルです。 イメージとレベルごとに、名前、レベル、
+             ctime(3) の表示と同じ形の日時の行を、BSD の dump
+             と同じ形で持ちます。
+             名前は行の最初の語なので、名前の空白、タブ、改行、バックスラッシュは、バックスラッシュと
+             3 桁の 8 進数で書きます。 既定は /etc/dumpdates です。
+
+     -L label
+             dump のラベルで、16 文字までです。 既定は “none” です。
+
+     -M size:heads:side
+             ディスクの片面のトラックだけにファイルシステムがあるイメージを、
+             minixfs(1) と同じように読みます。
+
+     -T date
+             dumpdates ファイルの日時ではなく、 ctime(3)
+             の表示と同じ形で与えた date の後に変わったものを書きます。
+
+     -f file
+             dump の書き先です。 ‘-’ は標準出力で、端末であってはいけません。
+
+     path を与えると、ディレクトリ path
+     とその下のすべてを、その上のディレクトリとともに書きます。 dump(8)
+     がサブディレクトリに対してするのと同じく、レベル 0 で、 -u なしです。
+
+     clean の印のないファイルシステムは、警告を出して書き出します。
+
+EXIT STATUS
+     dump_minixfs は、成功すれば 0、何かに失敗すれば 1、使い方の誤りなら 2
+     で終了します。
+
+EXAMPLES
+     全体の dump を記録付きで取り、後でその後に変わったものの dump
+     を取ります。
+
+           # dump_minixfs -0u -f /backup/usr.0 usr.img
+           # dump_minixfs -1u -f /backup/usr.1 usr.img
+
+     ハードリンクも含めて、ファイルシステムを別の版の新しいものに移します。
+
+           $ newfs_minixfs -V 3 -s 65536 new.img
+           $ dump_minixfs -f - old.img | restore_minixfs -r -f - new.img
+
+SEE ALSO
+     minixfs(1), minixfs(5), dump(8), fsck_minixfs(8), restore(8),
+     restore_minixfs(8)
+
+AUTHORS
+     Shoichi Fukusaka
+
+CAVEATS
+     V1 には ctime
+     がないので、モード、所有者、名前だけの変更では、ファイルは高いレベルの
+     dump に入りません。
+
+     dump は 1 つのファイルに書き、複数のボリュームには分けません。
+
+minixfs                       September 26, 2026                       minixfs

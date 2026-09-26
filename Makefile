@@ -181,6 +181,18 @@ install: all
 	    $(INSTALL) -d $$d && $(INSTALL) -m 444 $$f $$d || exit 1; \
 	done
 
+# The manuals formatted as plain text, as catman(8) formats them, in cat/
+# as in man/ with .txt added, for reading where there is no man(1), such
+# as in a browser.  They are made with mandoc 1.14.6 on Linux: the mandoc
+# of FreeBSD puts the name of the system in the header, and col(1) drops
+# Japanese without a UTF-8 locale.
+catman:
+	for f in $(MANS) $(MANS_JA); do \
+	    c=cat/$${f#man/}.txt; mkdir -p $${c%/*} && \
+	    mandoc -Ios=minixfs -Tutf8 -Owidth=78 $$f | col -bx > $$c || \
+	    exit 1; \
+	done
+
 # Check the manuals: with mandoc where there is one, else with groff.
 lint-man:
 	if command -v mandoc >/dev/null 2>&1; then \
@@ -201,5 +213,5 @@ clean:
 	    src/*.o $(MKIMAGE) $(MKDUMP) $(MFSOP) $(FDOPS) $(FUSEPROG)
 	rm -rf build-san
 
-.PHONY: all check check-sanitize clean fuse fuse-minix install lint-man \
-	lint-sh
+.PHONY: all catman check check-sanitize clean fuse fuse-minix install \
+	lint-man lint-sh

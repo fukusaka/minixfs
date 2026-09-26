@@ -1,0 +1,94 @@
+DUMP_MINIXFS(8)             System Manager's Manual            DUMP_MINIXFS(8)
+
+NAME
+     dump_minixfs – dump a MINIX file system in the format of BSD dump
+
+SYNOPSIS
+     dump_minixfs [-0123456789u] [-D dumpdates] [-L label]
+                  [-M size:heads:side] [-T date] -f file image [path]
+
+DESCRIPTION
+     dump_minixfs writes the MINIX file system in image to file in NetBSD's
+     UFS1 dump format.  The dump can be read by restore_minixfs(8) and the
+     restore(8) commands of NetBSD, FreeBSD and Linux.  All MINIX versions,
+     both byte orders and Minix-vmd are supported; see minixfs(5).  The source
+     image is not modified.
+
+     The dump is in the byte order of the image.  Inode n of the image is
+     inode n + 1 in the dump, since restore(8) takes 2 for the root.
+     Directories go in as those of 4.4BSD, whatever the entries of the image,
+     and the last record of each file even when it lies in a hole, as the last
+     block of a file on UFS always exists.
+
+     A dump of level 0 holds the whole file system.  One of level n holds what
+     changed since the last dump of a lower level, as the dumpdates file
+     tells: the files whose mtime or ctime is not before its date, the
+     directories that hold them, and the directories that have directories in
+     them, as BSD dump does.
+
+     The options are:
+
+     -0 .. -9
+             The level; 0 by default.
+
+     -u      When the dump is done, note it in the dumpdates file under the
+             name of image as it was given, in place of the note of the same
+             level.
+
+     -D dumpdates
+             The dumpdates file, with a line for each image and level: the
+             name, the level and the date as ctime(3) prints it, as BSD dump
+             writes it.  A blank, tab, newline or backslash of the name is
+             written as a backslash and three octal digits, as the name is the
+             first word.  The default is /etc/dumpdates.
+
+     -L label
+             The label of the dump, 16 characters at most; “none” by default.
+
+     -M size:heads:side
+             Read an image that holds the file system in the tracks of one
+             side of a disk only, as minixfs(1) does.
+
+     -T date
+             Dump what changed since date, given as ctime(3) prints it,
+             instead of since the date in the dumpdates file.
+
+     -f file
+             Where the dump goes; ‘-’ is standard output, which must not be a
+             terminal.
+
+     With path, only the directory path and what is below it go in, with the
+     directories above it, at level 0 and without -u, as dump(8) does for a
+     subdirectory.
+
+     A file system that is not marked clean is dumped with a warning.
+
+EXIT STATUS
+     dump_minixfs exits with 0 on success, 1 if anything failed, and 2 for a
+     usage error.
+
+EXAMPLES
+     A full dump, noted, and a later one of what changed since:
+
+           # dump_minixfs -0u -f /backup/usr.0 usr.img
+           # dump_minixfs -1u -f /backup/usr.1 usr.img
+
+     Move a file system onto a new one of another version, hard links and all:
+
+           $ newfs_minixfs -V 3 -s 65536 new.img
+           $ dump_minixfs -f - old.img | restore_minixfs -r -f - new.img
+
+SEE ALSO
+     minixfs(1), minixfs(5), dump(8), fsck_minixfs(8), restore(8),
+     restore_minixfs(8)
+
+AUTHORS
+     Shoichi Fukusaka
+
+CAVEATS
+     V1 keeps no ctime, so a change of mode, owner or name alone does not put
+     a file in a dump of a higher level.
+
+     A dump goes on one file; it is never split over volumes.
+
+minixfs                       September 26, 2026                       minixfs

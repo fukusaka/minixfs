@@ -1,0 +1,111 @@
+RESTORE_MINIXFS(8)          System Manager's Manual         RESTORE_MINIXFS(8)
+
+NAME
+     restore_minixfs – restore a dump into a MINIX file system
+
+SYNOPSIS
+     restore_minixfs -t [-c] -f file
+     restore_minixfs -r [-cNv] [-M size:heads:side] [-o uid:gid] [-s symtable]
+                     -f file image
+
+DESCRIPTION
+     restore_minixfs reads BSD dumps in either byte order and restores them
+     into a MINIX file system of any version; see minixfs(5).  Supported dumps
+     include:
+     •   dump_minixfs(8);
+     •   NetBSD and FreeBSD UFS1 and UFS2 dumps;
+     •   Linux ext2, ext3 and ext4 dumps;
+     •   4.2BSD and 4.3BSD dumps, including older file system formats.
+
+     The options are:
+
+     -t      List the names of the files in the dump, each after its inode
+             number in the dump, as restore(8) does.  The dates, the level and
+             the label of the dump come first.
+
+     -r      Restore the dump into the root directory of image: a full dump
+             into an empty file system, then each dump of a higher level in
+             the order they were made.  Each directory of the dump comes to
+             hold what the dump says it holds: names that are gone are removed
+             and new ones made, a file whose last name went away is freed, and
+             files and directories take their modes, owners and times from the
+             dump.
+
+     -c      Read the directories as those of V7, of 16-byte entries, as
+             restore(8) does with -c.  Those of a dump of a file system older
+             than 4.2BSD are always read so.
+
+     -f file
+             The dump; ‘-’ is standard input.
+
+     -M size:heads:side
+             Write to an image that holds the file system in the tracks of one
+             side of a disk only, as minixfs(1) reads it.
+
+     -N      Check everything, and write nothing.
+
+     -o uid:gid
+             Make every file owned by uid and gid, numbers both.
+
+     -s symtable
+             Record the dump-to-image inode mapping and the restored dump's
+             date in symtable for subsequent incremental restores.  The
+             default is restoresymtable.
+
+     -v      Name each directory and file as it is restored.
+
+     Before writing, -r checks name lengths and the number of available
+     inodes.  If either check fails, nothing is written.  When reading a file,
+     it also checks owners, device numbers and file sizes in advance; any
+     error prevents writing.  When reading standard input, it skips files that
+     exceed these limits, including their names, and continues restoring the
+     rest.  Device numbers use major × 256 + minor and must be below 65536.
+
+     An incremental dump's previous-dump date must match the date in symtable.
+     After a recoverable failure, the table allows the same dump to be
+     retried.  Keep it between restores.
+
+     The destination must be marked clean and must not use Minix-vmd flex
+     directories.  It is locked with fcntl(2) while it is written, and one
+     that another program holds is refused.  The clean flag is cleared during
+     writing and restored after the data reaches disk.  Failures due to space
+     or file system limits, or a truncated or damaged dump, leave the written
+     data consistent.  After correcting the cause, retry the same dump.
+
+     An I/O error or forced termination may leave an inconsistent image with
+     the clean flag cleared.  Run fsck_minixfs -y before further writes.  If
+     the image or restore table cannot be recovered, restart from the full
+     dump.
+
+     Extended attributes, file flags and sockets have no place in a MINIX file
+     system, and are left out with a warning.  So are the names of files that
+     the dump does not hold, as in a dump of a part of a file system.
+
+EXIT STATUS
+     restore_minixfs exits with 0 on success, 1 if anything failed, and 2 for
+     a usage error.
+
+EXAMPLES
+     Restore a full dump and one of level 1 made after it:
+
+           # newfs_minixfs -V 3 -s 65536 usr.img
+           # restore_minixfs -r -f /backup/usr.0 usr.img
+           # restore_minixfs -r -f /backup/usr.1 usr.img
+           # rm restoresymtable
+
+     Put a dump of an ext2 file system of Linux into a V2 file system, owned
+     by root:
+
+           # restore_minixfs -r -o 0:0 -f home.dump home.img
+
+SEE ALSO
+     minixfs(1), minixfs(5), dump(8), dump_minixfs(8), fsck_minixfs(8),
+     newfs_minixfs(8), restore(8)
+
+AUTHORS
+     Shoichi Fukusaka
+
+BUGS
+     Compressed dumps of Linux and dumps on more than one volume are not read.
+
+minixfs                       September 26, 2026                       minixfs

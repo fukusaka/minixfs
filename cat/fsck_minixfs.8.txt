@@ -1,0 +1,100 @@
+FSCK_MINIXFS(8)             System Manager's Manual            FSCK_MINIXFS(8)
+
+NAME
+     fsck_minixfs – check and repair a MINIX file system
+
+SYNOPSIS
+     fsck_minixfs [-lwy] [-e 0 | 1] [-M size:heads:side] image
+
+DESCRIPTION
+     fsck_minixfs checks the MINIX file system in image, of any version and
+     byte order, or of Minix-vmd; see minixfs(5).  It checks:
+
+     •   the super block: a maximum file size that makes sense, an image that
+         holds the whole file system, where the size of a device can be told,
+         and the errors that Linux records in the state field of V1 and V2;
+
+     •   directory entries: inode numbers in range, entries that name a free
+         inode or one of no valid type, names that are empty or hold ‘/’, ‘.’
+         and ‘..’ first and naming the directory and its parent, and
+         directories that more than one directory lists;
+
+     •   inodes: a size that the zones reach, directories a whole number of
+         entries long, zone numbers inside the data area, zones that two files
+         share, device files with zone numbers besides the device number, and
+         symbolic links that are empty, longer than Linux writes or cut short
+         by a NUL byte;
+
+     •   link counts against the entries that name each inode, unreferenced
+         inodes (inodes in use that no directory names), both bit maps, and
+         bit 0 of each map, which is never used but must be set.
+
+     Neither the depth of the directory tree nor loops of directories stop the
+     check.  Each problem is printed on a line of its own, then a summary of
+     the inodes and zones in use and the problems found.  A file system that
+     is not marked clean is noted, but is not a problem in itself: in V1 and
+     V2, MINIX leaves zero the word in which Linux keeps the mark.
+
+     Without -y, the image is only read.
+
+     The options are:
+
+     -y      Repair each problem where it can be: bad entries are removed, ‘.’
+             and ‘..’ are pointed where they belong or put back, moving an
+             entry that holds their place and giving the directory a zone if
+             it has none; zone numbers outside the data area and the second
+             use of a zone are cleared; sizes are cut to what the zones reach,
+             to whole entries and to the text of a symbolic link.  Link counts
+             and bit maps are corrected, unreferenced inodes are freed, and
+             the maximum file size in the super block is corrected.  A root
+             that is not a directory and an image shorter than the file system
+             are left.  Each problem is followed by ‘(repaired)’ or ‘(not
+             repaired)’.  The image is then checked again and marked clean if
+             nothing is left — in V1 and V2 as Linux marks it, in V3 with the
+             clean flag of MINIX 3, which otherwise mounts the file system
+             read-only — or marked as having errors if problems remain.  The
+             image is locked with fcntl(2) while it is written, and one that
+             another program holds is refused.
+
+     -l      With -y, link unreferenced inodes into /lost+found as ‘#’ and
+             their inode number, trees below directories and all, rather than
+             freeing them; /lost+found is made if it is not there.  MINIX and
+             Linux have no /lost+found, and their fsck frees such inodes,
+             which is why this is not the default.
+
+     -e 0 | 1
+             Check that the bits of each map past the last inode or zone are 0
+             or 1, and with -y set them so.  The mkfs of MINIX leaves them
+             clear and that of Linux sets them, so neither is wrong unless
+             this says which to expect.
+
+     -w      Note, as warnings that are not problems, what the fsck of MINIX 3
+             warns about: map blocks beyond what the maps need, a first data
+             zone later than the inode table allows, a maximum file size other
+             than the one MINIX works out, and zones of more than 256 blocks.
+
+     -M size:heads:side
+             Check, and repair in place, an image that holds the file system
+             in the tracks of one side of a disk only, as for minixfs(1); the
+             other side is left alone.
+
+EXIT STATUS
+     fsck_minixfs exits with 0 if the file system is consistent, after the
+     repairs with -y; 1 if problems remain; 2 for a usage error; and 3 if the
+     image cannot be checked at all.
+
+EXAMPLES
+           $ fsck_minixfs root.img
+           $ fsck_minixfs -y -l usr.img
+
+SEE ALSO
+     minixfs(1), minixfs(5), newfs_minixfs(8), tunefs_minixfs(8)
+
+AUTHORS
+     Shoichi Fukusaka
+
+BUGS
+     The flex directories of Minix-vmd are checked, but ‘.’ and ‘..’ are not
+     put back there, nor is /lost+found made in them.
+
+minixfs                       September 26, 2026                       minixfs

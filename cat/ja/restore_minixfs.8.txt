@@ -1,0 +1,115 @@
+RESTORE_MINIXFS(8)          System Manager's Manual         RESTORE_MINIXFS(8)
+
+NAME
+     restore_minixfs – dump を MINIX ファイルシステムに戻す
+
+SYNOPSIS
+     restore_minixfs -t [-c] -f file
+     restore_minixfs -r [-cNv] [-M size:heads:side] [-o uid:gid] [-s symtable]
+                     -f file image
+
+DESCRIPTION
+     restore_minixfs は、BSD dump をどちらのバイト順でも読み、V1・V2・V3 の
+     MINIX ファイルシステムに復元します。 形式は minixfs(5)
+     を参照してください。 対応する dump は次のとおりです。
+     •   dump_minixfs(8) の dump
+     •   NetBSD と FreeBSD の UFS1・UFS2 dump
+     •   Linux の ext2・ext3・ext4 dump
+     •   4.2BSD・4.3BSD の dump（旧ファイルシステム形式を含む）
+
+     オプションは次のとおりです。
+
+     -t      restore(8) と同じく、dump の中のファイルの名前を、dump での inode
+             番号に続けて一覧します。 最初に、dump
+             の日時、レベル、ラベルを示します。
+
+     -r      dump を image のルートディレクトリに戻します。 全体の dump
+             を空のファイルシステムに、その後で高いレベルの dump
+             を作った順に戻します。 dump の各ディレクトリは、dump
+             のとおりの中身になります。
+             なくなった名前は消し、新しい名前は作り、最後の名前がなくなったファイルは解放します。
+             ファイルとディレクトリのモード、所有者、時刻は dump
+             のとおりにします。
+
+     -c      restore(8) の -c と同じく、ディレクトリを 16 バイトの項目の V7
+             の形として読みます。 4.2BSD より古いファイルシステムの dump
+             のディレクトリは、常にそう読みます。
+
+     -f file
+             dump です。 ‘-’ は標準入力です。
+
+     -M size:heads:side
+             ディスクの片面のトラックだけにファイルシステムがあるイメージに、
+             minixfs(1) が読むのと同じように書きます。
+
+     -N      すべてを確かめるだけで、何も書きません。
+
+     -o uid:gid
+             すべてのファイルの所有者を uid, グループを gid にします。
+             どちらも数値です。
+
+     -s symtable
+             増分復元に使う、dump とイメージの inode
+             の対応、および復元日時の記録先です。 既定は restoresymtable
+             です。
+
+     -v      ディレクトリとファイルを、戻すごとに示します。
+
+     -r は書き込み前に、名前の長さと空き inode
+     数を検査し、問題があれば書き込みません。
+     ファイルから読む場合は、所有者・デバイス番号・ファイルサイズも事前に検査し、問題があれば書き込みません。
+     標準入力から読む場合は、上限を超えるファイルを名前ごと除外し、残りの復元を続けます。
+     デバイス番号は「メジャー番号 × 256 + マイナー番号」で、65536
+     未満に限ります。
+
+     増分 dump が示す前回の dump 日時は、 symtable
+     の日時と一致する必要があります。 回復可能な失敗では、同じ dump
+     を再実行できる状態で記録を残します。
+     復元間ではこのファイルを保持してください。
+
+     復元先は clean で、Minix-vmd の flex
+     ディレクトリを使っていない必要があります。 書き込む間は復元先を fcntl(2)
+     でロックし、ほかのプログラムがロックしているイメージは拒みます。
+     書き込み中は clean の印を外し、データがディスクに届いてから戻します。
+     容量不足、ファイルシステムの上限、dump
+     の途中切れ・破損による失敗では、書いた内容の整合性を保ちます。
+     原因を解消して、同じ dump を再実行してください。
+
+     I/O エラーや強制終了では、整合性を失い、clean
+     の印が外れたままになる場合があります。 次の書き込み前に fsck_minixfs -y
+     で検査してください。 イメージや復元記録を回復できなければ、全体の dump
+     から復元をやり直してください。
+
+     拡張属性、ファイルフラグ、ソケットは、MINIX
+     ファイルシステムに置く場所がないので、警告を出して除きます。
+     ファイルシステムの一部の dump のように、dump
+     が持たないファイルの名前も除きます。
+
+EXIT STATUS
+     restore_minixfs は、成功すれば 0、何かに失敗すれば 1、使い方の誤りなら 2
+     で終了します。
+
+EXAMPLES
+     全体の dump と、その後に取ったレベル 1 の dump を戻します。
+
+           # newfs_minixfs -V 3 -s 65536 usr.img
+           # restore_minixfs -r -f /backup/usr.0 usr.img
+           # restore_minixfs -r -f /backup/usr.1 usr.img
+           # rm restoresymtable
+
+     Linux の ext2 ファイルシステムの dump を、root の所有で V2
+     ファイルシステムに入れます。
+
+           # restore_minixfs -r -o 0:0 -f home.dump home.img
+
+SEE ALSO
+     minixfs(1), minixfs(5), dump(8), dump_minixfs(8), fsck_minixfs(8),
+     newfs_minixfs(8), restore(8)
+
+AUTHORS
+     Shoichi Fukusaka
+
+BUGS
+     Linux の圧縮した dump と、複数のボリュームにわたる dump は読みません。
+
+minixfs                       September 26, 2026                       minixfs

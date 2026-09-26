@@ -1,0 +1,211 @@
+MINIXFS(1)                  General Commands Manual                 MINIXFS(1)
+
+NAME
+     minixfs – MINIX ファイルシステムのイメージを読み書きする
+
+SYNOPSIS
+     minixfs [-M size:heads:side] info image
+     minixfs [-M size:heads:side] ls [-lR] image [path]
+     minixfs [-M size:heads:side] cat image path
+     minixfs [-M size:heads:side] blocks [-r] image path
+     minixfs [-M size:heads:side] extract [-dv] image dest [path]
+     minixfs [-M size:heads:side] tar image [path]
+     minixfs [-M size:heads:side] [-f] put [-Rdin] [-o uid:gid] image host ...
+             path
+     minixfs [-M size:heads:side] [-f] mkdir [-p] [-m mode] [-o uid:gid] image
+             path ...
+     minixfs [-M size:heads:side] [-f] rm [-r] image path ...
+     minixfs [-M size:heads:side] [-f] mv image old new
+     minixfs [-M size:heads:side] [-f] ln [-s] image target path
+     minixfs [-M size:heads:side] [-f] chmod image mode path ...
+     minixfs [-M size:heads:side] [-f] chown image uid:gid path ...
+
+DESCRIPTION
+     minixfs は、V1・V2・V3 のどの版の MINIX
+     ファイルシステムのイメージも、どちらのバイト順でも読みます。 Minix-vmd
+     のものも読みます。 形式は minixfs(5) を参照してください。 put
+     から後のコマンドは、mtools が MS-DOS
+     のイメージを変えるのと同じように、マウントせずにイメージを変えます。
+     ほかのコマンドはイメージに書き込むことはありません。
+     イメージの中のパスは、 ‘/’
+     で始まっていてもいなくても、ルートディレクトリから数えます。
+
+     コマンドは次のとおりです。
+
+     info    superblock
+             の版、バイト順、マジック番号、名前の長さ、ブロックサイズ、inode・zone
+             数、ビットマップの大きさ、最初のデータ zone、zone
+             サイズ、最大ファイルサイズ、clean の印を表示します。 Minix-vmd
+             では亜種の名前も表示します。
+
+             イメージとファイルシステムの容量、空き inode・zone 数、0xe5
+             または 0xa5
+             で埋まったセクタ数と、その連続長の最頻値も表示します。
+             この埋め草は、片面ディスクを両面として読んだ場合など、未使用トラックの手掛かりになります。
+             容量の不一致や埋め草は、それ自体ではエラーではありません。
+             デバイスの容量を取得できなければ unknown と表示します。
+             デバイスの埋め草はファイルシステムの範囲内だけ数えます。
+
+     ls [-lR] image [path]
+             ディレクトリ path を一覧します（省略時はルート）。 path
+             がファイルならそのファイルを示します。 -l
+             を付けると、各項目のモード、リンク数、所有者、グループ、大きさ（デバイスならメジャー番号とマイナー番号）、UTC
+             の更新時刻を、シンボリックリンクならその先も表示します。 -R
+             を付けると、サブディレクトリも一覧します。
+
+     cat image path
+             通常ファイル path を標準出力に写します。
+
+     blocks [-r] image path
+             通常ファイル、ディレクトリ、シンボリックリンクの path
+             を収めるブロックを、ファイルの順に、その大きさまで表示します。
+             ファイルのブロックごとに 1
+             行で、ファイルの中での番号と、ブロックの番号、穴なら ‘-’ です。
+             -r
+             では、続いているブロックを、最初のブロックと数の連なりとして、ファイルの順に表示します。
+             穴の連なりは、最初のブロックが ‘-’ です。 ブロックは info
+             が示すブロックサイズのもので、ファイルシステムの先頭から数えます。
+             -M では、これは image の先頭ではありません。
+             最後のブロックは一部しか使われていないことがあります。
+
+     extract [-dv] image dest [path]
+             ディレクトリ path とその下のすべてを、ディレクトリ dest
+             に写します（ path の省略時はルート）。 dest がなければ作ります。
+             ファイル、ディレクトリ、シンボリックリンク、FIFO を、set-user-
+             ID・set-group-ID・sticky
+             ビットを除いたアクセス許可と時刻を付けて作ります。
+             所有者は設定しません。 リンクが 2 つ以上あるファイルの 2
+             つ目以降の名前は、最初のファイルへのリンクとして作ります。
+             デバイスは -d を付けたときだけ作ります。 これには root
+             が要ります。
+             作らなかったデバイスと、写せないソケットは、最後に警告として数を示します。
+             -v を付けると、写したものと同じく 1 件ずつ名前を示します。 dest
+             に既にある名前は、 tar(1) と同じく置き換えます。
+             ディレクトリでなければ先に消すので、別のリンク、FIFO、書き込み許可のないファイルを通して書くことはありません。
+             そのため、複数枚組のディスクを順に 1
+             つのディレクトリツリーに展開できます。
+
+             extract は dest の外には書きません。 名前が空の項目、 ‘.’ や ‘..’
+             の項目、 ‘/’ を含む項目は拒み、自身を含むディレクトリも拒みます。
+
+     tar image [path]
+             ディレクトリ path を、POSIX ustar
+             形式のアーカイブとして標準出力に書きます（省略時はルート）。
+             標準出力が端末であってはいけません。 FIFO
+             とハードリンクに加えて、 extract
+             と違い、デバイスとその番号、所有者も保ちます。 tar(1)
+             は特権なしでこれを一覧でき、root で実行すればデバイスも作ります。
+             ustar に収まらない長い名前やリンク先は、pax
+             の拡張ヘッダに入れます。
+             ソケットは入れられないので、除いたものとして数えます。
+
+     put [-Rdin] [-o uid:gid] image host ... path
+             ホストのファイルをイメージに写します。 extract の逆向きです。
+             path がディレクトリならその中に元の名前で、まだなければ path
+             という名前で入れます。 通常ファイル、シンボリックリンク、FIFO
+             は、モードと mtime を保って入ります。 ディレクトリとその中身は -R
+             のときだけ、デバイスは -d のときだけ入れます。
+             ソケットは入れられず、入れなかったデバイスと一緒に最後に警告で数えます。
+             既存の名前があれば置き換えます。 -n なら残し、 -i
+             なら標準エラーに尋ねて標準入力の答えに従います。
+             ディレクトリの上にディレクトリを写すときは、その中に入ります。
+             空きが尽きたファイルは、途中まで入った分も消します。
+
+     mkdir [-p] [-m mode] [-o uid:gid] image path ...
+             ディレクトリを作ります。 モードは 0755 で、 -m に 8
+             進数で与えればそれにします。 -p
+             なら、途中の足りないディレクトリもモード 0755
+             で作り、すでにあってもとがめません。
+
+     rm [-r] image path ...
+             ファイルを消します。 -r ならディレクトリとその中身も消します。
+
+     mv image old new
+             old を new に改名します。 new
+             がディレクトリならその中へ移します。
+             同じ名前のファイルや、ディレクトリに対する空のディレクトリは置き換えます。
+
+     ln [-s] image target path
+             ファイル target に path という別の名前を付けます。 -s
+             なら、文字列 target を指すシンボリックリンク path を作ります。
+             path がディレクトリなら、その中に target
+             の最後の要素の名前で作ります。
+
+     chmod image mode path ...
+             アクセス許可のビットを 8 進数で設定します。
+
+     chown image uid:gid path ...
+             所有者、グループ、またはその両方を数で設定します。 形は uid,
+             uid:gid, :gid です。 イメージは名前を知りません。
+
+     イメージ内に作るファイルは、親ディレクトリの所有者とグループを引き継ぎます。
+     -o で別の数値 ID を指定できます。 ID は inode の欄に収まる値に限り、V1
+     のグループ ID は 255 以下です。
+
+     コマンドがイメージを開いている間、 mount_minixfs -w
+     と同じくイメージをロックし、終わるまで clean の印を外します。
+     途中で止まれば、 fsck_minixfs に任せる形で残ります。
+     デバイスのエラーのように、イメージを乱したかもしれない書き込みの失敗の後も同じです。
+     書く前の断りや空き不足の後は印を戻します。 clean
+     の印のないファイルシステムはどこかにマウントされているかもしれないので、
+     -f がなければ拒みます。 書けない Minix-vmd の flex
+     ディレクトリは常に拒みます。
+
+OPTIONS
+     -M size:heads:side
+             ディスクの片面のトラックだけにファイルシステムがあるイメージを読みます。
+             トラックは size バイトで、1 シリンダに heads 個あり、そのうち面
+             side （0 から数える）にファイルシステムがあります。 片面 360K
+             のディスクを両面 720K として読んだもの、たとえば Atari MINIX 1.5
+             のディスクの一部は -M 4608:2:0 です。 イメージのトラックは 1
+             つおきに空です。 こうしたイメージでも superblock
+             は正しい位置にあるので、 info
+             は正しく見えますが、残りは壊れているように読めます。 info
+             の埋め草の数え上げでは、イメージの半分が 4608
+             バイトの連なりとして現れます。
+
+     -f      書き込むコマンドに、clean
+             の印のないファイルシステムも変えさせます。 印はそのままにします。
+
+EXIT STATUS
+     minixfs は、成功すれば 0、何かに失敗すれば 1、使い方の誤りなら 2
+     で終了します。
+     各コマンドは、出会った問題をすべて報告し、続けられるところまで続けます。
+
+EXAMPLES
+     イメージを一覧し、ファイルを 1 つ取り出します。
+
+           $ minixfs ls -l root.img /etc
+           $ minixfs cat root.img /etc/passwd > passwd
+
+     MINIX の installboot
+     がブートブロックに書き込むように、ブートプログラムの置き場所を調べます。
+
+           $ minixfs blocks -r root.img /boot
+
+     ディレクトリツリーをイメージに入れ、既存のファイルの上に確認してからファイルを入れます。
+
+           $ minixfs put -R usr.img src /usr
+           $ minixfs put -i usr.img passwd /etc/passwd
+
+     デバイスとハードリンクも含めて、ディレクトリツリー全体を新しいイメージに移します。
+
+           # mkdir tree && minixfs tar old.img | tar -xpf - -C tree
+           # newfs_minixfs -V 3 -d tree new.img
+
+     2 枚組の /usr のディスクを、1 つのディレクトリツリーに展開します。
+
+           $ minixfs extract usr1.img usr && minixfs extract usr2.img usr
+
+     両面として読み取った Atari のディスクを読みます。
+
+           $ minixfs -M 4608:2:0 extract disk02 out
+
+SEE ALSO
+     tar(1), minixfs(5), dump_minixfs(8), fsck_minixfs(8), mount_minixfs(8),
+     newfs_minixfs(8), restore_minixfs(8), tunefs_minixfs(8)
+
+AUTHORS
+     Shoichi Fukusaka
+
+minixfs                       September 26, 2026                       minixfs

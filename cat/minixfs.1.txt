@@ -1,0 +1,202 @@
+MINIXFS(1)                  General Commands Manual                 MINIXFS(1)
+
+NAME
+     minixfs – read and write MINIX file system images
+
+SYNOPSIS
+     minixfs [-M size:heads:side] info image
+     minixfs [-M size:heads:side] ls [-lR] image [path]
+     minixfs [-M size:heads:side] cat image path
+     minixfs [-M size:heads:side] blocks [-r] image path
+     minixfs [-M size:heads:side] extract [-dv] image dest [path]
+     minixfs [-M size:heads:side] tar image [path]
+     minixfs [-M size:heads:side] [-f] put [-Rdin] [-o uid:gid] image host ...
+             path
+     minixfs [-M size:heads:side] [-f] mkdir [-p] [-m mode] [-o uid:gid] image
+             path ...
+     minixfs [-M size:heads:side] [-f] rm [-r] image path ...
+     minixfs [-M size:heads:side] [-f] mv image old new
+     minixfs [-M size:heads:side] [-f] ln [-s] image target path
+     minixfs [-M size:heads:side] [-f] chmod image mode path ...
+     minixfs [-M size:heads:side] [-f] chown image uid:gid path ...
+
+DESCRIPTION
+     minixfs reads a MINIX file system image of any version, V1, V2 or V3, in
+     either byte order, and of Minix-vmd; see minixfs(5).  The commands from
+     put on change the image, as the mtools change an MS-DOS image, without
+     mounting it; the others never write to it.  Paths inside the image are
+     taken from its root directory whether or not they start with ‘/’.
+
+     The commands are:
+
+     info    Display the super block fields: version, byte order, magic
+             number, name length, block size, inode and zone counts, bit map
+             sizes, first data zone, zone size, maximum file size and clean
+             flag.  For Minix-vmd, also identify the variant.
+
+             Display the image and file system sizes, free inode and zone
+             counts, and the number of sectors filled with 0xe5 or 0xa5,
+             including the most common length of consecutive runs.  These fill
+             patterns can indicate unused tracks, such as a single-sided disk
+             read as double-sided.  A size mismatch or fill pattern is not
+             itself an error.  Device size is shown as unknown if it cannot be
+             determined; fill patterns on devices are counted only within the
+             file system.
+
+     ls [-lR] image [path]
+             List the directory path, the root by default, or the file that
+             path names.  With -l, each entry shows its mode, link count,
+             owner, group, size (or major and minor numbers for devices) and
+             modification time in UTC, and a symbolic link its target.  -R
+             lists subdirectories as well.
+
+     cat image path
+             Copy the regular file path to standard output.
+
+     blocks [-r] image path
+             Print the blocks that hold the regular file, directory or
+             symbolic link path, in the order of the file and up to its size:
+             a line for each block of the file, with its number in the file
+             and the number of the block, or ‘-’ for a hole.  With -r, blocks
+             that follow one another come as runs, the first block and the
+             count, in the order of the file; a run of holes has ‘-’ for its
+             first block.  Blocks are of the block size that info gives,
+             counted from the start of the file system, which with -M is not
+             that of image.  The last block may be in use in part only.
+
+     extract [-dv] image dest [path]
+             Copy the directory path, the root by default, and all below it
+             into the directory dest, which is made if it does not exist.
+             Files, directories, symbolic links and pipes are made with their
+             permission bits, without the set-user-ID, set-group-ID and sticky
+             bits, and their times; owners are not set.  The other names of a
+             file with more than one link are made as links to the first.
+             Devices are made only with -d, which takes root.  Devices left
+             out and sockets, which cannot be copied, are counted in a warning
+             at the end, and with -v named one by one as all that is copied
+             is.  A name that is already in dest is replaced, as tar(1)
+             replaces it: what is there is removed first, unless it is a
+             directory, so that nothing is written through another link, a
+             pipe or a file without write permission.  The disks of a set thus
+             go one after the other into one tree.
+
+             extract never writes outside dest: entries whose names are empty,
+             ‘.’, ‘..’ or contain ‘/’ are refused, and so are directories that
+             contain themselves.
+
+     tar image [path]
+             Write the directory path, the root by default, to standard output
+             as a POSIX ustar archive, which must not be a terminal.  Besides
+             pipes and hard links, it keeps, unlike extract, devices with
+             their numbers and owners, which tar(1) lists without privileges
+             and makes when run as root.  Names and link targets longer than
+             ustar holds go into pax extended headers.  Sockets cannot be
+             stored and are counted as left out.
+
+     put [-Rdin] [-o uid:gid] image host ... path
+             Copy files of the host into the image, as extract copies them
+             out: into the directory path under their own names, or as path if
+             that is not a directory yet.  Regular files, symbolic links and
+             pipes go in with their modes and mtimes; directories with -R, and
+             what is in them; devices with -d only.  Sockets cannot go in, and
+             are counted in a warning at the end with the devices left out.  A
+             name in the way is replaced, unless -n keeps it, or -i asks
+             first, on standard error, and takes an answer from standard
+             input; a directory in the way of a directory is entered.  A file
+             that runs out of room is removed again.
+
+     mkdir [-p] [-m mode] [-o uid:gid] image path ...
+             Make directories, of mode 0755 unless -m gives one in octal; with
+             -p, each missing directory on the way as well, of mode 0755, and
+             no complaint about one that is there.
+
+     rm [-r] image path ...
+             Remove files, and with -r directories and everything in them.
+
+     mv image old new
+             Rename old to new, or move it into new if that is a directory, in
+             place of a file of that name, or of an empty directory in place
+             of a directory.
+
+     ln [-s] image target path
+             Give the file target another name, path, or with -s make path a
+             symbolic link to the text target; into the directory path under
+             the last component of target if path is one.
+
+     chmod image mode path ...
+             Set the permission bits, in octal.
+
+     chown image uid:gid path ...
+             Set the owner, the group, or both, as numbers: uid, uid:gid or
+             :gid; the image knows no names.
+
+     Files created in the image inherit their parent directory's owner and
+     group, unless -o specifies numeric IDs.  The IDs must fit the inode
+     fields; V1 group IDs are limited to 255.
+
+     The image is locked while a command has it open, as mount_minixfs -w
+     locks it, and its clean mark is away until the command is done, so that
+     one cut short leaves it for fsck_minixfs.  So does a write that fails in
+     a way that may leave the image out of order, such as an error of the
+     device, as against a refusal made before anything is written or a lack of
+     room.  A file system that is not marked clean may be mounted elsewhere
+     and is refused, unless -f is given; the flex directories of Minix-vmd,
+     which cannot be written, are refused always.
+
+OPTIONS
+     -M size:heads:side
+             Read an image that holds the file system in the tracks of one
+             side of a disk only: tracks of size bytes, heads of them to a
+             cylinder, of which side side, from 0, holds the file system.  A
+             single-sided 360K disk read as a double-sided 720K one, as are
+             some Atari MINIX 1.5 disks, is -M 4608:2:0: every other track of
+             the image is empty.  The super block of such an image is still in
+             place, so info looks right while the rest reads as damage; its
+             fill count shows half of the image as runs of 4608 bytes.
+
+     -f      Let the commands that write change a file system that is not
+             marked clean, which is left as it is.
+
+EXIT STATUS
+     minixfs exits with 0 on success, 1 if anything failed, and 2 for a usage
+     error.  Each command reports every problem it meets and goes on where it
+     can.
+
+EXAMPLES
+     List an image and copy one file out of it:
+
+           $ minixfs ls -l root.img /etc
+           $ minixfs cat root.img /etc/passwd > passwd
+
+     Find where the boot program lies, as installboot of MINIX writes it into
+     the boot block:
+
+           $ minixfs blocks -r root.img /boot
+
+     Put a tree into an image, and a file over one that is there, asking
+     first:
+
+           $ minixfs put -R usr.img src /usr
+           $ minixfs put -i usr.img passwd /etc/passwd
+
+     Move the whole tree, devices and hard links included, onto a new image:
+
+           # mkdir tree && minixfs tar old.img | tar -xpf - -C tree
+           # newfs_minixfs -V 3 -d tree new.img
+
+     Unpack the two /usr disks of a set into one tree:
+
+           $ minixfs extract usr1.img usr && minixfs extract usr2.img usr
+
+     Read an Atari disk that was read as double-sided:
+
+           $ minixfs -M 4608:2:0 extract disk02 out
+
+SEE ALSO
+     tar(1), minixfs(5), dump_minixfs(8), fsck_minixfs(8), mount_minixfs(8),
+     newfs_minixfs(8), restore_minixfs(8), tunefs_minixfs(8)
+
+AUTHORS
+     Shoichi Fukusaka
+
+minixfs                       September 26, 2026                       minixfs
