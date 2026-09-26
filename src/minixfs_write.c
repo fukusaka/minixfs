@@ -32,8 +32,7 @@
  * write failed in a way that may have left the image out of order, such
  * as an error of the device (mfs_failure_breaks()).  A file system that
  * is not marked clean may be mounted elsewhere, so it is refused unless
- * -f is given; so are the flex directories of Minix-vmd, which cannot be
- * written.  The bit maps go to the image at the end.
+ * -f is given.  The bit maps go to the image at the end.
  *
  * Each command reports every problem it meets and goes on where it can.
  * The exit status is 0 on success, 1 if anything failed and 2 for a
@@ -147,8 +146,7 @@ owner_fits(struct cmd *c, uint32_t uid, uint32_t gid)
 
 /*
  * Open the image for writing, or report why not and exit: it is locked
- * by another program, it has the flex directories of Minix-vmd, or it is
- * not marked clean and -f was not given.  The clean mark then goes until
+ * by another program, or it is not marked clean and -f was not given.  The clean mark then goes until
  * finish_writing().
  */
 static void
@@ -164,9 +162,6 @@ open_for_writing(struct cmd *c, const char *image)
 			errx(1, "%s: not a MINIX file system", image);
 		errx(1, "%s: %s", image, strerror(-r));
 	}
-	if (c->fs.flex)
-		errx(1, "%s: the flex directories of Minix-vmd cannot be "
-		    "written", image);
 	was_clean = mfs_is_clean(&c->fs);
 	state_before = c->fs.state;
 	if (!force && !was_clean)

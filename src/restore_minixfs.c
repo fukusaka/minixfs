@@ -1792,9 +1792,6 @@ open_fs(struct restore *r)
 		errx(1, "%s: not a MINIX file system", r->o->image);
 	if (e < 0)
 		errx(1, "%s: %s", r->o->image, strerror(-e));
-	if (r->fs.flex)
-		errx(1, "%s: the flex directories of Minix-vmd cannot be "
-		    "written", r->o->image);
 	if (!mfs_is_clean(&r->fs))
 		errx(1, "%s: not marked clean; check it with fsck_minixfs",
 		    r->o->image);

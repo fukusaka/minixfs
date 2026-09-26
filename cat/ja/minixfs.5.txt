@@ -200,7 +200,7 @@ DESCRIPTION
            MINIX 3.3.0              V3
            3.3.0 より後の MINIX 3   1 ブロックの zone の V3
            Linux                    MINIX と Linux の V1・V2、2.6.21 からは V3
-           このパッケージ           すべて（flex ディレクトリは読むだけ）
+           このパッケージ           すべて
 
      そのため、Linux の拡張（30 文字の名前）を読み書きするのは、Linux
      とこのパッケージだけです。 3.3.0 より後の MINIX 3 が複数ブロックの zone

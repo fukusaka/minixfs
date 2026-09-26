@@ -7,7 +7,8 @@
 # that mkimage makes of the same spec, and -t lists them.  Then what it
 # refuses: compressed dumps, full dumps into file systems that are not
 # empty, names, owners and devices that do not fit, file systems that are
-# not clean or have flex directories; -N writes nothing.  While it writes,
+# not clean; -N writes nothing.  The tree goes into flex directories of
+# Minix-vmd too, and comes back out of them into a file system of V2.  While it writes,
 # the image is not marked clean, and the mark comes back unless an
 # operation on the image failed other than for a lack of room.
 
@@ -268,11 +269,23 @@ run "$RESTORE_MINIXFS" -r -s "$T/symtab" -f "$T/dump" "$T/img"
 check_err "a file system not marked clean is refused" "not marked clean"
 
 cat >"$T/vmd.spec" <<EOF
-fs version=2 order=le blocks=1440 inodes=64 vmd
+fs version=2 order=le blocks=4096 inodes=1024 vmd
 EOF
+rm -f "$T/symtab"
+must "$MKDUMP" -h nfs "$T/spec" "$T/dump"
 mkimage "$T/vmd.spec" "$T/img"
 run "$RESTORE_MINIXFS" -r -s "$T/symtab" -f "$T/dump" "$T/img"
-check_err "flex directories are refused" "flex directories"
+check_status "flex directories: the tree is restored into them" 0
+run "$MINIXFS" tar "$T/img"
+check_out "flex directories: as the spec gives it" "$T/ref.tar"
+run "$FSCK_MINIXFS" "$T/img"
+check_status "flex directories: fsck finds nothing wrong" 0
+must "$DUMP_MINIXFS" -f "$T/dump" "$T/img"
+fresh
+run "$RESTORE_MINIXFS" -r -s "$T/symtab" -f "$T/dump" "$T/img"
+check_status "flex directories: their dump restores into V2" 0
+run "$MINIXFS" tar "$T/img"
+check_out "flex directories: as the same tree" "$T/ref.tar"
 
 run "$RESTORE_MINIXFS" -r -f "$T/dump"
 check_status "-r without an image is a usage error" 2

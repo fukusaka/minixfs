@@ -72,8 +72,7 @@ The image is locked against other writers and marked unclean while
 mounted for writing.
 Unmounting restores the clean flag unless an error may have damaged the
 image.
-Unclean images and Minix-vmd flex directories are mounted read-only
-with a warning.
+Unclean images are mounted read-only with a warning.
 .It Fl u Cm always | sync | Ar seconds
 Set when inode and zone bit maps are written:
 .Bl -tag -width seconds -compact

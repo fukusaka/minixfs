@@ -195,7 +195,7 @@ DESCRIPTION
            MINIX 3.3.0            V3
            MINIX 3 after 3.3.0    V3 with zones of one block
            Linux                  MINIX and Linux V1, V2; V3 from 2.6.21
-           this package           all, but flex directories are only read
+           this package           all
 
      The extension of Linux, names of 30 characters, is thus read and written
      only by Linux and by this package.  MINIX 3 after 3.3.0 refuses zones of

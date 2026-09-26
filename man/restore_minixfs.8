@@ -104,8 +104,7 @@ An incremental dump's previous-dump date must match the date in
 After a recoverable failure, the table allows the same dump to be retried.
 Keep it between restores.
 .Pp
-The destination must be marked clean and must not use Minix-vmd flex
-directories.
+The destination must be marked clean.
 It is locked with
 .Xr fcntl 2
 while it is written, and one that another program holds is refused.

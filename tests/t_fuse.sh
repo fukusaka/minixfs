@@ -765,6 +765,34 @@ if [ "$minix" = no ]; then
 	fi
 fi
 
+# The flex directories of Minix-vmd are written through the mount as any
+# others.
+if [ "$minix" = no ]; then
+	{
+		echo "fs version=2 vmd order=le blocks=2048 inodes=64"
+		echo "dir /bin 0755 $(id -u) $(id -g) 0"
+	} >"$T/vmd.spec"
+	rm -f "$T/vmd.img"
+	mkimage "$T/vmd.spec" "$T/vmd.img"
+	name=a_name_of_more_than_thirty_characters_through_the_mount
+	if mount_image "$T/vmd.img" "$mnt" -w; then
+		run as_mounter sh -c "echo hello >'$mnt/bin/$name' &&
+		    mkdir '$mnt/bin/d' && touch '$mnt/bin/d/f' &&
+		    rm '$mnt/bin/d/f' && rmdir '$mnt/bin/d'"
+		check_status "-w, flex directories: files are made and removed" 0
+		unmount_image "$mnt"
+		run "$MINIXFS" cat "$T/vmd.img" "bin/$name"
+		echo hello >"$T/want"
+		check_out "-w, flex directories: and read back" "$T/want"
+		run "$FSCK_MINIXFS" "$T/vmd.img"
+		check_status "-w, flex directories: fsck finds nothing wrong" 0
+	else
+		kill_mount
+		fail "-w, flex directories: the image is mounted" \
+		    "$(head -5 "$T/fuse.err")"
+	fi
+fi
+
 # A sync of the mount that fails, here the first fsync(2) of the program,
 # made to fail by strace(1) where it can (Linux), keeps the mark away at
 # the unmount, although the sync of the unmount works.  The children of

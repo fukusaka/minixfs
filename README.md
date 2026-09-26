@@ -76,7 +76,6 @@ Other commands include `info`, `blocks`, `tar`, `mkdir`, `rm`, `mv`, `ln`,
     fusermount3 -u /mnt
 
 Use `-w` for writing; on BSD, unmount with `umount /mnt`.
-Minix-vmd flex directories are always mounted read-only.
 Writing on MINIX 3 is unreliable. See the manual's BUGS section for
 platform limitations and known data-loss conditions.
 

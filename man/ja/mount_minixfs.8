@@ -77,7 +77,7 @@ Linux と FreeBSD の libfuse は、\:
 .Pp
 書き込みマウント中はイメージをロックし、\:clean の印を外します。
 整合性を損なうエラーがなければ、\:アンマウント時に印を戻します。
-clean でないイメージと Minix-vmd の flex ディレクトリは、\:警告して読み出し専用でマウントします。
+clean でないイメージは、\:警告して読み出し専用でマウントします。
 .It Fl u Cm always | sync | Ar seconds
 inode と zone のビットマップを書き込むタイミングを指定します。
 .Bl -tag -width seconds -compact

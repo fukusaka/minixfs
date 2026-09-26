@@ -152,8 +152,9 @@ top of `tests/mkimage.c`).  The scripts:
   that is not empty, a compressed dump, a file that is no dump, names
   too long, a group too large for V1 (unless `-o`), a device number
   that does not fit, a file past the maximum file size of the super
-  block, a file system not marked clean and flex directories are
-  refused, with nothing written; a dump in a file that
+  block and a file system not marked clean are refused, with nothing
+  written; the tree goes into the flex directories of Minix-vmd, and
+  their dump into a file system of V2, as it was; a dump in a file that
   is cut short is refused before anything is written, and leaves no
   table; `-N` writes nothing; sockets are left out.  While it writes
   the image is not marked clean: a restore killed then leaves it so, and
@@ -210,9 +211,9 @@ top of `tests/mkimage.c`).  The scripts:
   marked clean, and a write that fails on a zone number outside the
   data area, or whose fsync(2) fails (made to by strace(1) on Linux),
   does not; a file system not marked clean is refused without
-  `-f` and keeps its mark with it, flex
-  directories are refused, a writer holding the lock is met, and `-M`
-  writes through the tracks.
+  `-f` and keeps its mark with it, flex directories of Minix-vmd are
+  written, a writer holding the lock is met, and `-M` writes through
+  the tracks.
 - `t_fuse.sh` - where `mount_minixfs` is built and mounting is allowed:
   the tree read through the kernel in four formats, with its names,
   contents, modes, owners, inode numbers and device numbers; and with
@@ -234,7 +235,8 @@ top of `tests/mkimage.c`).  The scripts:
   under is not in the directory but where it is kept there, and a file
   renamed to such a name is renamed as to any other if it is not open,
   and kept till the unmount if it is; a file system not marked clean is
-  mounted read-only; writing or cutting a file to grow past the maximum
+  mounted read-only, and flex directories of Minix-vmd written; writing
+  or cutting a file to grow past the maximum
   file size of the super block fails with EFBIG; and a change that
   fails on a zone number outside
   the data area, or a sync whose fsync(2) fails (made to by strace(1)

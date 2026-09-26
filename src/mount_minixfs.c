@@ -16,8 +16,7 @@
  * default) or 26 (FUSE 2, for older librefuse).
  *
  * The mount is read-only, and with -w read-write.  A file system that is
- * not marked clean, or has the flex directories of Minix-vmd, is mounted
- * read-only all the same, with a warning.  While it is mounted for
+ * not marked clean is mounted read-only all the same, with a warning.  While it is mounted for
  * writing, the image is locked against other writers and its clean mark
  * is away; unmounting puts the mark back, unless a change failed in a
  * way that may have left the image out of order, such as an error of
@@ -1367,11 +1366,9 @@ open_image(struct mount *m, const struct options *o)
 	if (r < 0)
 		errx(1, "%s: %s", o->image, strerror(-r));
 	m->rw = o->write;
-	if (m->rw && (m->fs.flex || !mfs_is_clean(&m->fs))) {
-		warnx("warning: %s: %s; mounted read-only", o->image,
-		    m->fs.flex ? "the flex directories of Minix-vmd cannot "
-		    "be written" : "not marked clean; check it with "
-		    "fsck_minixfs");
+	if (m->rw && !mfs_is_clean(&m->fs)) {
+		warnx("warning: %s: not marked clean; check it with "
+		    "fsck_minixfs; mounted read-only", o->image);
 		mfs_close(&m->fs);
 		if ((r = mfs_open_tracks(&m->fs, o->image, 0,
 		    &o->tracks)) < 0)

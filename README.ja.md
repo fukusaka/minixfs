@@ -70,7 +70,6 @@ MINIX 3 のサービス設定は [mount_minixfs(8)](cat/ja/mount_minixfs.8.txt) 
     fusermount3 -u /mnt
 
 書き込む場合は `-w` を付けます。BSD では `umount /mnt` でアンマウントします。
-Minix-vmd の flex ディレクトリは常に読み出し専用です。
 MINIX 3 での書き込みは不安定です。各 OS の制限と既知のデータ消失条件は man の BUGS を参照してください。
 
 ### イメージを作る

@@ -141,7 +141,7 @@ DESCRIPTION
      Interruption or a write error that may corrupt the image leaves the flag
      cleared; check the image with fsck_minixfs.  Refusals before writing and
      insufficient space do not prevent the flag from being restored.  Unclean
-     images require -f; Minix-vmd flex directories cannot be written.
+     images require -f.
 
 OPTIONS
      -M size:heads:side

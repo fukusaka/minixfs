@@ -345,8 +345,8 @@ check_true "$v: and nothing of it stays" test "$(cat "$T/out")" = f
 run "$FSCK_MINIXFS" "$T/img"
 check_status "$v: fsck finds nothing wrong" 0
 
-# A file system not marked clean is refused without -f, and the flex
-# directories of Minix-vmd always.
+# A file system not marked clean is refused without -f; the flex
+# directories of Minix-vmd are written as any others.
 v="not clean"
 rm -f "$T/img"
 must "$NEWFS_MINIXFS" -V 2 -s 400 "$T/img"
@@ -368,12 +368,21 @@ check_true "$v: -f leaves the state word as it was" \
 run "$FSCK_MINIXFS" -y "$T/img"
 check_status "$v: fsck -y passes it and marks it clean" 0
 cat >"$T/spec" <<EOF
-fs version=2 vmd order=le blocks=400 inodes=16
+fs version=2 vmd order=le blocks=2048 inodes=16
 dir /d 0755 0 0 0
 EOF
 mkimage "$T/spec" "$T/vmd.img"
-run "$MINIXFS" mkdir "$T/vmd.img" /e
-check_err "flex directories cannot be written" "flex directories"
+run "$MINIXFS" mkdir "$T/vmd.img" /d/e
+check_status "flex directories: mkdir writes one" 0
+run "$MINIXFS" put "$T/vmd.img" "$H/tree/a/moved" \
+    /d/e/a_name_of_more_than_thirty_characters_in_a_flex_directory
+check_status "flex directories: put writes a file of a long name" 0
+run "$MINIXFS" cat "$T/vmd.img" \
+    /d/e/a_name_of_more_than_thirty_characters_in_a_flex_directory
+check_same_file "flex directories: which reads back" "$H/tree/a/moved" \
+    "$T/out"
+run "$FSCK_MINIXFS" "$T/vmd.img"
+check_status "flex directories: fsck finds nothing wrong" 0
 
 # After a refusal made before anything is written the mark comes back;
 # after a write that may have left the image out of order, here into a

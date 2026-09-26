@@ -65,12 +65,12 @@ DESCRIPTION
      After a recoverable failure, the table allows the same dump to be
      retried.  Keep it between restores.
 
-     The destination must be marked clean and must not use Minix-vmd flex
-     directories.  It is locked with fcntl(2) while it is written, and one
-     that another program holds is refused.  The clean flag is cleared during
-     writing and restored after the data reaches disk.  Failures due to space
-     or file system limits, or a truncated or damaged dump, leave the written
-     data consistent.  After correcting the cause, retry the same dump.
+     The destination must be marked clean.  It is locked with fcntl(2) while
+     it is written, and one that another program holds is refused.  The clean
+     flag is cleared during writing and restored after the data reaches disk.
+     Failures due to space or file system limits, or a truncated or damaged
+     dump, leave the written data consistent.  After correcting the cause,
+     retry the same dump.
 
      An I/O error or forced termination may leave an inconsistent image with
      the clean flag cleared.  Run fsck_minixfs -y before further writes.  If
