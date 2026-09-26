@@ -146,9 +146,10 @@ for logzone in 0 1; do
 done
 done
 
-# -W old:new: the maps of the big-endian test tree written anew in each
-# width are those mkimage writes in that width; -B le reads them in the
-# width given, and -B be writes them in it.
+# -B be8, be16, be32 and be64: the maps of the big-endian test tree,
+# whose width is found, written anew in each width are those mkimage
+# writes in that width; -B le and -B be32 turn them into the little-
+# endian image and back.
 for format in 1/14 2/14 3/1024; do
 	version=${format%/*}
 	if [ "$version" -eq 3 ]; then
@@ -168,8 +169,8 @@ for format in 1/14 2/14 3/1024; do
 	done
 	cp "$T/be.$cur" "$T/img"
 	for bits in 8 32 64 16 8; do
-		v="V$format -W $cur:$bits"
-		run "$TUNEFS_MINIXFS" -W "$cur:$bits" "$T/img"
+		v="V$format/$cur: -B be$bits"
+		run "$TUNEFS_MINIXFS" -B "be$bits" "$T/img"
 		check_status "$v succeeds" 0
 		if [ "$cur" -ne "$bits" ]; then
 			check_out_has "$v shows the change" \
@@ -179,11 +180,11 @@ for format in 1/14 2/14 3/1024; do
 		    "$T/be.$bits" "$T/img"
 		cur=$bits
 	done
-	run "$TUNEFS_MINIXFS" -W "$cur:$cur" -B le "$T/img"
-	check_same_file "V$format: -W $cur:$cur -B le gives the little-endian \
-image" "$T/le" "$T/img"
-	run "$TUNEFS_MINIXFS" -B be -W 32 "$T/img"
-	check_same_file "V$format: -B be -W 32 gives maps of 32-bit words" \
+	run "$TUNEFS_MINIXFS" -B le "$T/img"
+	check_same_file "V$format/$cur: -B le gives the little-endian image" \
+	    "$T/le" "$T/img"
+	run "$TUNEFS_MINIXFS" -B be32 "$T/img"
+	check_same_file "V$format: -B be32 gives maps of 32-bit words" \
 	    "$T/be.32" "$T/img"
 done
 

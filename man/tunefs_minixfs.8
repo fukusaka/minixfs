@@ -9,14 +9,13 @@
 .Sh SYNOPSIS
 .Nm
 .Op Fl fN
-.Op Fl B Cm le | be
+.Op Fl B Cm le | be | be8 | be16 | be32 | be64
 .Op Fl c Cm clean | dirty
 .Op Fl e Cm 0 | 1
 .Op Fl l Cm 14 | 30
 .Op Fl m Cm minix | linux | Ar bytes
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
 .Op Fl s Ar blocks Op Fl k
-.Op Fl W Oo Ar old : Oc Ns Ar new
 .Ar image
 .Sh DESCRIPTION
 .Nm
@@ -39,13 +38,27 @@ The options are:
 .Bl -tag -width Ds
 .It Fl N
 Print what the other options would change, and write nothing.
-.It Fl B Cm le | be
+.It Fl B Cm le | be | be8 | be16 | be32 | be64
 Store every number of the file system in the other byte order,
 little-endian as on the PC or big-endian as on the Atari ST and the
-Amiga: the super block, the words of the bit maps of V1 and V2, the
-inodes, the indirect zones and the inode numbers of directory entries.
-The bit maps of V3 are bytes in both orders and stay as they are.
+Amiga: the super block, the words of the bit maps, the inodes, the
+indirect zones and the inode numbers of directory entries.
 Everything is read before anything is written.
+.Cm be8 ,
+.Cm be16 ,
+.Cm be32
+and
+.Cm be64
+give also the bits in a word of the bit maps, and on a big-endian file
+system write the maps anew in that width; the width it has is found as
+.Xr minixfs 5
+says.
+.Cm be
+takes 16 for V1 and V2 with names of 14 and 8 for the rest.
+Without a width,
+.Fl l
+writes the maps of a big-endian file system in that of its new name
+length.
 .It Fl l Cm 14 | 30
 Give a V1 or V2 file system names of 14 characters, as in MINIX, or 30,
 the extension of Linux: the magic number changes, and every directory is
@@ -109,25 +122,6 @@ See
 .Xr minixfs 1
 for the track layout.
 Its size cannot change.
-.It Fl W Oo Ar old : Oc Ns Ar new
-Write the bit maps of a big-endian file system anew as words of
-.Ar new
-bits, reading them as words of
-.Ar old
-bits, or of 16 for V1 and V2 with names of 14 and 8 for the rest; with
-.Fl B Cm be ,
-write them as words of
-.Ar new
-bits, and with
-.Fl B Cm le ,
-read them as words of
-.Ar old
-bits.
-Without it,
-.Fl l
-writes them in the width of the new name length.
-The widths are 8, 16, 32 and 64; see
-.Xr minixfs 5 .
 .El
 .Sh EXIT STATUS
 .Nm

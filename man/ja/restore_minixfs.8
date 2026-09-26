@@ -21,7 +21,6 @@
 .Fl r
 .Op Fl cNv
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
-.Op Fl W Ar bits
 .Op Fl o Ar uid : Ns Ar gid
 .Op Fl s Ar symtable
 .Fl f Ar file
@@ -76,13 +75,6 @@ dump です。
 片面にファイルシステムがあるディスクイメージを書き込みます。
 トラックの指定方法は
 .Xr minixfs 1
-を参照してください。
-.It Fl W Ar bits
-ビッグエンディアンのファイルシステムのビットマップを、\:
-.Ar bits
-ビット\:（8・16・32・64）の語として扱います。
-指定がなければ、\:V1 と V2 の 14 文字の名前は 16、\:ほかは 8 です。
-.Xr minixfs 5
 を参照してください。
 .It Fl N
 すべてを確かめるだけで、\:何も書きません。

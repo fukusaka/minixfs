@@ -5,8 +5,7 @@
  * dump_minixfs - dump a MINIX file system image in the format of BSD dump.
  *
  *	dump_minixfs [-0123456789u] [-D dumpdates] [-L label]
- *	    [-M SIZE:HEADS:SIDE] [-T date] [-W 8|16|32|64] -f file image
- *	    [path]
+ *	    [-M SIZE:HEADS:SIDE] [-T date] -f file image [path]
  *
  * The dump is the one NetBSD dump writes for UFS1 (see dumpfmt.h), in the
  * byte order of the image, so that the restore of NetBSD, FreeBSD and
@@ -24,7 +23,6 @@
  *	-M	an image that holds one side of a disk, as for minixfs(1)
  *	-T	the date to dump what changed since, as ctime(3) prints it,
  *		instead of one from the dumpdates file
- *	-W	the bits in a word of the bit maps of a big-endian image
  *	-f	where the dump goes; "-" is standard output
  *
  * With path, only that directory and what is below it go in, with the
@@ -62,7 +60,6 @@
 /* What the command line asks for. */
 struct options {
 	struct mfs_tracks tracks;	/* -M */
-	uint32_t	map_word;	/* -W, or 0 */
 	const char	*file;		/* -f */
 	const char	*image;
 	const char	*path;		/* only this directory */
@@ -94,8 +91,8 @@ usage(void)
 {
 	(void)fprintf(stderr,
 	    "usage: dump_minixfs [-0123456789u] [-D dumpdates] [-L label]\n"
-	    "           [-M SIZE:HEADS:SIDE] [-T date] [-W 8|16|32|64] "
-	    "-f file image [path]\n");
+	    "           [-M SIZE:HEADS:SIDE] [-T date] -f file image "
+	    "[path]\n");
 	exit(2);
 }
 
@@ -199,7 +196,7 @@ parse(int argc, char **argv, struct options *o)
 	o->dates = DUMPDATES;
 	o->label = NO_LABEL;
 	o->since = -1;
-	while ((ch = getopt(argc, argv, "0123456789D:f:L:M:T:uW:")) != -1) {
+	while ((ch = getopt(argc, argv, "0123456789D:f:L:M:T:u")) != -1) {
 		switch (ch) {
 		case 'D':
 			o->dates = optarg;
@@ -212,10 +209,6 @@ parse(int argc, char **argv, struct options *o)
 			break;
 		case 'M':
 			if (mfs_parse_tracks(optarg, &o->tracks) < 0)
-				usage();
-			break;
-		case 'W':
-			if (mfs_parse_map_word(optarg, &o->map_word) < 0)
 				usage();
 			break;
 		case 'T':
@@ -959,8 +952,6 @@ main(int argc, char **argv)
 	if ((e = mfs_open_tracks(&d.fs, o.image, 0, &o.tracks)) < 0)
 		errx(1, "%s: %s", o.image, e == -EINVAL ?
 		    "not a MINIX file system" : strerror(-e));
-	if (o.map_word != 0)
-		mfs_set_map_word(&d.fs, o.map_word);
 	if (!mfs_is_clean(&d.fs))
 		warnx("warning: %s is not marked clean; the dump may not be "
 		    "consistent", o.image);

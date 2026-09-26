@@ -19,9 +19,6 @@
 /* How the image file holds the file system: -M. */
 extern struct mfs_tracks tracks;
 
-/* -W: the bytes in a word of the bit maps, or 0 as the version has it. */
-extern uint32_t map_word;
-
 /* -f: write a file system that is not marked clean all the same. */
 extern int force;
 

@@ -9,9 +9,9 @@
 .Sh SYNOPSIS
 .Nm
 .Op Fl lwy
+.Op Fl B Cm be8 | be16 | be32 | be64
 .Op Fl e Cm 0 | 1
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
-.Op Fl W Ar bits
 .Ar image
 .Sh DESCRIPTION
 .Nm
@@ -98,6 +98,14 @@ is made if it is not there.
 MINIX and Linux have no
 .Pa lost+found ,
 and their fsck frees such inodes, which is why this is not the default.
+.It Fl B Cm be8 | be16 | be32 | be64
+Take the bit maps of a big-endian file system as words of so many bits
+instead of the width found, as
+.Xr minixfs 5
+says, where that is wrong, as maps that are damaged can make it.
+The width taken is printed first; with
+.Fl y ,
+the maps are written in it.
 .It Fl e Cm 0 | 1
 Check that the bits of each map past the last inode or zone are 0 or 1,
 and with
@@ -123,12 +131,6 @@ for the track layout.
 With
 .Fl y ,
 repair only the selected side.
-.It Fl W Ar bits
-Take the bit maps of a big-endian file system as words of
-.Ar bits
-bits, 8, 16, 32 or 64, instead of 16 for V1 and V2 with names of 14 and
-8 for the rest; see
-.Xr minixfs 5 .
 .El
 .Sh EXIT STATUS
 .Nm

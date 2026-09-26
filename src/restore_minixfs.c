@@ -6,7 +6,7 @@
  *
  *	restore_minixfs -t [-c] -f file
  *	restore_minixfs -r [-cNv] [-M SIZE:HEADS:SIDE] [-o uid:gid]
- *	    [-s symtable] [-W 8|16|32|64] -f file image
+ *	    [-s symtable] -f file image
  *
  * The dump is one in the format of BSD dump (see dumpfmt.h): that of
  * dump_minixfs, of NetBSD and FreeBSD for UFS1 and UFS2, of Linux dump
@@ -25,7 +25,6 @@
  *	-f	the dump; "-" is standard input
  *	-M	an image that holds one side of a disk, as for minixfs(1)
  *	-N	check everything and write nothing
- *	-W	the bits in a word of the bit maps of a big-endian image
  *	-o	make every file owned by uid and gid, numbers both
  *	-s	where -r keeps which inode of the image each inode of the
  *		dump went to, for the next incremental dump; by default
@@ -83,7 +82,6 @@
 /* What the command line asks for. */
 struct options {
 	struct mfs_tracks tracks;	/* -M */
-	uint32_t	map_word;	/* -W, or 0 */
 	const char	*file;		/* -f */
 	const char	*image;
 	const char	*symtab;	/* -s */
@@ -186,7 +184,7 @@ usage(void)
 	    "usage: restore_minixfs -t [-c] -f file\n"
 	    "       restore_minixfs -r [-cNv] [-M SIZE:HEADS:SIDE] "
 	    "[-o uid:gid]\n"
-	    "           [-s symtable] [-W 8|16|32|64] -f file image\n");
+	    "           [-s symtable] -f file image\n");
 	exit(2);
 }
 
@@ -251,7 +249,7 @@ parse(int argc, char **argv, struct options *o)
 
 	(void)memset(o, 0, sizeof(*o));
 	o->symtab = SYMTAB;
-	while ((ch = getopt(argc, argv, "cf:M:No:rs:tvW:")) != -1) {
+	while ((ch = getopt(argc, argv, "cf:M:No:rs:tv")) != -1) {
 		switch (ch) {
 		case 'c':
 			o->v7 = 1;
@@ -261,10 +259,6 @@ parse(int argc, char **argv, struct options *o)
 			break;
 		case 'M':
 			if (mfs_parse_tracks(optarg, &o->tracks) < 0)
-				usage();
-			break;
-		case 'W':
-			if (mfs_parse_map_word(optarg, &o->map_word) < 0)
 				usage();
 			break;
 		case 'N':
@@ -1798,8 +1792,6 @@ open_fs(struct restore *r)
 		errx(1, "%s: not a MINIX file system", r->o->image);
 	if (e < 0)
 		errx(1, "%s: %s", r->o->image, strerror(-e));
-	if (r->o->map_word != 0)
-		mfs_set_map_word(&r->fs, r->o->map_word);
 	if (!mfs_is_clean(&r->fs))
 		errx(1, "%s: not marked clean; check it with fsck_minixfs",
 		    r->o->image);

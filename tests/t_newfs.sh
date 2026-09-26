@@ -509,7 +509,8 @@ map_order() {
 	    test "$word" = "0 3"
 }
 
-# -W: the bits in a word of the bit maps of a big-endian file system.
+# -B be8, be16, be32 and be64: the bits in a word of the bit maps of a
+# big-endian file system.
 map_words() {
 	for version in 1 2 3; do
 		for bits in 8 16 32 64; do
@@ -520,16 +521,16 @@ map_words() {
 				opts="-s 2048"
 				spec="blocks=2048"
 			fi
-			vs_mkimage "$version" "$opts -B be -W $bits -i 100" \
+			vs_mkimage "$version" "$opts -B be$bits -i 100" \
 			    "$spec order=be inodes=100 maxsize=minix end=0 \
-mapword=$bits" "V$version -W $bits"
+mapword=$bits" "V$version -B be$bits"
 		done
 	done
-	run "$NEWFS_MINIXFS" -V 2 -B be -W 32 -s 100 -N "$T/img"
+	run "$NEWFS_MINIXFS" -V 2 -B be32 -s 100 -N "$T/img"
 	check_out_has "-N prints the bits of a word of the maps" \
 	    "^bit map words: 32 bits\$"
-	run "$NEWFS_MINIXFS" -V 2 -W 24 -s 100 "$T/img"
-	check_status "-W 24 is a usage error" 2
+	run "$NEWFS_MINIXFS" -V 2 -B be24 -s 100 "$T/img"
+	check_status "-B be24 is a usage error" 2
 	# Names of 14, which MINIX reads, take words of 16 bits by default;
 	# names of 30, which only Linux reads, bytes, as util-linux has them.
 	for n in 14:16 30:8; do

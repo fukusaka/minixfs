@@ -235,7 +235,7 @@ mkfs_full_map() {
 
 # be_images: the big-endian file systems that mkfs.minix makes, from the
 # hexdump -C in the tests of util-linux: numbers big-endian, maps as
-# bytes, which -W 8 takes.
+# bytes, which are found so.
 be_images() {
 	_be_dir=$UTILLINUX_SRC/tests/expected/minix
 	for _be_name in v1c14 v1c30 v2c14 v2c30 v3c60; do
@@ -279,8 +279,10 @@ be_images() {
 		sh "$T/be.sh" >"$T/img"
 		check_info "the big-endian $_be_name of mkfs.minix is read as \
 such" "$T/img" "byte order" big-endian
-		run "$FSCK_MINIXFS" -W 8 "$T/img"
-		check_status "and passes fsck_minixfs -W 8, maps and all" 0
+		check_info "and its bit maps are found to be bytes" "$T/img" \
+		    "bit map words" "8 bits"
+		run "$FSCK_MINIXFS" "$T/img"
+		check_status "and passes fsck_minixfs, maps and all" 0
 	done
 }
 

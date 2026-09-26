@@ -4,11 +4,11 @@ NAME
      newfs_minixfs – make a MINIX file system, empty or from a directory
 
 SYNOPSIS
-     newfs_minixfs -V version [-N] [-B le | be] [-b block-size] [-d directory
-                   [-F specfile [-P dbdir [-x]]] [-o uid:gid]] [-e 0 | 1]
-                   [-i inodes] [-l name-length | flex]
-                   [-m minix | linux | bytes] [-s blocks] [-t time] [-W bits]
-                   [-z log-zone-size] image
+     newfs_minixfs -V version [-N] [-B le | be | be8 | be16 | be32 | be64]
+                   [-b block-size] [-d directory [-F specfile [-P dbdir [-x]]]
+                   [-o uid:gid]] [-e 0 | 1] [-i inodes]
+                   [-l name-length | flex] [-m minix | linux | bytes]
+                   [-s blocks] [-t time] [-z log-zone-size] image
 
 DESCRIPTION
      newfs_minixfs makes a MINIX file system of version 1, 2 or 3, or one of
@@ -30,8 +30,11 @@ DESCRIPTION
      -N      Print the layout, and with -d what the tree needs, and write
              nothing.
 
-     -B le | be
-             Byte order: little-endian (default) or big-endian.
+     -B le | be | be8 | be16 | be32 | be64
+             Byte order: little-endian (default) or big-endian.  be8, be16,
+             be32 and be64 give also the bits in a word of the bit maps, which
+             be takes as 16 for V1 and V2 with names of 14 and as 8 for the
+             rest; see minixfs(5).
 
      -b block-size
              The block size of V3, a multiple of 1024 up to 32768; 4096 by
@@ -107,11 +110,6 @@ DESCRIPTION
      -t time
              The time of the root directory, in seconds since the Epoch, for
              images that must come out the same each time.
-
-     -W bits
-             Write the bit maps of a big-endian file system as words of bits
-             bits, 8, 16, 32 or 64, instead of 16 for V1 and V2 with names of
-             14 and 8 for the rest; see minixfs(5).
 
      -z log-zone-size
              A zone of 2 to the power of log-zone-size blocks; 0, one block,

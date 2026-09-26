@@ -15,32 +15,27 @@
 .Sh SYNOPSIS
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
-.Op Fl W Ar bits
 .Cm info
 .Ar image
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
-.Op Fl W Ar bits
 .Cm ls
 .Op Fl lR
 .Ar image
 .Op Ar path
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
-.Op Fl W Ar bits
 .Cm cat
 .Ar image
 .Ar path
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
-.Op Fl W Ar bits
 .Cm blocks
 .Op Fl r
 .Ar image
 .Ar path
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
-.Op Fl W Ar bits
 .Cm extract
 .Op Fl dv
 .Ar image
@@ -48,13 +43,11 @@
 .Op Ar path
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
-.Op Fl W Ar bits
 .Cm tar
 .Ar image
 .Op Ar path
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
-.Op Fl W Ar bits
 .Op Fl f
 .Cm put
 .Op Fl Rdin
@@ -64,7 +57,6 @@
 .Ar path
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
-.Op Fl W Ar bits
 .Op Fl f
 .Cm mkdir
 .Op Fl p
@@ -74,7 +66,6 @@
 .Ar path ...
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
-.Op Fl W Ar bits
 .Op Fl f
 .Cm rm
 .Op Fl r
@@ -82,7 +73,6 @@
 .Ar path ...
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
-.Op Fl W Ar bits
 .Op Fl f
 .Cm mv
 .Ar image
@@ -90,7 +80,6 @@
 .Ar new
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
-.Op Fl W Ar bits
 .Op Fl f
 .Cm ln
 .Op Fl s
@@ -99,7 +88,6 @@
 .Ar path
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
-.Op Fl W Ar bits
 .Op Fl f
 .Cm chmod
 .Ar image
@@ -107,7 +95,6 @@
 .Ar path ...
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
-.Op Fl W Ar bits
 .Op Fl f
 .Cm chown
 .Ar image
@@ -322,13 +309,6 @@ clean でないイメージへの書き込みには
 は正しく見えますが、\:残りは壊れているように読めます。
 .Cm info
 の埋め草の数え上げでは、\:イメージの半分が 4608 バイトの連なりとして現れます。
-.It Fl W Ar bits
-ビッグエンディアンのファイルシステムのビットマップを、\:
-.Ar bits
-ビット\:（8・16・32・64）の語として扱います。
-指定がなければ、\:V1 と V2 の 14 文字の名前は 16、\:ほかは 8 です。
-.Xr minixfs 5
-を参照してください。
 .It Fl f
 書き込むコマンドに、\:clean の印のないファイルシステムも変えさせます。
 印はそのままにします。

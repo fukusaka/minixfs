@@ -442,7 +442,8 @@ check_out_has "an empty file system from newfs_minixfs is consistent" \
 
 # The maps of a big-endian V3 are bytes, as Linux writes them; with the
 # bytes of each 32-bit word reversed, as they once were written here, the
-# maps disagree with the files, and -y writes them anew.
+# maps are found to be of 32-bit words and pass, and -B be8 takes them as
+# bytes, which disagree with the files, and -y writes them anew so.
 rm -f "$T/img" "$T/le"
 "$NEWFS_MINIXFS" -V 3 -b 1024 -B be -s 2048 "$T/img" >/dev/null
 "$MINIXFS" mkdir "$T/img" d
@@ -457,11 +458,15 @@ od -An -tu1 -v -j 2048 -N 2048 "$T/img" | awk '
 printf "$(cat "$T/words")" |
     dd of="$T/img" bs=1 seek=2048 conv=notrunc 2>/dev/null
 run "$FSCK_MINIXFS" "$T/img"
-check_found "maps of 32-bit words in a big-endian V3 disagree" \
+check_out_has "maps of 32-bit words in a big-endian V3 are found so" \
+    ": bit map words: 32 bits, as found\$"
+run "$FSCK_MINIXFS" -B be8 "$T/img"
+check_found "-B be8 finds them wrong as bytes" \
     "inode 1 is in use but free in the inode map"
-"$FSCK_MINIXFS" -y "$T/img" >/dev/null
+"$FSCK_MINIXFS" -y -B be8 "$T/img" >/dev/null
 run "$FSCK_MINIXFS" "$T/img"
-check_status "-y writes them as bytes" 0
+check_out_has "-y -B be8 writes them as bytes" \
+    ": bit map words: 8 bits, as found\$"
 map_blocks "$T/img" "$T/img.maps"
 map_blocks "$T/le" "$T/le.maps"
 check_same_file "as those of the little-endian V3" "$T/le.maps" \

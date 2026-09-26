@@ -4,11 +4,11 @@ NAME
      newfs_minixfs – MINIX ファイルシステムを空で、またはディレクトリから作る
 
 SYNOPSIS
-     newfs_minixfs -V version [-N] [-B le | be] [-b block-size] [-d directory
-                   [-F specfile [-P dbdir [-x]]] [-o uid:gid]] [-e 0 | 1]
-                   [-i inodes] [-l name-length | flex]
-                   [-m minix | linux | bytes] [-s blocks] [-t time] [-W bits]
-                   [-z log-zone-size] image
+     newfs_minixfs -V version [-N] [-B le | be | be8 | be16 | be32 | be64]
+                   [-b block-size] [-d directory [-F specfile [-P dbdir [-x]]]
+                   [-o uid:gid]] [-e 0 | 1] [-i inodes]
+                   [-l name-length | flex] [-m minix | linux | bytes]
+                   [-s blocks] [-t time] [-z log-zone-size] image
 
 DESCRIPTION
      newfs_minixfs は、ファイルまたはデバイス image に、版 1・2・3 の MINIX
@@ -32,8 +32,12 @@ DESCRIPTION
      -N      配置を表示するだけで、何も書きません。 -d
              を付ければ、ディレクトリツリーに必要なものも表示します。
 
-     -B le | be
+     -B le | be | be8 | be16 | be32 | be64
              リトルエンディアン（既定）またはビッグエンディアンを指定します。
+             be8 ・ be16 ・ be32 ・ be64
+             は、ビットマップの語のビット数も指定します。 be では、V1 と V2 の
+             14 文字の名前は 16、ほかは 8 です。 minixfs(5)
+             を参照してください。
 
      -b block-size
              V3 のブロックサイズで、1024 の倍数で 32768 までです。
@@ -107,12 +111,6 @@ DESCRIPTION
      -t time
              ルートディレクトリの時刻で、紀元からの秒数です。
              毎回同じイメージを作りたいときに使います。
-
-     -W bits
-             ビッグエンディアンのファイルシステムのビットマップを、 bits
-             ビット（8・16・32・64）の語で書きます。 指定がなければ、V1 と V2
-             の 14 文字の名前は 16、ほかは 8 です。 minixfs(5)
-             を参照してください。
 
      -z log-zone-size
              zone を 2 の log-zone-size 乗ブロックにします。 既定は 0、つまり

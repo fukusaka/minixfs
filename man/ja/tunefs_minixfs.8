@@ -15,14 +15,13 @@
 .Sh SYNOPSIS
 .Nm
 .Op Fl fN
-.Op Fl B Cm le | be
+.Op Fl B Cm le | be | be8 | be16 | be32 | be64
 .Op Fl c Cm clean | dirty
 .Op Fl e Cm 0 | 1
 .Op Fl l Cm 14 | 30
 .Op Fl m Cm minix | linux | Ar bytes
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
 .Op Fl s Ar blocks Op Fl k
-.Op Fl W Oo Ar old : Oc Ns Ar new
 .Ar image
 .Sh DESCRIPTION
 .Nm
@@ -44,11 +43,23 @@
 .Bl -tag -width Ds
 .It Fl N
 ほかのオプションで\:何が\:変わるかを\:示すだけで\:、\:何も書きません。
-.It Fl B Cm le | be
+.It Fl B Cm le | be | be8 | be16 | be32 | be64
 ファイルシステムのすべての数値を、\:PC と同じリトルエンディアンか、\:Atari ST・Amiga と同じビッグエンディアンで書き直します。
-対象は superblock、\:V1 と V2 のビットマップの語、\:inode、\:間接 zone、\:ディレクトリ項目の inode 番号です。
-V3 のビットマップは\:どちらのバイト順でもバイトの並びなので、\:そのままです。
+対象は superblock、\:ビットマップの語、\:inode、\:間接 zone、\:ディレクトリ項目の inode 番号です。
 書き込む前にすべてを読みます。
+.Cm be8 ・
+.Cm be16 ・
+.Cm be32 ・
+.Cm be64
+は、\:ビットマップの語のビット数も指定し、\:ビッグエンディアンのファイルシステムでは\:マップをその幅で書き直します。
+いまの幅は\:
+.Xr minixfs 5
+のとおりに見つけます。
+.Cm be
+では、\:V1 と V2 の 14 文字の名前は 16、\:ほかは 8 です。
+幅の指定がなければ、\:
+.Fl l
+は\:ビッグエンディアンのファイルシステムのマップを\:新しい名前の長さの幅で書き直します。
 .It Fl l Cm 14 | 30
 V1 か V2 のファイルシステムの名前を、\:MINIX と同じ 14 文字か、\:Linux の拡張の 30 文字にします。
 マジック番号が変わり、\:すべて\:のディレクトリを\:新しい大きさの項目で\:書き直します。
@@ -112,26 +123,6 @@ Linux と\:このパッケージの道具は、\:ファイルを\:この大き�
 .Xr minixfs 1
 を参照してください。
 容量は変更できません。
-.It Fl W Oo Ar old : Oc Ns Ar new
-ビッグエンディアンのファイルシステムのビットマップを、\:
-.Ar old
-ビットの語\:（指定がなければ\:V1 と V2 の 14 文字の名前は 16、\:ほかは 8）\:として読み、\:
-.Ar new
-ビットの語で書き直します。
-.Fl B Cm be
-と一緒なら\:
-.Ar new
-ビットの語で書き、\:
-.Fl B Cm le
-と一緒なら\:
-.Ar old
-ビットの語として読みます。
-これがなければ、\:
-.Fl l
-は\:新しい名前の長さの幅で書き直します。
-幅は 8・16・32・64 です。
-.Xr minixfs 5
-を参照してください。
 .El
 .Sh EXIT STATUS
 .Nm

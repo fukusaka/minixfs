@@ -4,9 +4,10 @@ NAME
      tunefs_minixfs – change the settings of a MINIX file system
 
 SYNOPSIS
-     tunefs_minixfs [-fN] [-B le | be] [-c clean | dirty] [-e 0 | 1]
-                    [-l 14 | 30] [-m minix | linux | bytes]
-                    [-M size:heads:side] [-s blocks [-k]] [-W [old:]new] image
+     tunefs_minixfs [-fN] [-B le | be | be8 | be16 | be32 | be64]
+                    [-c clean | dirty] [-e 0 | 1] [-l 14 | 30]
+                    [-m minix | linux | bytes] [-M size:heads:side]
+                    [-s blocks [-k]] image
 
 DESCRIPTION
      tunefs_minixfs changes the settings of the MINIX file system in image;
@@ -23,14 +24,18 @@ DESCRIPTION
 
      -N      Print what the other options would change, and write nothing.
 
-     -B le | be
+     -B le | be | be8 | be16 | be32 | be64
              Store every number of the file system in the other byte order,
              little-endian as on the PC or big-endian as on the Atari ST and
-             the Amiga: the super block, the words of the bit maps of V1 and
-             V2, the inodes, the indirect zones and the inode numbers of
-             directory entries.  The bit maps of V3 are bytes in both orders
-             and stay as they are.  Everything is read before anything is
-             written.
+             the Amiga: the super block, the words of the bit maps, the
+             inodes, the indirect zones and the inode numbers of directory
+             entries.  Everything is read before anything is written.  be8,
+             be16, be32 and be64 give also the bits in a word of the bit maps,
+             and on a big-endian file system write the maps anew in that
+             width; the width it has is found as minixfs(5) says.  be takes 16
+             for V1 and V2 with names of 14 and 8 for the rest.  Without a
+             width, -l writes the maps of a big-endian file system in that of
+             its new name length.
 
      -l 14 | 30
              Give a V1 or V2 file system names of 14 characters, as in MINIX,
@@ -82,14 +87,6 @@ DESCRIPTION
      -M size:heads:side
              Modify an image containing the file system on one disk side.  See
              minixfs(1) for the track layout.  Its size cannot change.
-
-     -W [old:]new
-             Write the bit maps of a big-endian file system anew as words of
-             new bits, reading them as words of old bits, or of 16 for V1 and
-             V2 with names of 14 and 8 for the rest; with -B be, write them as
-             words of new bits, and with -B le, read them as words of old
-             bits.  Without it, -l writes them in the width of the new name
-             length.  The widths are 8, 16, 32 and 64; see minixfs(5).
 
 EXIT STATUS
      tunefs_minixfs exits with 0 on success, 1 if anything failed, and 2 for a

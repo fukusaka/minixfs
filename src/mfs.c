@@ -409,6 +409,139 @@ mfs_lock(int fd)
 	return errno == EACCES || errno == EAGAIN ? -EBUSY : -errno;
 }
 
+/* The bits of a set of n bits, one at a time. */
+static void
+bit_set(unsigned char *bits, uint32_t n)
+{
+	bits[n / 8] |= (unsigned char)(1 << (n % 8));
+}
+
+static int
+bit_get(const unsigned char *bits, uint32_t n)
+{
+	return (bits[n / 8] >> (n % 8)) & 1;
+}
+
+/* How far a map of the width fs has disagrees with the n bits of want. */
+static uint32_t
+disagree(const struct mfs *fs, const unsigned char *map,
+    const unsigned char *want, uint32_t n)
+{
+	uint32_t i, miss;
+
+	miss = !mfs_map_bit(fs, map, 0);
+	for (i = 1; i < n; i++)
+		if (mfs_map_bit(fs, map, i) != bit_get(want, i))
+			miss++;
+	return miss;
+}
+
+/* The zones in use: those of the zone map's first block, in want. */
+struct zones_used {
+	const struct mfs	*fs;
+	unsigned char		*want;
+	uint32_t		n;
+};
+
+static int
+zone_used(uint32_t zone, int level, const struct mfs_zref *ref, void *arg)
+{
+	struct zones_used *z;
+	uint32_t bit;
+
+	(void)level;
+	(void)ref;
+	z = arg;
+	if (zone < z->fs->firstdatazone)
+		return 0;
+	bit = zone - z->fs->firstdatazone + 1;
+	if (bit < z->n)
+		bit_set(z->want, bit);
+	return 0;
+}
+
+/*
+ * The width of the words of the bit maps of a big-endian file system, as
+ * the comment before mfs_parse_order() in mfs.h says.  What cannot be
+ * read leaves the width as it is.
+ */
+static void
+find_map_word(struct mfs *fs)
+{
+	static const uint32_t word[4] = { 1, 2, 4, 8 };
+	unsigned char *map, *used, *zused;
+	struct zones_used z;
+	struct mfs_inode ip;
+	uint32_t best, i, miss[4], n, nz;
+	int k, tied[4], ntied;
+
+	n = fs->block_size * 8;
+	if (n > fs->ninodes + 1)
+		n = fs->ninodes + 1;
+	nz = fs->block_size * 8;
+	if (nz > fs->nzones - fs->firstdatazone + 1)
+		nz = fs->nzones - fs->firstdatazone + 1;
+	map = malloc(fs->block_size);
+	used = calloc(n / 8 + 1, 1);
+	zused = calloc(nz / 8 + 1, 1);
+	if (map == NULL || used == NULL || zused == NULL ||
+	    mfs_read_block(fs, START_BLOCK, map) < 0)
+		goto out;
+	for (i = 1; i < n; i++)
+		if (mfs_get_inode(fs, i, &ip) == 0 && ip.mode != 0)
+			bit_set(used, i);
+	best = UINT32_MAX;
+	for (k = 0; k < 4; k++) {
+		fs->map_word = word[k];
+		miss[k] = disagree(fs, map, used, n);
+		if (miss[k] < best)
+			best = miss[k];
+	}
+	ntied = 0;
+	for (k = 0; k < 4; k++)
+		if ((tied[k] = miss[k] == best))
+			ntied++;
+	/* Where the inode map does not tell, the zone map may. */
+	if (ntied > 1 && mfs_read_block(fs, START_BLOCK + fs->imap_blocks,
+	    map) == 0) {
+		z.fs = fs;
+		z.want = zused;
+		z.n = nz;
+		for (i = 1; i < n; i++) {
+			if (!bit_get(used, i) || mfs_get_inode(fs, i, &ip) < 0 ||
+			    (ip.mode & MFS_S_IFMT) == MFS_S_IFCHR ||
+			    (ip.mode & MFS_S_IFMT) == MFS_S_IFBLK)
+				continue;
+			(void)mfs_walk_zones(fs, &ip, zone_used, &z);
+		}
+		best = UINT32_MAX;
+		for (k = 0; k < 4; k++) {
+			if (!tied[k])
+				continue;
+			fs->map_word = word[k];
+			miss[k] = disagree(fs, map, zused, nz);
+			if (miss[k] < best)
+				best = miss[k];
+		}
+		for (k = 0; k < 4; k++)
+			if (tied[k] && miss[k] != best)
+				tied[k] = 0;
+	}
+	/* What still does not tell takes the default. */
+	fs->map_word = mfs_default_map_word(fs->version, fs->namelen);
+	for (k = 0; k < 4 && !(tied[k] && word[k] == fs->map_word); k++)
+		;
+	if (k == 4)
+		for (k = 0; k < 4 && !tied[k]; k++)
+			;
+	if (k < 4)
+		fs->map_word = word[k];
+out:
+	free(map);
+	free(used);
+	free(zused);
+}
+
 int
 mfs_open_tracks(struct mfs *fs, const char *path, int rw,
     const struct mfs_tracks *tracks)
@@ -453,6 +586,8 @@ mfs_open_tracks(struct mfs *fs, const char *path, int rw,
 		r = -ENOMEM;
 		goto fail;
 	}
+	if (fs->order == MFS_BIG_ENDIAN)
+		find_map_word(fs);
 	return 0;
 
 fail:
@@ -461,8 +596,17 @@ fail:
 }
 
 int
-mfs_parse_map_word(const char *s, uint32_t *bytes)
+mfs_parse_order(const char *s, enum mfs_order *order, uint32_t *bytes)
 {
+	*bytes = 0;
+	if (strcmp(s, "le") == 0) {
+		*order = MFS_LITTLE_ENDIAN;
+		return 0;
+	}
+	if (strncmp(s, "be", 2) != 0)
+		return -EINVAL;
+	*order = MFS_BIG_ENDIAN;
+	s += 2;
 	if (strcmp(s, "8") == 0)
 		*bytes = 1;
 	else if (strcmp(s, "16") == 0)
@@ -471,7 +615,7 @@ mfs_parse_map_word(const char *s, uint32_t *bytes)
 		*bytes = 4;
 	else if (strcmp(s, "64") == 0)
 		*bytes = 8;
-	else
+	else if (*s != '\0')
 		return -EINVAL;
 	return 0;
 }

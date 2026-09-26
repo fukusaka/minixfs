@@ -4,10 +4,11 @@
  *
  * newfs_minixfs - make a MINIX file system, empty or from a directory.
  *
- *	newfs_minixfs -V version [-N] [-B le|be] [-b block-size]
+ *	newfs_minixfs -V version [-N] [-B le|be|be8|be16|be32|be64]
+ *	    [-b block-size]
  *	    [-d directory [-F specfile [-P dbdir] [-x]] [-o uid:gid]]
  *	    [-e 0|1] [-i inodes] [-l name-length|flex] [-m minix|linux|bytes]
- *	    [-s blocks] [-t time] [-W 8|16|32|64] [-z log-zone-size] image
+ *	    [-s blocks] [-t time] [-z log-zone-size] image
  *
  * The version has to be given.  The size is taken from -s, or else from
  * the size of an existing image file; with -s, an image file is created
@@ -16,8 +17,9 @@
  * bits of the maps past the last inode and zone are clear, as the mkfs
  * of MINIX 2 and later leaves them, but for names of 30 characters,
  * which only Linux reads, they are as mkfs.minix of Linux writes them;
- * -m and -e give others, and -W the bits in a word of the bit maps of a
- * big-endian file system, whose default mfs_default_map_word() gives.
+ * -m and -e give others.  -B be8, be16, be32 or be64 gives the bits in a
+ * word of the bit maps of a big-endian file system, whose default
+ * mfs_default_map_word() gives.
  * -l flex makes a V1 or V2 file system of Minix-vmd, whose flex
  * directories hold names of up to 60 characters.
  *
@@ -76,12 +78,13 @@ static void
 usage(void)
 {
 	(void)fprintf(stderr,
-	    "usage: newfs_minixfs -V version [-N] [-B le|be] [-b block-size]\n"
+	    "usage: newfs_minixfs -V version [-N]\n"
+	    "           [-B le|be|be8|be16|be32|be64] [-b block-size]\n"
 	    "           [-d directory [-F specfile [-P dbdir] [-x]]\n"
 	    "           [-o uid:gid]] [-e 0|1] [-i inodes]\n"
 	    "           [-l name-length|flex]\n"
 	    "           [-m minix|linux|bytes] [-s blocks] [-t time]\n"
-	    "           [-W 8|16|32|64] [-z log-zone-size] image\n");
+	    "           [-z log-zone-size] image\n");
 	exit(2);
 }
 
@@ -111,15 +114,12 @@ parse(int argc, char **argv, struct options *o)
 	p->order = MFS_LITTLE_ENDIAN;
 	p->time = (uint32_t)time(NULL);
 	p->map_end = -1;
-	while ((ch = getopt(argc, argv, "B:b:d:e:F:i:l:m:No:P:s:t:V:W:xz:")) !=
+	while ((ch = getopt(argc, argv, "B:b:d:e:F:i:l:m:No:P:s:t:V:xz:")) !=
 	    -1) {
 		switch (ch) {
 		case 'B':
-			if (strcmp(optarg, "le") == 0)
-				p->order = MFS_LITTLE_ENDIAN;
-			else if (strcmp(optarg, "be") == 0)
-				p->order = MFS_BIG_ENDIAN;
-			else
+			if (mfs_parse_order(optarg, &p->order,
+			    &p->map_word) < 0)
 				usage();
 			break;
 		case 'b':
@@ -178,10 +178,6 @@ parse(int argc, char **argv, struct options *o)
 			break;
 		case 'V':
 			p->version = (int)number("version", optarg);
-			break;
-		case 'W':
-			if (mfs_parse_map_word(optarg, &p->map_word) < 0)
-				usage();
 			break;
 		case 'z':
 			p->log_zone_size = number("zone size", optarg);

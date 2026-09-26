@@ -4,8 +4,8 @@
  *
  * fsck_minixfs - check a MINIX file system image, and repair it.
  *
- *	fsck_minixfs [-lwy] [-e 0|1] [-M SIZE:HEADS:SIDE] [-W 8|16|32|64]
- *	    image
+ *	fsck_minixfs [-lwy] [-B be8|be16|be32|be64] [-e 0|1]
+ *	    [-M SIZE:HEADS:SIDE] image
  *
  * The check reads the super block, walks the tree from the root, and then
  * compares what it found with the inode table and the bit maps:
@@ -64,8 +64,10 @@
  * it is not a problem.
  *
  * -M reads and repairs an image that holds the file system in the
- * tracks of one side only, as minixfs(1) does, and -W takes the bit maps
- * of a big-endian file system as words of so many bits.
+ * tracks of one side only, as minixfs(1) does.  The bits in a word of the
+ * bit maps of a big-endian file system, which mfs_open_tracks() finds and
+ * which are printed first, are as -B gives them instead, where they are
+ * found wrong, as in a damaged file system.
  *
  * Each problem is printed on a line of its own, with "(repaired)" or
  * "(not repaired)" after it under -y.  A file system that is not marked
@@ -136,7 +138,7 @@ struct opts {
 	int		end;			/* -e 0 or 1; -1: no check */
 	int		warn;			/* -w */
 	struct mfs_tracks tracks;		/* -M */
-	uint32_t	map_word;		/* -W, or 0 */
+	uint32_t	map_word;		/* -B be8 and so on, or 0 */
 };
 
 /* The state of one check. */
@@ -180,7 +182,8 @@ static void
 usage(void)
 {
 	(void)fprintf(stderr, "usage: fsck_minixfs [-lwy] [-e 0|1] "
-	    "[-M SIZE:HEADS:SIDE] [-W 8|16|32|64] image\n");
+	    "[-M SIZE:HEADS:SIDE]\n"
+	    "           [-B be8|be16|be32|be64] image\n");
 	exit(EXIT_USAGE);
 }
 
@@ -1438,8 +1441,15 @@ check(struct check *c, const char *image, const struct opts *o, int quiet)
 		    "not know", image);
 	if (r < 0)
 		errx(EXIT_CANNOT, "%s: %s", image, strerror(-r));
+	if (o->map_word != 0 && c->fs.order != MFS_BIG_ENDIAN)
+		errx(EXIT_USAGE, "%s: -B gives the bit maps of a big-endian "
+		    "file system", image);
 	if (o->map_word != 0)
 		mfs_set_map_word(&c->fs, o->map_word);
+	if (c->fs.order == MFS_BIG_ENDIAN && !quiet)
+		(void)printf("%s: bit map words: %" PRIu32 " bits, %s\n",
+		    image, c->fs.map_word * 8,
+		    o->map_word != 0 ? "as given" : "as found");
 	c->refs = calloc((size_t)c->fs.ninodes + 1, sizeof(*c->refs));
 	if (c->refs == NULL)
 		err(EXIT_CANNOT, NULL);
@@ -1497,6 +1507,7 @@ mark(const char *image, const struct opts *o, int clean)
 int
 main(int argc, char **argv)
 {
+	enum mfs_order order;
 	struct check c;
 	struct opts o;
 	int ch;
@@ -1507,7 +1518,7 @@ main(int argc, char **argv)
 	o.warn = 0;
 	o.map_word = 0;
 	(void)memset(&o.tracks, 0, sizeof(o.tracks));
-	while ((ch = getopt(argc, argv, "e:lM:W:wy")) != -1) {
+	while ((ch = getopt(argc, argv, "B:e:lM:wy")) != -1) {
 		switch (ch) {
 		case 'e':
 			if (strcmp(optarg, "0") == 0)
@@ -1524,8 +1535,9 @@ main(int argc, char **argv)
 			if (mfs_parse_tracks(optarg, &o.tracks) < 0)
 				usage();
 			break;
-		case 'W':
-			if (mfs_parse_map_word(optarg, &o.map_word) < 0)
+		case 'B':
+			if (mfs_parse_order(optarg, &order, &o.map_word) < 0 ||
+			    o.map_word == 0)
 				usage();
 			break;
 		case 'w':

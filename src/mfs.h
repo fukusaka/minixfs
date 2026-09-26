@@ -200,15 +200,20 @@ int	mfs_parse_tracks(const char *, struct mfs_tracks *);
  * its lowest, in the byte order of the file system.  Little-endian, all
  * are the same bytes; big-endian, they are not, and the systems differ:
  * MINIX keeps words of 16 bits, util-linux bytes, and the Linux kernel
- * bytes or words as the machine has them.  mfs_open_tracks() takes the
- * maps as mfs_default_map_word() gives them.
+ * bytes or words as the machine has them.  mfs_open_tracks() finds the
+ * width of a big-endian file system: the one whose inode map, in its
+ * first block, agrees best with the inodes in use and with bit 0 set;
+ * where several agree as well, the one of those whose zone map, in its
+ * first block, agrees best with the zones those inodes use; and where
+ * that does not tell either, mfs_default_map_word().
  */
 
 /*
- * Parse the bits of a word of the bit maps, "8", "16", "32" or "64", into
- * *bytes.  Returns 0 or -EINVAL.
+ * Parse a byte order, "le" or "be", or "be8", "be16", "be32" or "be64"
+ * for big-endian with words of the bit maps of so many bits, into *order
+ * and *bytes, which is 0 where no width is given.  Returns 0 or -EINVAL.
  */
-int	mfs_parse_map_word(const char *, uint32_t *);
+int	mfs_parse_order(const char *, enum mfs_order *, uint32_t *);
 
 /* Take the bit maps of *fs as words of bytes bytes, 1, 2, 4 or 8. */
 void	mfs_set_map_word(struct mfs *, uint32_t);

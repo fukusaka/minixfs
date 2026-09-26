@@ -15,9 +15,9 @@
 .Sh SYNOPSIS
 .Nm
 .Op Fl lwy
+.Op Fl B Cm be8 | be16 | be32 | be64
 .Op Fl e Cm 0 | 1
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
-.Op Fl W Ar bits
 .Ar image
 .Sh DESCRIPTION
 .Nm
@@ -91,6 +91,14 @@ superblock の最大ファイルサイズが 0 か 2147483647 を超えるとき
 MINIX と Linux には
 .Pa lost+found
 がなく、\:その fsck はこうした inode を解放するので、\:これは既定にしていません。
+.It Fl B Cm be8 | be16 | be32 | be64
+ビッグエンディアンのファイルシステムのビットマップを、\:
+.Xr minixfs 5
+のとおりに見つけた幅ではなく、\:このビット数の語として扱います。
+マップが壊れていて、\:幅を見誤るときに使います。
+使った幅を最初に表示し、\:
+.Fl y
+ではその幅でマップを書きます。
 .It Fl e Cm 0 | 1
 各ビットマップの、\:最後の inode や zone より後ろのビットが 0 か 1 かを検査します。
 .Fl y
@@ -113,13 +121,6 @@ MINIX が読まない 30 文字の名前では、\:最大ファイルサイズ�
 を参照してください。
 .Fl y
 では指定した面だけを修復します。
-.It Fl W Ar bits
-ビッグエンディアンのファイルシステムのビットマップを、\:
-.Ar bits
-ビット\:（8・16・32・64）の語として扱います。
-指定がなければ、\:V1 と V2 の 14 文字の名前は 16、\:ほかは 8 です。
-.Xr minixfs 5
-を参照してください。
 .El
 .Sh EXIT STATUS
 .Nm

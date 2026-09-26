@@ -5,11 +5,10 @@
  * mount_minixfs - mount a MINIX file system image with FUSE.
  *
  *	mount_minixfs [-w [-u always|sync|seconds]] [-M SIZE:HEADS:SIDE]
- *	    [-W 8|16|32|64] [FUSE options] IMAGE MOUNTPOINT
+ *	    [FUSE options] IMAGE MOUNTPOINT
  *
  * -M takes an image that holds the file system in the tracks of one side
- * only, as minixfs(1) does, and -W takes the bit maps of a big-endian
- * file system as words of so many bits.
+ * only, as minixfs(1) does.
  *
  * The file system is served through the high-level FUSE API, which
  * libfuse (Linux, FreeBSD) and librefuse (NetBSD, MINIX 3) both provide.
@@ -1184,14 +1183,13 @@ usage(void)
 	(void)fprintf(stderr,
 	    "usage: mount_minixfs [-w [-u always|sync|seconds]] "
 	    "[-M SIZE:HEADS:SIDE]\n"
-	    "           [-W 8|16|32|64] [FUSE options] IMAGE MOUNTPOINT\n");
+	    "           [FUSE options] IMAGE MOUNTPOINT\n");
 	exit(2);
 }
 
 /* What the command line asks of the mount itself. */
 struct options {
 	struct mfs_tracks tracks;	/* -M */
-	uint32_t	map_word;	/* -W, or 0 */
 	const char	*image;
 	int		write;		/* -w */
 	int		always;		/* -u always */
@@ -1290,9 +1288,6 @@ split_args(int argc, char **argv, char **fargv, int *fargc,
 		if (strcmp(argv[i], "-M") == 0 && i + 1 < argc) {
 			if (mfs_parse_tracks(argv[++i], &o->tracks) < 0)
 				usage();
-		} else if (strcmp(argv[i], "-W") == 0 && i + 1 < argc) {
-			if (mfs_parse_map_word(argv[++i], &o->map_word) < 0)
-				usage();
 		} else if (strcmp(argv[i], "-u") == 0 && i + 1 < argc) {
 			u = argv[++i];
 		} else if (strcmp(argv[i], "-w") == 0) {
@@ -1380,8 +1375,6 @@ open_image(struct mount *m, const struct options *o)
 			errx(1, "%s: %s", o->image, strerror(-r));
 		m->rw = 0;
 	}
-	if (o->map_word != 0)
-		mfs_set_map_word(&m->fs, o->map_word);
 	if (!m->rw)
 		return;
 	mfs_maps_through(&m->fs, o->always);

@@ -4,21 +4,21 @@ NAME
      minixfs – read and write MINIX file system images
 
 SYNOPSIS
-     minixfs [-M size:heads:side] [-W bits] info image
-     minixfs [-M size:heads:side] [-W bits] ls [-lR] image [path]
-     minixfs [-M size:heads:side] [-W bits] cat image path
-     minixfs [-M size:heads:side] [-W bits] blocks [-r] image path
-     minixfs [-M size:heads:side] [-W bits] extract [-dv] image dest [path]
-     minixfs [-M size:heads:side] [-W bits] tar image [path]
-     minixfs [-M size:heads:side] [-W bits] [-f] put [-Rdin] [-o uid:gid]
-             image host ... path
-     minixfs [-M size:heads:side] [-W bits] [-f] mkdir [-p] [-m mode]
-             [-o uid:gid] image path ...
-     minixfs [-M size:heads:side] [-W bits] [-f] rm [-r] image path ...
-     minixfs [-M size:heads:side] [-W bits] [-f] mv image old new
-     minixfs [-M size:heads:side] [-W bits] [-f] ln [-s] image target path
-     minixfs [-M size:heads:side] [-W bits] [-f] chmod image mode path ...
-     minixfs [-M size:heads:side] [-W bits] [-f] chown image uid:gid path ...
+     minixfs [-M size:heads:side] info image
+     minixfs [-M size:heads:side] ls [-lR] image [path]
+     minixfs [-M size:heads:side] cat image path
+     minixfs [-M size:heads:side] blocks [-r] image path
+     minixfs [-M size:heads:side] extract [-dv] image dest [path]
+     minixfs [-M size:heads:side] tar image [path]
+     minixfs [-M size:heads:side] [-f] put [-Rdin] [-o uid:gid] image host ...
+             path
+     minixfs [-M size:heads:side] [-f] mkdir [-p] [-m mode] [-o uid:gid] image
+             path ...
+     minixfs [-M size:heads:side] [-f] rm [-r] image path ...
+     minixfs [-M size:heads:side] [-f] mv image old new
+     minixfs [-M size:heads:side] [-f] ln [-s] image target path
+     minixfs [-M size:heads:side] [-f] chmod image mode path ...
+     minixfs [-M size:heads:side] [-f] chown image uid:gid path ...
 
 DESCRIPTION
      minixfs reads a MINIX file system image of any version, V1, V2 or V3, in
@@ -154,11 +154,6 @@ OPTIONS
              the image is empty.  The super block of such an image is still in
              place, so info looks right while the rest reads as damage; its
              fill count shows half of the image as runs of 4608 bytes.
-
-     -W bits
-             Take the bit maps of a big-endian file system as words of bits
-             bits, 8, 16, 32 or 64, instead of 16 for V1 and V2 with names of
-             14 and 8 for the rest; see minixfs(5).
 
      -f      Let the commands that write change a file system that is not
              marked clean, which is left as it is.

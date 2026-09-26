@@ -4,17 +4,20 @@
  *
  * tunefs_minixfs - change the settings of a MINIX file system.
  *
- *	tunefs_minixfs [-fN] [-B le|be] [-c clean|dirty] [-e 0|1]
+ *	tunefs_minixfs [-fN] [-B le|be|be8|be16|be32|be64] [-c clean|dirty]
+ *	    [-e 0|1]
  *	    [-l 14|30] [-m minix|linux|bytes]
- *	    [-M SIZE:HEADS:SIDE] [-s blocks [-k]] [-W [8|16|32|64:]8|16|32|64]
- *	    image
+ *	    [-M SIZE:HEADS:SIDE] [-s blocks [-k]] image
  *
  * Without options, or with -N, the settings are printed and nothing is
  * written; -N shows what the other options would change.
  *
  *	-B	store every number in the other byte order: little-endian,
  *		as on the PC, or big-endian, as on the 68000 machines; not
- *		for Minix-vmd
+ *		for Minix-vmd.  be8, be16, be32 and be64 give the bits in a
+ *		word of the bit maps, big-endian, and write them anew in
+ *		that width on a big-endian file system; without them, -l
+ *		writes them as the new name length has them
  *	-c	mark the file system clean or dirty: in V1 and V2 in the
  *		state word that Linux keeps, in V3 in the flags of MINIX 3,
  *		which mounts a file system that is not clean read-only
@@ -38,11 +41,6 @@
  *		hold the new size; a device always keeps its size
  *	-M	an image that holds one side of a disk, as for minixfs(1);
  *		it cannot change size
- *	-W	the bits in a word of the bit maps of a big-endian file
- *		system: read them as words of the first number, or as the
- *		version has them, and write them anew as words of the
- *		second; with -B be, write them so.  Without it, -l writes
- *		them as the new name length has them
  *
  * Each change is printed as the old and the new value.  The byte order
  * is changed first, then the words of the bit maps, then the name length,
@@ -82,35 +80,19 @@ struct options {
 	int		dry_run;	/* -N */
 	int		force;		/* -f */
 	int		keep;		/* -k */
-	uint32_t	word_old;	/* -W: bytes of a map word as read */
-	uint32_t	word_new;	/* and as written; 0 as is */
+	uint32_t	word_new;	/* -B be8 and so on: bytes of a map
+					   word, or 0 as is */
 };
 
 static void
 usage(void)
 {
 	(void)fprintf(stderr,
-	    "usage: tunefs_minixfs [-fN] [-B le|be] [-c clean|dirty] [-e 0|1]\n"
+	    "usage: tunefs_minixfs [-fN] [-B le|be|be8|be16|be32|be64]\n"
+	    "           [-c clean|dirty] [-e 0|1]\n"
 	    "           [-l 14|30] [-m minix|linux|bytes]\n"
-	    "           [-M SIZE:HEADS:SIDE] [-s blocks [-k]]\n"
-	    "           [-W [8|16|32|64:]8|16|32|64] image\n");
+	    "           [-M SIZE:HEADS:SIDE] [-s blocks [-k]] image\n");
 	exit(2);
-}
-
-/* -W: "new", or "old:new". */
-static void
-map_words(char *s, struct options *o)
-{
-	char *colon;
-
-	if ((colon = strchr(s, ':')) != NULL) {
-		*colon = '\0';
-		if (mfs_parse_map_word(s, &o->word_old) < 0)
-			usage();
-		s = colon + 1;
-	}
-	if (mfs_parse_map_word(s, &o->word_new) < 0)
-		usage();
 }
 
 /* The size that -s asks for. */
@@ -131,21 +113,19 @@ blocks(const char *s)
 static void
 parse(int argc, char **argv, struct options *o)
 {
+	enum mfs_order order;
 	int ch;
 
 	(void)memset(o, 0, sizeof(*o));
 	o->clean = -1;
 	o->end = -1;
 	o->order = -1;
-	while ((ch = getopt(argc, argv, "B:c:e:fkl:m:M:Ns:W:")) != -1) {
+	while ((ch = getopt(argc, argv, "B:c:e:fkl:m:M:Ns:")) != -1) {
 		switch (ch) {
 		case 'B':
-			if (strcmp(optarg, "le") == 0)
-				o->order = MFS_LITTLE_ENDIAN;
-			else if (strcmp(optarg, "be") == 0)
-				o->order = MFS_BIG_ENDIAN;
-			else
+			if (mfs_parse_order(optarg, &order, &o->word_new) < 0)
 				usage();
+			o->order = (int)order;
 			break;
 		case 'c':
 			if (strcmp(optarg, "clean") == 0)
@@ -189,9 +169,6 @@ parse(int argc, char **argv, struct options *o)
 			break;
 		case 's':
 			o->nblocks = blocks(optarg);
-			break;
-		case 'W':
-			map_words(optarg, o);
 			break;
 		default:
 			usage();
@@ -546,7 +523,7 @@ main(int argc, char **argv)
 	uint16_t state;
 	uint64_t bit;
 	const char *done, *from, *old;
-	int i, r, status, write;
+	int i, r, reordered, status, write;
 
 	parse(argc, argv, &o);
 	write = changes(&o) && !o.dry_run;
@@ -555,13 +532,12 @@ main(int argc, char **argv)
 			errx(1, "%s: not a MINIX file system", o.image);
 		errx(1, "%s: %s", o.image, strerror(-r));
 	}
-	if (o.word_old != 0)
-		mfs_set_map_word(&fs, o.word_old);
 	status = 0;
 	check_all(&fs, &o, write);
 	done = "nothing changed";
 	words = 0;
-	if (o.order != -1) {
+	reordered = o.order != -1 && o.order != (int)fs.order;
+	if (reordered) {
 		from = order_name(fs.order);
 		/* Big-endian, the maps are written as the words they get. */
 		if (o.order == MFS_BIG_ENDIAN && fs.order != MFS_BIG_ENDIAN)
@@ -580,7 +556,7 @@ main(int argc, char **argv)
 			errx(1, "%s: bit maps: %s", o.image, strerror(-r));
 		(void)printf("bit map words: %" PRIu32 " -> %" PRIu32
 		    " bits\n", words * 8, o.word_new * 8);
-		done = o.order != -1 ? "the byte order and the bit map words "
+		done = reordered ? "the byte order and the bit map words "
 		    "were changed, nothing else" :
 		    "the bit map words were changed, nothing else";
 	}
@@ -591,7 +567,7 @@ main(int argc, char **argv)
 			    strerror(-r), done);
 		(void)printf("name length: %" PRIu32 " -> %" PRIu32 "\n",
 		    len, o.namelen);
-		done = o.order != -1 ? "the byte order and the name length "
+		done = reordered ? "the byte order and the name length "
 		    "were changed, nothing else" : words != 0 ?
 		    "the bit map words and the name length were changed, "
 		    "nothing else" :
