@@ -91,9 +91,6 @@ MINIX 3 mounts a file system that is not marked clean read-only.
 The maximum file size limits files; MINIX works it out from what the
 double indirect zone reaches, while Linux writes 2147483647 in V2 and V3.
 .Ss Bit maps
-There are two bit maps, right after the super block: the inode map
-(imap), of as many blocks as the super block gives for it, then the zone
-map (zmap).
 Bit
 .Em i
 of the inode map is set when inode
@@ -238,11 +235,7 @@ The systems read and write these kinds:
 .It this package Ta all
 .El
 .Pp
-The extension of Linux, names of 30 characters, is thus read and
-written only by Linux and by this package.
-MINIX 3 after 3.3.0 refuses zones of more than one block because its MFS
-has come to handle zones as blocks; the check, added in 2015, keeps it
-from failing later instead.
+30-character names are supported only by Linux and this package.
 MINIX from 1.6.23 reads V1 and V2 in either byte order; Linux, and
 MINIX 3 for V3, only in that of the machine.
 Linux takes V3 blocks only up to the page size, 4096 on the PC.
@@ -270,10 +263,8 @@ of the tools reads such an image; see
 .%O second and third editions
 .Re
 .Sh HISTORY
-Years and versions are those of the sources at hand; a change may be
-older.
-A year is that of the release, or of the change where there is none
-(1994, 2015).
+Dates reflect the available sources; features may be older.
+Years refer to releases, except 1994 and 2015, which date source changes.
 .Bl -tag -width "1991"
 .It 1987
 V1 is the file system of MINIX 1.0, of the first edition of the book.

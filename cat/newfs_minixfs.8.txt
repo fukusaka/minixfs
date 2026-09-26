@@ -31,8 +31,7 @@ DESCRIPTION
              nothing.
 
      -B le | be
-             The byte order: little-endian, as on the PC and the default, or
-             big-endian, as on the Atari ST, the Amiga and the Macintosh.
+             Byte order: little-endian (default) or big-endian.
 
      -b block-size
              The block size of V3, a multiple of 1024 up to 32768; 4096 by
@@ -40,37 +39,29 @@ DESCRIPTION
              blocks of 1024 bytes.
 
      -d directory
-             Copy directory into the file system: its files, directories,
-             symbolic links, devices and pipes, preserving modes, owners and
-             times.  Entries are sorted by name for reproducible images.  Hard
-             links stay links, blocks of zeros stay holes, and symbolic links
-             get the mode 0777, as MINIX and Linux give them.  The root
-             directory takes the mode, owner and times of directory itself.
-             Sockets are left out with a warning.  Existing device files can
-             be copied without root privileges.
+             Copy the directory tree in name order, preserving modes, owners,
+             times, hard links and sparse blocks.  The image root inherits the
+             source directory's attributes.  Symbolic links use mode 0777;
+             sockets are skipped with a warning.  Device files can be copied
+             without root privileges.
 
-             Everything is checked before anything is written: names too long
-             for the file system, owners, groups and device numbers too large,
-             a link count too large, and room, counting holes as data.  What
-             is wrong is listed, and nothing is written.  Without -i, the file
-             system gets inodes enough for the tree.
+             Before writing, check name lengths, IDs, device numbers, link
+             counts and capacity, counting holes as data.  Report all problems
+             and write nothing if any are found.  Unless -i is given, allocate
+             enough inodes for the tree.
 
      -F specfile
-             Read the mtree(8) specification specfile as the -F option of
-             makefs(8) of NetBSD does, in the hierarchical form and in the
-             form with full paths of the METALOG that a build writes.  An
-             entry sets the type, mode, owner, group, time, link target and
-             device number of what it names, overriding the file in directory.
-             A file missing from directory is created from its entry.  The
-             entry must specify the type, mode, owner and group, plus the
-             target for a symbolic link or the device number for a device
-             file.  Regular files are created empty.  A missing file whose
-             entry is marked optional is left out.  A type that differs from
-             that of the file in directory is an error.  The keywords type,
-             mode (in octal), uid, uname, gid, gname, time, link, device and
-             optional are used; checksums, size, flags, tags and the like are
-             ignored.  /set, /unset, continued lines and the escapes of vis(3)
-             are understood; names with patterns are not.
+             Apply an mtree(8) specification in hierarchical or full-path
+             (METALOG) form.  Entries override the source files' attributes; a
+             type mismatch is an error.  Missing files are created unless
+             marked optional.  Creation requires type, mode, owner and group,
+             plus a symbolic link target or device number where applicable;
+             regular files are created empty.
+
+             Supported keywords are type, mode (octal), uid, uname, gid,
+             gname, time, link, device and optional.  Checksums, size, flags,
+             tags and other keywords are ignored.  /set, /unset, continued
+             lines and vis(3) escapes are supported; name patterns are not.
 
      -P dbdir
              Look up the user names of -F in master.passwd or passwd, and the
@@ -95,22 +86,19 @@ DESCRIPTION
              the tree of -d needs them.
 
      -l name-length | flex
-             The length of names in V1 and V2: 14, as in MINIX and the
-             default, or 30, the extension of Linux, which has magic numbers
-             of its own.  V3 names are always 60 characters.  flex makes a V1
-             or V2 file system of Minix-vmd, whose flex directories hold names
-             of up to 60 characters, as its mkfs makes one: with the magic
-             number of names of 14, the super block of Minix-vmd, and the bits
-             of the maps past the last inode and zone clear.
+             Select the V1 or V2 directory format: 14-character MINIX names
+             (default), 30-character Linux names, or flex for Minix-vmd names
+             of up to 60 characters.  V3 always uses 60-character names.
+             Format details are in minixfs(5); map padding defaults are
+             described under -e.
 
      -m minix | linux | bytes
-             The maximum file size in the super block: what MINIX works out
-             from the zones that the double indirect zone reaches, so that
-             MINIX reads every file in full; what mkfs.minix of Linux writes,
-             2147483647 in V2 and V3; or bytes, from 1 to 2147483647.  The
-             default is linux for names of 30 characters and minix otherwise.
-             Linux and the tools of this package keep files to it; see
-             minixfs(5).
+             Set the maximum file size: minix uses the range reachable through
+             double indirect zones; linux uses Linux's limit (2147483647 bytes
+             in V2 and V3); bytes specifies a value from 1 to 2147483647.  The
+             default is linux for 30-character names and minix otherwise.
+             Linux and these tools enforce this limit.  See minixfs(5) for
+             MINIX compatibility restrictions.
 
      -s blocks
              The size in blocks.

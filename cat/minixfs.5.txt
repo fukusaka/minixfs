@@ -83,18 +83,16 @@ DESCRIPTION
      indirect zone reaches, while Linux writes 2147483647 in V2 and V3.
 
    Bit maps
-     There are two bit maps, right after the super block: the inode map
-     (imap), of as many blocks as the super block gives for it, then the zone
-     map (zmap).  Bit i of the inode map is set when inode i is in use; bit i
-     of the zone map when zone first data zone + i - 1 is.  Bit 0 of both is
-     never used and is always set.  The maps are arrays of words of 16 bits in
-     V1 and V2 and of 32 bits in V3, in the byte order of the file system, bit
-     0 of a word being its lowest.  The bits past the last inode or zone are
-     clear as the mkfs of MINIX and of Minix-vmd leaves them, or set as
-     mkfs.minix of Linux does.  The fsck of MINIX 2.0.4, Minix-vmd 1.7.0 and
-     MINIX 3 reports set ones as inodes or zones missing; the Linux kernel
-     counts clear ones as free, and sets them one by one once the maps are
-     full.  The fsck of MINIX 1.3 and 1.6.25 and fsck.minix ignore them.
+     Bit i of the inode map is set when inode i is in use; bit i of the zone
+     map when zone first data zone + i - 1 is.  Bit 0 of both is never used
+     and is always set.  The maps are arrays of words of 16 bits in V1 and V2
+     and of 32 bits in V3, in the byte order of the file system, bit 0 of a
+     word being its lowest.  The bits past the last inode or zone are clear as
+     the mkfs of MINIX and of Minix-vmd leaves them, or set as mkfs.minix of
+     Linux does.  The fsck of MINIX 2.0.4, Minix-vmd 1.7.0 and MINIX 3 reports
+     set ones as inodes or zones missing; the Linux kernel counts clear ones
+     as free, and sets them one by one once the maps are full.  The fsck of
+     MINIX 1.3 and 1.6.25 and fsck.minix ignore them.
 
    Inodes
      Inode 1 is the root directory; inode 0 does not exist.  A V1 inode is 32
@@ -201,10 +199,7 @@ DESCRIPTION
            Linux                  MINIX and Linux V1, V2; V3 from 2.6.21
            this package           all
 
-     The extension of Linux, names of 30 characters, is thus read and written
-     only by Linux and by this package.  MINIX 3 after 3.3.0 refuses zones of
-     more than one block because its MFS has come to handle zones as blocks;
-     the check, added in 2015, keeps it from failing later instead.  MINIX
+     30-character names are supported only by Linux and this package.  MINIX
      from 1.6.23 reads V1 and V2 in either byte order; Linux, and MINIX 3 for
      V3, only in that of the machine.  Linux takes V3 blocks only up to the
      page size, 4096 on the PC.  The mkfs of MINIX 3 makes V3 only from 3.2.1;
@@ -224,9 +219,8 @@ SEE ALSO
      Implementation, second and third editions.
 
 HISTORY
-     Years and versions are those of the sources at hand; a change may be
-     older.  A year is that of the release, or of the change where there is
-     none (1994, 2015).
+     Dates reflect the available sources; features may be older.  Years refer
+     to releases, except 1994 and 2015, which date source changes.
 
      1987  V1 is the file system of MINIX 1.0, of the first edition of the
            book.

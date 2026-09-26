@@ -62,8 +62,7 @@ DESCRIPTION
      rest.  Device numbers use major × 256 + minor and must be below 65536.
 
      An incremental dump's previous-dump date must match the date in symtable.
-     After a recoverable failure, the table allows the same dump to be
-     retried.  Keep it between restores.
+     Keep this table between restores.
 
      The destination must be marked clean.  It is locked with fcntl(2) while
      it is written, and one that another program holds is refused.  The clean

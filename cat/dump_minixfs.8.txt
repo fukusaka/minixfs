@@ -14,17 +14,13 @@ DESCRIPTION
      both byte orders and Minix-vmd are supported; see minixfs(5).  The source
      image is not modified.
 
-     The dump is in the byte order of the image.  Inode n of the image is
-     inode n + 1 in the dump, since restore(8) takes 2 for the root.
-     Directories go in as those of 4.4BSD, whatever the entries of the image,
-     and the last record of each file even when it lies in a hole, as the last
-     block of a file on UFS always exists.
+     The dump uses the image's byte order and 4.4BSD directory entries.  Image
+     inode numbers are increased by one so the dump's root inode is 2.
 
-     A dump of level 0 holds the whole file system.  One of level n holds what
-     changed since the last dump of a lower level, as the dumpdates file
-     tells: the files whose mtime or ctime is not before its date, the
-     directories that hold them, and the directories that have directories in
-     them, as BSD dump does.
+     Level 0 dumps the whole file system.  Higher levels include files whose
+     mtime or ctime is at least the date of the latest lower-level dump
+     recorded in dumpdates.  They also include directories containing those
+     files or other directories.
 
      The options are:
 

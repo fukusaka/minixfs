@@ -101,8 +101,7 @@ Device numbers use major \(mu 256 + minor and must be below 65536.
 .Pp
 An incremental dump's previous-dump date must match the date in
 .Ar symtable .
-After a recoverable failure, the table allows the same dump to be retried.
-Keep it between restores.
+Keep this table between restores.
 .Pp
 The destination must be marked clean.
 It is locked with

@@ -45,97 +45,62 @@ MINIX 3 のサービス設定は [mount_minixfs(8)](cat/ja/mount_minixfs.8.txt) 
 
 ## 使い方
 
-イメージにはファイルまたはデバイスを指定します。各コマンドのリンク先に詳しい説明があります。
+イメージにはファイルまたはデバイスを指定します。オプションと制限の詳細は各 man を参照してください。
 
-### マウントせずに読み書きする
+| コマンド | 用途 |
+|---|---|
+| [minixfs](cat/ja/minixfs.1.txt) | マウントせずに一覧・抽出・編集 |
+| [mount_minixfs](cat/ja/mount_minixfs.8.txt) | FUSE マウント（既定は読み出し専用、`-w` で書き込み） |
+| [newfs_minixfs](cat/ja/newfs_minixfs.8.txt) | 空またはディレクトリからイメージを作成 |
+| [fsck_minixfs](cat/ja/fsck_minixfs.8.txt) | 整合性検査（`-y` で修復、`-l` で未参照 inode を保存） |
+| [tunefs_minixfs](cat/ja/tunefs_minixfs.8.txt) | バイト順・名前長・容量などの変更（`-N` で変更予定を表示） |
+| [dump_minixfs](cat/ja/dump_minixfs.8.txt) | BSD dump 形式の全体・増分バックアップ |
+| [restore_minixfs](cat/ja/restore_minixfs.8.txt) | dump の一覧・復元（NetBSD・FreeBSD・Linux・旧 BSD にも対応） |
 
-[minixfs(1)](cat/ja/minixfs.1.txt) でファイルを一覧・抽出・変更できます。
+### 読み書き
 
     minixfs ls -l root.img etc
-    minixfs cat root.img etc/passwd > passwd
     minixfs extract root.img out
     minixfs put -R usr.img src usr
 
-`extract` と `put` は既存の名前を置き換えます。`put -n` は既存のものを残し、`put -i` は
-置き換える前に確認します。`extract` でデバイスを作るには `-d` と root 権限が必要です。
-イメージ内に作るファイルの所有者は格納先のディレクトリから引き継ぎ、`-o uid:gid` で変更できます。
+`extract` と `put` は既存の名前を置き換えます。`put -n` は既存ファイルを残し、`put -i` は置換を確認します。
 
-ほかに `info`、`blocks`、`tar`、`mkdir`、`rm`、`mv`、`ln`、`chmod`、`chown` があります。
+### 作成とマウント
 
-### FUSE でマウントする
-
-[mount_minixfs(8)](cat/ja/mount_minixfs.8.txt) は、既定では読み出し専用でマウントします。
-
-    mount_minixfs usr.img /mnt
-    fusermount3 -u /mnt
-
-書き込む場合は `-w` を付けます。BSD では `umount /mnt` でアンマウントします。
-MINIX 3 での書き込みは不安定です。各 OS の制限と既知のデータ消失条件は man の BUGS を参照してください。
-
-### イメージを作る
-
-[newfs_minixfs(8)](cat/ja/newfs_minixfs.8.txt) で、空のファイルシステム、または
-ディレクトリツリーを取り込んだファイルシステムを作れます。
-
-    newfs_minixfs -V 1 -s 360 floppy.img
     newfs_minixfs -V 2 -d tree -o 0:0 tree.img
     newfs_minixfs -V 2 -l flex -s 2048 vmd.img
+    mount_minixfs tree.img /mnt
+    fusermount3 -u /mnt
 
-`-V` は必須です。`-l flex` で Minix-vmd のファイルシステムを作ります。`-d` で新規イメージを作る場合、`-s` がなければツリーに必要な容量を確保します。
-`-F` は METALOG などの mtree 指定を読み込みます。ブートコード用の先頭 1024 バイトは保持します。
-最大ファイルサイズとビットマップ末尾のビットは MINIX に、30 文字の名前では Linux に合わせます。`-m` と `-e` で変えられます。
+`-V` は必須です。`-d` で新規作成するときは、`-s` がなければ必要容量を自動計算します。
+`-l flex` は Minix-vmd 形式です。BSD のアンマウントは `umount /mnt` です。
+MINIX 3 の書き込みを含む OS 固有の制限は [mount_minixfs(8) の BUGS](cat/ja/mount_minixfs.8.txt) を参照してください。
 
-### 検査・修復する
-
-[fsck_minixfs(8)](cat/ja/fsck_minixfs.8.txt) は、既定では書き込まずに検査します。
+### 検査と設定変更
 
     fsck_minixfs root.img
     fsck_minixfs -y -l usr.img
+    tunefs_minixfs -N -s 2880 floppy.img
 
-`-y` で修復します。未参照 inode（ディレクトリから参照されていない inode）は解放します。
-`-l` を併用すると、解放せずに `lost+found` に保存します。
-修復後に再検査し、問題が残っていなければ clean の印を付けます。
+修復では未参照 inode を解放します。`-l` を併用すると `lost+found` に保存します。
+`tunefs` の変換前にはアンマウント・検査・バックアップが必要です。中断や複数オプションの失敗で、変更の一部が残る場合があります。
 
-### 設定を変更する
-
-[tunefs_minixfs(8)](cat/ja/tunefs_minixfs.8.txt) は、バイト順、名前の長さ、容量などを変更します。
-オプションなしでは現在の設定を表示し、`-N` では変更予定を表示します。
-
-    tunefs_minixfs -B le -l 30 atari.img
-    tunefs_minixfs -s 2880 floppy.img
-
-`-B`・`-l`・`-s` を使う前に、アンマウントし、`fsck_minixfs` で検査してバックアップを取ってください。
-中断すると変換途中の状態が残ります。`-l` と `-s` の併用では、先行する変更の適用後に容量変更が
-失敗する場合があります。`-s` はイメージファイルの容量も変更しますが、`-k` 指定時とデバイスでは保持します。
-
-### バックアップ・復元する
-
-[dump_minixfs(8)](cat/ja/dump_minixfs.8.txt) は、BSD dump 形式で全体・増分バックアップを作ります。
-[restore_minixfs(8)](cat/ja/restore_minixfs.8.txt) は、その一覧表示・復元に加え、
-NetBSD・FreeBSD・Linux・旧 BSD の dump も読み込みます。
+### バックアップと復元
 
     dump_minixfs -0u -D dumpdates -f usr.0 usr.img
     newfs_minixfs -V 3 -s 16384 new.img
     restore_minixfs -r -f usr.0 new.img
 
-復元先には十分な容量を確保し、空のファイルシステムに全体、続いて増分を順に復元します。
-次の増分復元に必要な `restoresymtable` は保持してください。dump にない名前は削除されます。
+十分な容量の空のファイルシステムに全体、続いて増分を順に復元します。
+次の増分復元まで `restoresymtable` を保持してください。復元時は dump にない名前も削除されます。
+失敗後の再実行条件と、復元しない属性・形式は [restore_minixfs(8)](cat/ja/restore_minixfs.8.txt) を参照してください。
 
-容量不足や dump の途中切れなど、回復可能な失敗では、原因を解消して同じ dump を再実行できます。
-I/O エラーや強制終了後は、先に `fsck_minixfs -y` で検査してください。
-全体の dump から復元をやり直す必要がある場合もあります。
-拡張属性・ファイルフラグ・ソケットは警告して除外します。Linux の圧縮 dump と複数ボリュームの dump は未対応です。
+## 書き込み時の注意
 
-## イメージへの書き込み
-
-書き込み中はイメージをロックし、同時変更を防ぎます。`minixfs` の書き込みコマンド、
-`mount_minixfs -w`、`restore_minixfs` は書き込み中に clean の印を外します。
-中断や整合性を損なうエラーの後は印が戻らないため、次の書き込み前に `fsck_minixfs -y` で検査してください。
-
-clean でないイメージは、`mount_minixfs` では読み出し専用になり、`restore_minixfs` では書き込めません。
-`minixfs` の書き込みコマンドと `tunefs_minixfs -B`・`-l`・`-s` は、`-f` でこの検査を省略できます。
-`minixfs -f` は、書き込みに成功しても元の clean でない状態を保持します。
-
+書き込み中はイメージをロックします。中断や I/O エラー後は、次の書き込み前に `fsck_minixfs -y` で検査してください。
+clean でないイメージに対して、`mount_minixfs` は読み出し専用、`restore_minixfs` は書き込み拒否になります。
+`minixfs` の書き込みコマンドと `tunefs_minixfs -B`・`-l`・`-s` は `-f` で強制できます。
+`minixfs -f` は正常終了しても元の clean でない状態を保持します。
 ## 資料と開発
 
 - [日本語 man](man/ja/) / [英語 man](man/)：オプション、既定値、終了コード、制限。[cat/](cat/) に、`make catman` で整形したテキスト版があります。`make lint-man` で書式を検査します。

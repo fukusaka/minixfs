@@ -49,112 +49,70 @@ For MINIX 3 service setup, see [mount_minixfs(8)](cat/mount_minixfs.8.txt).
 
 ## Usage
 
-An image can be a file or a device. Each command below links to its manual.
+An image is a file or device. Each manual describes the options and limitations.
 
-### Read and modify an image
+| Command | Purpose |
+|---|---|
+| [minixfs](cat/minixfs.1.txt) | List, extract and edit files without mounting |
+| [mount_minixfs](cat/mount_minixfs.8.txt) | FUSE mount; read-only by default, writable with `-w` |
+| [newfs_minixfs](cat/newfs_minixfs.8.txt) | Create an empty image or copy a directory into one |
+| [fsck_minixfs](cat/fsck_minixfs.8.txt) | Check consistency; `-y` repairs, `-l` saves unreferenced inodes |
+| [tunefs_minixfs](cat/tunefs_minixfs.8.txt) | Change byte order, name length, size and other settings; `-N` previews changes |
+| [dump_minixfs](cat/dump_minixfs.8.txt) | Create full and incremental BSD dumps |
+| [restore_minixfs](cat/restore_minixfs.8.txt) | List or restore dumps, including NetBSD, FreeBSD, Linux and older BSD formats |
 
-[minixfs(1)](cat/minixfs.1.txt) lists, extracts and modifies files without mounting:
+### Read and write files
 
     minixfs ls -l root.img etc
-    minixfs cat root.img etc/passwd > passwd
     minixfs extract root.img out
     minixfs put -R usr.img src usr
 
-`extract` and `put` replace existing names. Use `put -n` to keep them or
-`put -i` to confirm replacement. `extract` requires `-d` and root privileges
-to create devices. Files created in an image inherit the destination
-directory's owner; `-o uid:gid` overrides it.
+`extract` and `put` replace existing names. Use `put -n` to keep existing
+files or `put -i` to confirm replacement.
 
-Other commands include `info`, `blocks`, `tar`, `mkdir`, `rm`, `mv`, `ln`,
-`chmod` and `chown`.
+### Create and mount
 
-### Mount through FUSE
-
-[mount_minixfs(8)](cat/mount_minixfs.8.txt) mounts read-only by default:
-
-    mount_minixfs usr.img /mnt
-    fusermount3 -u /mnt
-
-Use `-w` for writing; on BSD, unmount with `umount /mnt`.
-Writing on MINIX 3 is unreliable. See the manual's BUGS section for
-platform limitations and known data-loss conditions.
-
-### Create an image
-
-[newfs_minixfs(8)](cat/newfs_minixfs.8.txt) creates an empty file system or
-copies a directory tree into one:
-
-    newfs_minixfs -V 1 -s 360 floppy.img
     newfs_minixfs -V 2 -d tree -o 0:0 tree.img
     newfs_minixfs -V 2 -l flex -s 2048 vmd.img
+    mount_minixfs tree.img /mnt
+    fusermount3 -u /mnt
 
-`-V` is required. `-l flex` makes a Minix-vmd file system. With `-d`, a
-new image is sized for the tree unless `-s` specifies its size. `-F`
-reads an mtree specification such as METALOG.
-The first 1024 bytes, reserved for boot code, are preserved.
-The maximum file size and the map tail bits follow MINIX, or Linux for
-30-character names; `-m` and `-e` override them.
+`-V` is required. With `-d`, new images are sized automatically unless
+`-s` specifies a size. `-l flex` creates Minix-vmd format.
+On BSD, unmount with `umount /mnt`.
+See [mount_minixfs(8), BUGS](cat/mount_minixfs.8.txt) for platform
+limitations, including unreliable writes on MINIX 3.
 
-### Check and repair
-
-[fsck_minixfs(8)](cat/fsck_minixfs.8.txt) checks without writing by default:
+### Check and change settings
 
     fsck_minixfs root.img
     fsck_minixfs -y -l usr.img
+    tunefs_minixfs -N -s 2880 floppy.img
 
-`-y` repairs the image. Inodes with no directory references are freed
-unless `-l` saves them under `lost+found`. After repair, the image is checked again and
-marked clean only if no problems remain.
-
-### Change file system settings
-
-[tunefs_minixfs(8)](cat/tunefs_minixfs.8.txt) changes byte order, name length,
-size and other settings. With no options it displays the settings;
-`-N` previews changes.
-
-    tunefs_minixfs -B le -l 30 atari.img
-    tunefs_minixfs -s 2880 floppy.img
-
-Before using `-B`, `-l` or `-s`, unmount the image, check it with
-`fsck_minixfs` and keep a backup. Interruption can leave a partial
-conversion. With `-l` and `-s` together, resizing can fail after earlier
-changes have been applied. `-s` also resizes the image file unless `-k`
-is given; devices retain their size.
+Repair frees unreferenced inodes unless `-l` saves them in `lost+found`.
+Before converting with `tunefs`, unmount, check and back up the image.
+Interruption or failure with combined options can leave partial changes.
 
 ### Back up and restore
-
-[dump_minixfs(8)](cat/dump_minixfs.8.txt) creates full and incremental BSD dumps.
-[restore_minixfs(8)](cat/restore_minixfs.8.txt) lists or restores them, and also
-reads NetBSD, FreeBSD, Linux and older BSD dumps.
 
     dump_minixfs -0u -D dumpdates -f usr.0 usr.img
     newfs_minixfs -V 3 -s 16384 new.img
     restore_minixfs -r -f usr.0 new.img
 
-Allow enough space for the restored files. Restore the full dump into an
-empty file system, then apply incremental dumps in order. Keep
-`restoresymtable` for the next incremental restore. Names absent from the
-dump are removed.
+Restore the full dump into an empty file system with enough space, then
+apply incremental dumps in order. Keep `restoresymtable` for the next
+incremental restore. Names absent from the dump are removed.
+See [restore_minixfs(8)](cat/restore_minixfs.8.txt) for retry conditions,
+omitted attributes and unsupported formats.
 
-After a recoverable failure such as insufficient space or a truncated
-dump, correct the cause and retry the same dump. After an I/O error or
-forced termination, first check the image with `fsck_minixfs -y`;
-recovery may require starting again from the full dump.
-Extended attributes, file flags and sockets are omitted with a warning.
-Compressed Linux dumps and multi-volume dumps are unsupported.
+## Writing precautions
 
-## Writing images
-
-Writers lock the image to prevent concurrent changes. `minixfs` write
-commands, `mount_minixfs -w` and `restore_minixfs` clear the clean flag
-while writing. Interruption or an error that may corrupt the image
-leaves it unclean; run `fsck_minixfs -y` before further writes.
-
+Writers lock the image. After interruption or an I/O error, run
+`fsck_minixfs -y` before further writes.
 For an unclean image, `mount_minixfs` falls back to read-only and
-`restore_minixfs` refuses to write. `minixfs` write commands and
-`tunefs_minixfs -B`, `-l` and `-s` require `-f` to override the check.
-`minixfs -f` preserves the original unclean state after a successful write.
-
+`restore_minixfs` refuses to write. The `minixfs` write commands and
+`tunefs_minixfs -B`, `-l` and `-s` accept `-f` to override the check.
+`minixfs -f` preserves the original unclean state even after success.
 ## Documentation and development
 
 - [English manuals](man/) / [Japanese manuals](man/ja/): options, defaults,
