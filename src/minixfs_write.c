@@ -162,6 +162,8 @@ open_for_writing(struct cmd *c, const char *image)
 			errx(1, "%s: not a MINIX file system", image);
 		errx(1, "%s: %s", image, strerror(-r));
 	}
+	if (map_word != 0)
+		mfs_set_map_word(&c->fs, map_word);
 	was_clean = mfs_is_clean(&c->fs);
 	state_before = c->fs.state;
 	if (!force && !was_clean)

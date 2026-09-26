@@ -233,56 +233,61 @@ mkfs_full_map() {
 	done
 }
 
-# be_v3: the big-endian V3 that mkfs.minix makes, from the hexdump -C
-# in the tests of util-linux: numbers big-endian, maps as bytes.
-be_v3() {
-	_be_v3_dump=$UTILLINUX_SRC/tests/expected/minix/fsck-images-v3c60.BE
-	if [ ! -f "$_be_v3_dump" ]; then
-		skip "the big-endian V3 of mkfs.minix is read" \
-		    "no $_be_v3_dump"
-		return
-	fi
-	# Each line gives 16 bytes at an offset, "*" repeats the line
-	# before up to the next offset, and the last offset is the size.
-	awk '
-	function hex(s,    i, v) {
-		v = 0
-		for (i = 1; i <= length(s); i++)
-			v = v * 16 + index("0123456789abcdef",
-			    substr(s, i, 1)) - 1
-		return v
-	}
-	function put(    i) {
-		printf "printf \047"
-		for (i = 0; i < 16; i++)
-			printf "\\%03o", b[i]
-		printf "\047\n"
-	}
-	/^\*$/ { rep = 1; next }
-	/^[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]/ {
-		off = hex($1)
-		if (rep)
-			for (o = last + 16; o < off; o += 16)
-				put()
-		rep = 0
-		if (NF < 17)
-			exit
-		for (i = 0; i < 16; i++)
-			b[i] = hex($(i + 2))
-		put()
-		last = off
-	}' "$_be_v3_dump" >"$T/be_v3.sh"
-	sh "$T/be_v3.sh" >"$T/img"
-	check_info "the big-endian V3 of mkfs.minix is read as such" \
-	    "$T/img" "byte order" big-endian
-	run "$FSCK_MINIXFS" "$T/img"
-	check_status "and passes fsck_minixfs, maps and all" 0
+# be_images: the big-endian file systems that mkfs.minix makes, from the
+# hexdump -C in the tests of util-linux: numbers big-endian, maps as
+# bytes, which -W 8 takes.
+be_images() {
+	_be_dir=$UTILLINUX_SRC/tests/expected/minix
+	for _be_name in v1c14 v1c30 v2c14 v2c30 v3c60; do
+		_be_dump=$_be_dir/fsck-images-$_be_name.BE
+		if [ ! -f "$_be_dump" ]; then
+			skip "the big-endian $_be_name of mkfs.minix is read" \
+			    "no $_be_dump"
+			continue
+		fi
+		# Each line gives 16 bytes at an offset, "*" repeats the
+		# line before up to the next offset, and the last offset is
+		# the size.
+		awk '
+		function hex(s,    i, v) {
+			v = 0
+			for (i = 1; i <= length(s); i++)
+				v = v * 16 + index("0123456789abcdef",
+				    substr(s, i, 1)) - 1
+			return v
+		}
+		function put(    i) {
+			printf "printf \047"
+			for (i = 0; i < 16; i++)
+				printf "\\%03o", b[i]
+			printf "\047\n"
+		}
+		/^\*$/ { rep = 1; next }
+		$1 ~ /^[0-9a-f]+$/ && length($1) == 8 {
+			off = hex($1)
+			if (rep)
+				for (o = last + 16; o < off; o += 16)
+					put()
+			rep = 0
+			if (NF < 17)
+				exit
+			for (i = 0; i < 16; i++)
+				b[i] = hex($(i + 2))
+			put()
+			last = off
+		}' "$_be_dump" >"$T/be.sh"
+		sh "$T/be.sh" >"$T/img"
+		check_info "the big-endian $_be_name of mkfs.minix is read as \
+such" "$T/img" "byte order" big-endian
+		run "$FSCK_MINIXFS" -W 8 "$T/img"
+		check_status "and passes fsck_minixfs -W 8, maps and all" 0
+	done
 }
 
 if [ -n "${UTILLINUX_SRC:-}" ]; then
-	be_v3
+	be_images
 else
-	skip "the big-endian V3 of mkfs.minix is read" \
+	skip "the big-endian images of mkfs.minix are read" \
 	    "UTILLINUX_SRC is not set"
 fi
 

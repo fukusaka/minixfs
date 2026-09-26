@@ -9,27 +9,32 @@
 .Sh SYNOPSIS
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Cm info
 .Ar image
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Cm ls
 .Op Fl lR
 .Ar image
 .Op Ar path
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Cm cat
 .Ar image
 .Ar path
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Cm blocks
 .Op Fl r
 .Ar image
 .Ar path
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Cm extract
 .Op Fl dv
 .Ar image
@@ -37,11 +42,13 @@
 .Op Ar path
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Cm tar
 .Ar image
 .Op Ar path
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Op Fl f
 .Cm put
 .Op Fl Rdin
@@ -51,6 +58,7 @@
 .Ar path
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Op Fl f
 .Cm mkdir
 .Op Fl p
@@ -60,6 +68,7 @@
 .Ar path ...
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Op Fl f
 .Cm rm
 .Op Fl r
@@ -67,6 +76,7 @@
 .Ar path ...
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Op Fl f
 .Cm mv
 .Ar image
@@ -74,6 +84,7 @@
 .Ar new
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Op Fl f
 .Cm ln
 .Op Fl s
@@ -82,6 +93,7 @@
 .Ar path
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Op Fl f
 .Cm chmod
 .Ar image
@@ -89,6 +101,7 @@
 .Ar path ...
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Op Fl f
 .Cm chown
 .Ar image
@@ -110,8 +123,8 @@ they start with
 The commands are:
 .Bl -tag -width Ds
 .It Cm info
-Display the super block fields: version, byte order, magic number, name
-length, block size, inode and zone counts, bit map sizes, first data
+Display the super block fields: version, byte order, with the bits in a
+word of the bit maps if big-endian, magic number, name length, block size, inode and zone counts, bit map sizes, first data
 zone, zone size, maximum file size and clean flag.
 For Minix-vmd, also identify the variant.
 .Pp
@@ -313,6 +326,11 @@ The super block of such an image is still in place, so
 .Cm info
 looks right while the rest reads as damage; its fill count shows half of
 the image as runs of 4608 bytes.
+.It Fl W Ar bits
+Take the bit maps of a big-endian file system as words of
+.Ar bits
+bits, 8, 16, 32 or 64, instead of 16 for V1 and V2 and 8 for V3; see
+.Xr minixfs 5 .
 .It Fl f
 Let the commands that write change a file system that is not marked
 clean, which is left as it is.

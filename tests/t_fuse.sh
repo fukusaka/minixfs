@@ -793,6 +793,29 @@ if [ "$minix" = no ]; then
 	fi
 fi
 
+# -W: the bit maps of a big-endian file system in bytes, as util-linux
+# writes them, taken so through the mount.
+if [ "$minix" = no ]; then
+	{
+		echo "fs version=2 order=be blocks=2048 inodes=64 mapword=8"
+		echo "dir /bin 0755 $(id -u) $(id -g) 0"
+	} >"$T/w8.spec"
+	rm -f "$T/w8.img"
+	mkimage "$T/w8.spec" "$T/w8.img"
+	if mount_image "$T/w8.img" "$mnt" "-w -W 8"; then
+		run as_mounter sh -c "echo hello >'$mnt/bin/f' &&
+		    mkdir '$mnt/bin/d'"
+		check_status "-w -W 8: files are made" 0
+		unmount_image "$mnt"
+		run "$FSCK_MINIXFS" -W 8 "$T/w8.img"
+		check_status "-w -W 8: fsck -W 8 finds nothing wrong" 0
+	else
+		kill_mount
+		fail "-w -W 8: the image is mounted" \
+		    "$(head -5 "$T/fuse.err")"
+	fi
+fi
+
 # A sync of the mount that fails, here the first fsync(2) of the program,
 # made to fail by strace(1) where it can (Linux), keeps the mark away at
 # the unmount, although the sync of the unmount works.  The children of

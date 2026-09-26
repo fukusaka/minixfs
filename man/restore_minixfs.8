@@ -15,6 +15,7 @@
 .Fl r
 .Op Fl cNv
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Op Fl o Ar uid : Ns Ar gid
 .Op Fl s Ar symtable
 .Fl f Ar file
@@ -71,6 +72,11 @@ Write to an image containing the file system on one disk side.
 See
 .Xr minixfs 1
 for the track layout.
+.It Fl W Ar bits
+Take the bit maps of a big-endian file system as words of
+.Ar bits
+bits, 8, 16, 32 or 64, instead of 16 for V1 and V2 and 8 for V3; see
+.Xr minixfs 5 .
 .It Fl N
 Check everything, and write nothing.
 .It Fl o Ar uid : Ns Ar gid

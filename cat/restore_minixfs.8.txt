@@ -5,8 +5,8 @@ NAME
 
 SYNOPSIS
      restore_minixfs -t [-c] -f file
-     restore_minixfs -r [-cNv] [-M size:heads:side] [-o uid:gid] [-s symtable]
-                     -f file image
+     restore_minixfs -r [-cNv] [-M size:heads:side] [-W bits] [-o uid:gid]
+                     [-s symtable] -f file image
 
 DESCRIPTION
      restore_minixfs reads BSD dumps in either byte order and restores them
@@ -41,6 +41,11 @@ DESCRIPTION
      -M size:heads:side
              Write to an image containing the file system on one disk side.
              See minixfs(1) for the track layout.
+
+     -W bits
+             Take the bit maps of a big-endian file system as words of bits
+             bits, 8, 16, 32 or 64, instead of 16 for V1 and V2 and 8 for V3;
+             see minixfs(5).
 
      -N      Check everything, and write nothing.
 

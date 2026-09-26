@@ -19,6 +19,7 @@
 .Op Fl u Cm always | sync | Ar seconds
 .Oc
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Op Ar FUSE options
 .Ar image
 .Ar mountpoint
@@ -99,6 +100,13 @@ fsync とアンマウント時、\:および前回のビットマップ書き込
 片面にファイルシステムがあるディスクイメージを扱います。
 トラックの指定方法は
 .Xr minixfs 1
+を参照してください。
+.It Fl W Ar bits
+ビッグエンディアンのファイルシステムのビットマップを、\:
+.Ar bits
+ビット\:（8・16・32・64）の語として扱います。
+指定がなければ、\:V1 と V2 は 16、\:V3 は 8 です。
+.Xr minixfs 5
 を参照してください。
 .It Fl o Ar options
 コンマ区切りのオプションを FUSE に渡します。

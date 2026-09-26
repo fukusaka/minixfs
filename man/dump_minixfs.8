@@ -12,6 +12,7 @@
 .Op Fl D Ar dumpdates
 .Op Fl L Ar label
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Op Fl T Ar date
 .Fl f Ar file
 .Ar image
@@ -67,6 +68,11 @@ Read an image containing the file system on one disk side.
 See
 .Xr minixfs 1
 for the track layout.
+.It Fl W Ar bits
+Take the bit maps of a big-endian file system as words of
+.Ar bits
+bits, 8, 16, 32 or 64, instead of 16 for V1 and V2 and 8 for V3; see
+.Xr minixfs 5 .
 .It Fl T Ar date
 Dump what changed since
 .Ar date ,

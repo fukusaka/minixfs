@@ -6,7 +6,8 @@
  *
  *	tunefs_minixfs [-fN] [-B le|be] [-c clean|dirty] [-e 0|1]
  *	    [-l 14|30] [-m minix|linux|bytes]
- *	    [-M SIZE:HEADS:SIDE] [-s blocks [-k]] image
+ *	    [-M SIZE:HEADS:SIDE] [-s blocks [-k]] [-W [8|16|32|64:]8|16|32|64]
+ *	    image
  *
  * Without options, or with -N, the settings are printed and nothing is
  * written; -N shows what the other options would change.
@@ -37,9 +38,14 @@
  *		hold the new size; a device always keeps its size
  *	-M	an image that holds one side of a disk, as for minixfs(1);
  *		it cannot change size
+ *	-W	the bits in a word of the bit maps of a big-endian file
+ *		system: read them as words of the first number, or as the
+ *		version has them, and write them anew as words of the
+ *		second; with -B be, write them so
  *
  * Each change is printed as the old and the new value.  The byte order
- * is changed first, then the name length, then the size.  Changes that
+ * is changed first, then the words of the bit maps, then the name length,
+ * then the size.  Changes that
  * rewrite more than the super block and the maps work on a file system
  * that fsck_minixfs passes and that is not mounted, and one cut short
  * leaves it half changed: keep a copy.  Linux and MINIX 3 take the clean
@@ -75,6 +81,8 @@ struct options {
 	int		dry_run;	/* -N */
 	int		force;		/* -f */
 	int		keep;		/* -k */
+	uint32_t	word_old;	/* -W: bytes of a map word as read */
+	uint32_t	word_new;	/* and as written; 0 as is */
 };
 
 static void
@@ -83,8 +91,25 @@ usage(void)
 	(void)fprintf(stderr,
 	    "usage: tunefs_minixfs [-fN] [-B le|be] [-c clean|dirty] [-e 0|1]\n"
 	    "           [-l 14|30] [-m minix|linux|bytes]\n"
-	    "           [-M SIZE:HEADS:SIDE] [-s blocks [-k]] image\n");
+	    "           [-M SIZE:HEADS:SIDE] [-s blocks [-k]]\n"
+	    "           [-W [8|16|32|64:]8|16|32|64] image\n");
 	exit(2);
+}
+
+/* -W: "new", or "old:new". */
+static void
+map_words(char *s, struct options *o)
+{
+	char *colon;
+
+	if ((colon = strchr(s, ':')) != NULL) {
+		*colon = '\0';
+		if (mfs_parse_map_word(s, &o->word_old) < 0)
+			usage();
+		s = colon + 1;
+	}
+	if (mfs_parse_map_word(s, &o->word_new) < 0)
+		usage();
 }
 
 /* The size that -s asks for. */
@@ -111,7 +136,7 @@ parse(int argc, char **argv, struct options *o)
 	o->clean = -1;
 	o->end = -1;
 	o->order = -1;
-	while ((ch = getopt(argc, argv, "B:c:e:fkl:m:M:Ns:")) != -1) {
+	while ((ch = getopt(argc, argv, "B:c:e:fkl:m:M:Ns:W:")) != -1) {
 		switch (ch) {
 		case 'B':
 			if (strcmp(optarg, "le") == 0)
@@ -164,6 +189,9 @@ parse(int argc, char **argv, struct options *o)
 		case 's':
 			o->nblocks = blocks(optarg);
 			break;
+		case 'W':
+			map_words(optarg, o);
+			break;
 		default:
 			usage();
 		}
@@ -178,7 +206,8 @@ static int
 changes(const struct options *o)
 {
 	return o->order != -1 || o->namelen != 0 || o->nblocks != 0 ||
-	    o->clean != -1 || o->end != -1 || o->max != NULL;
+	    o->clean != -1 || o->end != -1 || o->max != NULL ||
+	    o->word_new != 0;
 }
 
 /* The maximum file size that -m asks for. */
@@ -512,7 +541,7 @@ main(int argc, char **argv)
 	struct map_end maps[2];
 	struct options o;
 	struct mfs fs;
-	uint32_t len, max;
+	uint32_t len, max, words;
 	uint16_t state;
 	uint64_t bit;
 	const char *done, *from, *old;
@@ -525,16 +554,34 @@ main(int argc, char **argv)
 			errx(1, "%s: not a MINIX file system", o.image);
 		errx(1, "%s: %s", o.image, strerror(-r));
 	}
+	if (o.word_old != 0)
+		mfs_set_map_word(&fs, o.word_old);
 	status = 0;
 	check_all(&fs, &o, write);
 	done = "nothing changed";
+	words = 0;
 	if (o.order != -1) {
 		from = order_name(fs.order);
+		/* Big-endian, the maps are written as the words they get. */
+		if (o.order == MFS_BIG_ENDIAN && fs.order != MFS_BIG_ENDIAN)
+			mfs_set_map_word(&fs, o.word_new != 0 ? o.word_new :
+			    mfs_default_map_word(fs.version, fs.namelen));
 		if (write && (r = mfs_convert_order(&fs, o.order)) < 0)
 			errx(1, "%s: byte order: %s", o.image, strerror(-r));
 		(void)printf("byte order: %s -> %s\n", from,
 		    order_name(o.order));
 		done = "the byte order was changed, nothing else";
+	}
+	if (o.word_new != 0 && fs.order == MFS_BIG_ENDIAN &&
+	    o.word_new != fs.map_word) {
+		words = fs.map_word;
+		if (write && (r = mfs_convert_map_word(&fs, o.word_new)) < 0)
+			errx(1, "%s: bit maps: %s", o.image, strerror(-r));
+		(void)printf("bit map words: %" PRIu32 " -> %" PRIu32
+		    " bits\n", words * 8, o.word_new * 8);
+		done = o.order != -1 ? "the byte order and the bit map words "
+		    "were changed, nothing else" :
+		    "the bit map words were changed, nothing else";
 	}
 	if (o.namelen != 0) {
 		len = fs.namelen;
@@ -544,7 +591,9 @@ main(int argc, char **argv)
 		(void)printf("name length: %" PRIu32 " -> %" PRIu32 "\n",
 		    len, o.namelen);
 		done = o.order != -1 ? "the byte order and the name length "
-		    "were changed, nothing else" :
+		    "were changed, nothing else" : words != 0 ?
+		    "the bit map words and the name length were changed, "
+		    "nothing else" :
 		    "the name length was changed, nothing else";
 	}
 	if (o.nblocks != 0) {
@@ -562,6 +611,9 @@ main(int argc, char **argv)
 
 	if (!changes(&o)) {
 		(void)printf("byte order: %s\n", order_name(fs.order));
+		if (fs.order == MFS_BIG_ENDIAN)
+			(void)printf("bit map words: %" PRIu32 " bits\n",
+			    fs.map_word * 8);
 		(void)printf("name length: %" PRIu32 "\n", fs.namelen);
 		(void)printf("blocks: %" PRIu32 "\n", fs.nblocks);
 		(void)printf("state: %s\n", clean_value(&fs, fs.state));

@@ -6,17 +6,18 @@ NAME
 SYNOPSIS
      tunefs_minixfs [-fN] [-B le | be] [-c clean | dirty] [-e 0 | 1]
                     [-l 14 | 30] [-m minix | linux | bytes]
-                    [-M size:heads:side] [-s blocks [-k]] image
+                    [-M size:heads:side] [-s blocks [-k]] [-W [old:]new] image
 
 DESCRIPTION
      tunefs_minixfs changes the settings of the MINIX file system in image;
-     see minixfs(5).  Without options it prints them: the byte order, the name
-     length, the size in blocks, whether the file system is marked clean, the
-     maximum file size with the one MINIX works out, and the bits of the maps
-     past the last inode or zone.  Each change is printed as the old and the
-     new value.  The byte order is changed first, then the name length, then
-     the size.  The image is locked with fcntl(2) while it is written, and one
-     that another program holds is refused.
+     see minixfs(5).  Without options it prints them: the byte order, with the
+     bits in a word of the bit maps if big-endian, the name length, the size
+     in blocks, whether the file system is marked clean, the maximum file size
+     with the one MINIX works out, and the bits of the maps past the last
+     inode or zone.  Each change is printed as the old and the new value.  The
+     byte order is changed first, then the bit map words, then the name
+     length, then the size.  The image is locked with fcntl(2) while it is
+     written, and one that another program holds is refused.
 
      The options are:
 
@@ -81,6 +82,13 @@ DESCRIPTION
      -M size:heads:side
              Modify an image containing the file system on one disk side.  See
              minixfs(1) for the track layout.  Its size cannot change.
+
+     -W [old:]new
+             Write the bit maps of a big-endian file system anew as words of
+             new bits, reading them as words of old bits, or of 16 for V1 and
+             V2 and 8 for V3; with -B be, write them as words of new bits, and
+             with -B le, read them as words of old bits.  The widths are 8,
+             16, 32 and 64; see minixfs(5).
 
 EXIT STATUS
      tunefs_minixfs exits with 0 on success, 1 if anything failed, and 2 for a

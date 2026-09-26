@@ -29,6 +29,7 @@
 .Op Fl m Cm minix | linux | Ar bytes
 .Op Fl s Ar blocks
 .Op Fl t Ar time
+.Op Fl W Ar bits
 .Op Fl z Ar log-zone-size
 .Ar image
 .Sh DESCRIPTION
@@ -175,6 +176,13 @@ MINIX との互換性の制限は
 .It Fl t Ar time
 ルートディレクトリの時刻で、\:紀元からの秒数です。
 毎回同じイメージを\:作りたいときに\:使います。
+.It Fl W Ar bits
+ビッグエンディアンのファイルシステムのビットマップを、\:
+.Ar bits
+ビット\:（8・16・32・64）の語で書きます。
+指定がなければ、\:V1 と V2 は 16、\:V3 は 8 です。
+.Xr minixfs 5
+を参照してください。
 .It Fl z Ar log-zone-size
 zone を 2 の
 .Ar log-zone-size

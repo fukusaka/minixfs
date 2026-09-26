@@ -13,7 +13,7 @@
  *
  *	fs   [version=1|2|3] order=le|be [namelen=14|30] [block=N]
  *	     blocks=N inodes=N [logzone=N] [spare=N] [gap=N] [skip=N] [vmd]
- *	     [maxsize=linux|minix|N] [end=0|1]
+ *	     [maxsize=linux|minix|N] [end=0|1] [mapword=8|16|32|64]
  *	dir  PATH MODE UID GID MTIME
  *	file PATH MODE UID GID MTIME SIZE SEED [HOLESTART:HOLELEN ...]
  *	link PATH TARGET UID GID MTIME
@@ -34,7 +34,9 @@
  * indirect zone, as the mkfs of MINIX writes it, or N.  end gives the
  * bits of the maps past the last inode and zone: set by default, as
  * mkfs.minix of Linux sets them, and clear with end=0, as the mkfs of
- * MINIX 2 and later leaves them.
+ * MINIX 2 and later leaves them.  mapword gives the bits in a word of the
+ * bit maps of a big-endian file system: 16 for V1 and V2 and 8 for V3 by
+ * default.
  * vmd makes a V1 or V2 file system as Minix-vmd does: its super block
  * keeps the zone size in a byte, flags (flex directories, clean) in the
  * next and 0x7f, 0x13 at byte 18, the bits of its maps past the end are
@@ -161,6 +163,7 @@ struct image {
 	uint32_t	logzone;
 	int		minix_max;	/* maxsize=minix */
 	int		end;		/* end=0|1, or -1 */
+	uint32_t	mapword;	/* mapword=, in bytes, or 0 */
 	uint32_t	maxsize;	/* maxsize=N, or 0 */
 	uint32_t	spare;		/* map blocks beyond the need */
 	uint32_t	gap;		/* zones before the first data zone */
@@ -245,10 +248,9 @@ get_zone(const struct image *img, const unsigned char *p)
 }
 
 /*
- * MINIX keeps the bit maps of V1 and V2 as arrays of 16-bit words, whose
- * bytes a big-endian machine reverses relative to the PC.  Those of V3
- * are arrays of bytes in either order, as Linux writes them on a
- * big-endian machine.
+ * The bit maps are arrays of words of mapword bits, whose bytes a
+ * big-endian machine reverses relative to the PC: MINIX keeps those of
+ * V1 and V2 as 16-bit words, and Linux writes those of V3 as bytes.
  */
 static void
 set_bit(const struct image *img, unsigned char *map, uint32_t bit)
@@ -256,8 +258,8 @@ set_bit(const struct image *img, unsigned char *map, uint32_t bit)
 	uint32_t byte;
 
 	byte = bit / 8;
-	if (img->big_endian && img->version != 3)
-		byte ^= 1;
+	if (img->big_endian)
+		byte ^= img->mapword - 1;
 	map[byte] |= (unsigned char)(1 << (bit % 8));
 }
 
@@ -564,6 +566,14 @@ fs_option(struct parser *ps, char *s)
 		img->end = 0;
 	else if (strcmp(s, "end=1") == 0)
 		img->end = 1;
+	else if (strcmp(s, "mapword=8") == 0)
+		img->mapword = 1;
+	else if (strcmp(s, "mapword=16") == 0)
+		img->mapword = 2;
+	else if (strcmp(s, "mapword=32") == 0)
+		img->mapword = 4;
+	else if (strcmp(s, "mapword=64") == 0)
+		img->mapword = 8;
 	else
 		syntax(ps, "unknown fs option", s);
 }
@@ -596,6 +606,8 @@ check_version(const struct parser *ps, struct image *img)
 	img->maxname = img->vmd ? 60 : img->namelen;
 	if (img->end == -1)
 		img->end = !img->vmd;
+	if (img->mapword == 0)
+		img->mapword = img->version == 3 ? 1 : 2;
 	img->zbytes = img->version == 1 ? 2 : 4;
 	img->isize = img->version == 1 ? 32 : 64;
 	img->dino = img->version == 3 ? 4 : 2;

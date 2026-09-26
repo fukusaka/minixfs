@@ -144,6 +144,13 @@ mfs_plan(const struct mfs_params *p, struct mfs_layout *l)
 	return 0;
 }
 
+uint32_t
+mfs_default_map_word(int version, uint32_t namelen)
+{
+	(void)namelen;
+	return version == 3 ? 1 : 2;
+}
+
 int
 mfs_linux_only(int version, uint32_t namelen)
 {
@@ -213,8 +220,8 @@ fill_super(const struct mfs_params *p, const struct mfs_layout *l,
 /*
  * Write a bit map of nblocks blocks at block start in which bits 0 to
  * used are set, bits up to last are clear, and the bits after last are
- * as the parameters ask.  The maps are arrays of words, 16 bits wide in
- * V1 and V2 and 32 bits in V3, in the byte order of the image.
+ * as the parameters ask, in words as mfs_default_map_word() says or the
+ * parameters give.
  */
 static int
 write_map(int fd, const struct mfs_params *p, const struct mfs_layout *l,
@@ -222,9 +229,11 @@ write_map(int fd, const struct mfs_params *p, const struct mfs_layout *l,
     uint32_t last)
 {
 	uint64_t bit;
-	uint32_t b, byte, i, per;
+	uint32_t b, byte, i, per, word;
 	int r;
 
+	word = p->map_word != 0 ? p->map_word :
+	    mfs_default_map_word(p->version, l->namelen);
 	per = l->block_size * 8;
 	for (b = 0; b < nblocks; b++) {
 		(void)memset(buf, 0, l->block_size);
@@ -232,9 +241,8 @@ write_map(int fd, const struct mfs_params *p, const struct mfs_layout *l,
 			bit = (uint64_t)b * per + i;
 			if (bit <= used || (bit > last && p->map_end)) {
 				byte = i / 8;
-				if (p->order == MFS_BIG_ENDIAN &&
-				    p->version != 3)
-					byte ^= 1;
+				if (p->order == MFS_BIG_ENDIAN)
+					byte ^= word - 1;
 				buf[byte] |= (unsigned char)(1 << (i % 8));
 			}
 		}

@@ -17,6 +17,7 @@
 .Op Fl lwy
 .Op Fl e Cm 0 | 1
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Ar image
 .Sh DESCRIPTION
 .Nm
@@ -112,6 +113,13 @@ MINIX が読まない 30 文字の名前では、\:最大ファイルサイズ�
 を参照してください。
 .Fl y
 では指定した面だけを修復します。
+.It Fl W Ar bits
+ビッグエンディアンのファイルシステムのビットマップを、\:
+.Ar bits
+ビット\:（8・16・32・64）の語として扱います。
+指定がなければ、\:V1 と V2 は 16、\:V3 は 8 です。
+.Xr minixfs 5
+を参照してください。
 .El
 .Sh EXIT STATUS
 .Nm

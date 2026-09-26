@@ -4,21 +4,21 @@ NAME
      minixfs – MINIX ファイルシステムのイメージを読み書きする
 
 SYNOPSIS
-     minixfs [-M size:heads:side] info image
-     minixfs [-M size:heads:side] ls [-lR] image [path]
-     minixfs [-M size:heads:side] cat image path
-     minixfs [-M size:heads:side] blocks [-r] image path
-     minixfs [-M size:heads:side] extract [-dv] image dest [path]
-     minixfs [-M size:heads:side] tar image [path]
-     minixfs [-M size:heads:side] [-f] put [-Rdin] [-o uid:gid] image host ...
-             path
-     minixfs [-M size:heads:side] [-f] mkdir [-p] [-m mode] [-o uid:gid] image
-             path ...
-     minixfs [-M size:heads:side] [-f] rm [-r] image path ...
-     minixfs [-M size:heads:side] [-f] mv image old new
-     minixfs [-M size:heads:side] [-f] ln [-s] image target path
-     minixfs [-M size:heads:side] [-f] chmod image mode path ...
-     minixfs [-M size:heads:side] [-f] chown image uid:gid path ...
+     minixfs [-M size:heads:side] [-W bits] info image
+     minixfs [-M size:heads:side] [-W bits] ls [-lR] image [path]
+     minixfs [-M size:heads:side] [-W bits] cat image path
+     minixfs [-M size:heads:side] [-W bits] blocks [-r] image path
+     minixfs [-M size:heads:side] [-W bits] extract [-dv] image dest [path]
+     minixfs [-M size:heads:side] [-W bits] tar image [path]
+     minixfs [-M size:heads:side] [-W bits] [-f] put [-Rdin] [-o uid:gid]
+             image host ... path
+     minixfs [-M size:heads:side] [-W bits] [-f] mkdir [-p] [-m mode]
+             [-o uid:gid] image path ...
+     minixfs [-M size:heads:side] [-W bits] [-f] rm [-r] image path ...
+     minixfs [-M size:heads:side] [-W bits] [-f] mv image old new
+     minixfs [-M size:heads:side] [-W bits] [-f] ln [-s] image target path
+     minixfs [-M size:heads:side] [-W bits] [-f] chmod image mode path ...
+     minixfs [-M size:heads:side] [-W bits] [-f] chown image uid:gid path ...
 
 DESCRIPTION
      minixfs は、V1・V2・V3 のどの版の MINIX
@@ -33,7 +33,7 @@ DESCRIPTION
      コマンドは次のとおりです。
 
      info    superblock
-             の版、バイト順、マジック番号、名前の長さ、ブロックサイズ、inode・zone
+             の版、バイト順（ビッグエンディアンならビットマップの語のビット数も）、マジック番号、名前の長さ、ブロックサイズ、inode・zone
              数、ビットマップの大きさ、最初のデータ zone、zone
              サイズ、最大ファイルサイズ、clean の印を表示します。 Minix-vmd
              では亜種の名前も表示します。
@@ -160,6 +160,11 @@ OPTIONS
              は正しく見えますが、残りは壊れているように読めます。 info
              の埋め草の数え上げでは、イメージの半分が 4608
              バイトの連なりとして現れます。
+
+     -W bits
+             ビッグエンディアンのファイルシステムのビットマップを、 bits
+             ビット（8・16・32・64）の語として扱います。 指定がなければ、V1 と
+             V2 は 16、V3 は 8 です。 minixfs(5) を参照してください。
 
      -f      書き込むコマンドに、clean
              の印のないファイルシステムも変えさせます。 印はそのままにします。

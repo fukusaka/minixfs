@@ -146,6 +146,47 @@ for logzone in 0 1; do
 done
 done
 
+# -W old:new: the maps of the big-endian test tree written anew in each
+# width are those mkimage writes in that width; -B le reads them in the
+# width given, and -B be writes them in it.
+for format in 1/14 2/14 3/1024; do
+	version=${format%/*}
+	if [ "$version" -eq 3 ]; then
+		fs="version=3 block=${format#*/}"
+		cur=8
+	else
+		fs="version=$version namelen=${format#*/}"
+		cur=16
+	fi
+	sed -e "s/@FS@/$fs/" -e "s/@ORDER@/le/" -e "s/@BLOCKS@/4096/" \
+	    -e "s/@LOGZONE@/0/" tests/tree.spec >"$T/spec"
+	mkimage "$T/spec" "$T/le"
+	for bits in 8 16 32 64; do
+		sed -e '/^fs /s/order=le/order=be/' \
+		    -e "/^fs /s/\$/ mapword=$bits/" "$T/spec" >"$T/spec.$bits"
+		mkimage "$T/spec.$bits" "$T/be.$bits"
+	done
+	cp "$T/be.$cur" "$T/img"
+	for bits in 8 32 64 16 8; do
+		v="V$format -W $cur:$bits"
+		run "$TUNEFS_MINIXFS" -W "$cur:$bits" "$T/img"
+		check_status "$v succeeds" 0
+		if [ "$cur" -ne "$bits" ]; then
+			check_out_has "$v shows the change" \
+			    "^bit map words: $cur -> $bits bits\$"
+		fi
+		check_same_file "$v gives the maps mkimage writes" \
+		    "$T/be.$bits" "$T/img"
+		cur=$bits
+	done
+	run "$TUNEFS_MINIXFS" -W "$cur:$cur" -B le "$T/img"
+	check_same_file "V$format: -W $cur:$cur -B le gives the little-endian \
+image" "$T/le" "$T/img"
+	run "$TUNEFS_MINIXFS" -B be -W 32 "$T/img"
+	check_same_file "V$format: -B be -W 32 gives maps of 32-bit words" \
+	    "$T/be.32" "$T/img"
+done
+
 # -l: the test tree, with a directory that needs an indirect zone, keeps
 # every name and file through 14 -> 30 -> 14.
 for fs in "1 le" "1 be" "2 le" "2 be"; do

@@ -5,7 +5,7 @@ NAME
 
 SYNOPSIS
      mount_minixfs [-w [-u always | sync | seconds]] [-M size:heads:side]
-                   [FUSE options] image mountpoint
+                   [-W bits] [FUSE options] image mountpoint
 
 DESCRIPTION
      mount_minixfs mounts the MINIX file system in image on mountpoint through
@@ -53,6 +53,11 @@ DESCRIPTION
      -M size:heads:side
              Access an image containing the file system on one disk side.  See
              minixfs(1) for the track layout.
+
+     -W bits
+             Take the bit maps of a big-endian file system as words of bits
+             bits, 8, 16, 32 or 64, instead of 16 for V1 and V2 and 8 for V3;
+             see minixfs(5).
 
      -o options
              Pass a comma-separated option list to FUSE.  The following

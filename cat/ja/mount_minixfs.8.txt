@@ -5,7 +5,7 @@ NAME
 
 SYNOPSIS
      mount_minixfs [-w [-u always | sync | seconds]] [-M size:heads:side]
-                   [FUSE options] image mountpoint
+                   [-W bits] [FUSE options] image mountpoint
 
 DESCRIPTION
      mount_minixfs は、 image の MINIX ファイルシステムを FUSE で mountpoint
@@ -54,6 +54,11 @@ DESCRIPTION
      -M size:heads:side
              片面にファイルシステムがあるディスクイメージを扱います。
              トラックの指定方法は minixfs(1) を参照してください。
+
+     -W bits
+             ビッグエンディアンのファイルシステムのビットマップを、 bits
+             ビット（8・16・32・64）の語として扱います。 指定がなければ、V1 と
+             V2 は 16、V3 は 8 です。 minixfs(5) を参照してください。
 
      -o options
              コンマ区切りのオプションを FUSE に渡します。

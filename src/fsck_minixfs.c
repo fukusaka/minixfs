@@ -4,7 +4,8 @@
  *
  * fsck_minixfs - check a MINIX file system image, and repair it.
  *
- *	fsck_minixfs [-lwy] [-e 0|1] [-M SIZE:HEADS:SIDE] image
+ *	fsck_minixfs [-lwy] [-e 0|1] [-M SIZE:HEADS:SIDE] [-W 8|16|32|64]
+ *	    image
  *
  * The check reads the super block, walks the tree from the root, and then
  * compares what it found with the inode table and the bit maps:
@@ -63,7 +64,8 @@
  * it is not a problem.
  *
  * -M reads and repairs an image that holds the file system in the
- * tracks of one side only, as minixfs(1) does.
+ * tracks of one side only, as minixfs(1) does, and -W takes the bit maps
+ * of a big-endian file system as words of so many bits.
  *
  * Each problem is printed on a line of its own, with "(repaired)" or
  * "(not repaired)" after it under -y.  A file system that is not marked
@@ -134,6 +136,7 @@ struct opts {
 	int		end;			/* -e 0 or 1; -1: no check */
 	int		warn;			/* -w */
 	struct mfs_tracks tracks;		/* -M */
+	uint32_t	map_word;		/* -W, or 0 */
 };
 
 /* The state of one check. */
@@ -177,7 +180,7 @@ static void
 usage(void)
 {
 	(void)fprintf(stderr, "usage: fsck_minixfs [-lwy] [-e 0|1] "
-	    "[-M SIZE:HEADS:SIDE] image\n");
+	    "[-M SIZE:HEADS:SIDE] [-W 8|16|32|64] image\n");
 	exit(EXIT_USAGE);
 }
 
@@ -1435,6 +1438,8 @@ check(struct check *c, const char *image, const struct opts *o, int quiet)
 		    "not know", image);
 	if (r < 0)
 		errx(EXIT_CANNOT, "%s: %s", image, strerror(-r));
+	if (o->map_word != 0)
+		mfs_set_map_word(&c->fs, o->map_word);
 	c->refs = calloc((size_t)c->fs.ninodes + 1, sizeof(*c->refs));
 	if (c->refs == NULL)
 		err(EXIT_CANNOT, NULL);
@@ -1500,8 +1505,9 @@ main(int argc, char **argv)
 	o.lost = 0;
 	o.end = -1;
 	o.warn = 0;
+	o.map_word = 0;
 	(void)memset(&o.tracks, 0, sizeof(o.tracks));
-	while ((ch = getopt(argc, argv, "e:lM:wy")) != -1) {
+	while ((ch = getopt(argc, argv, "e:lM:W:wy")) != -1) {
 		switch (ch) {
 		case 'e':
 			if (strcmp(optarg, "0") == 0)
@@ -1516,6 +1522,10 @@ main(int argc, char **argv)
 			break;
 		case 'M':
 			if (mfs_parse_tracks(optarg, &o.tracks) < 0)
+				usage();
+			break;
+		case 'W':
+			if (mfs_parse_map_word(optarg, &o.map_word) < 0)
 				usage();
 			break;
 		case 'w':

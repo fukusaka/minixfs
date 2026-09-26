@@ -97,6 +97,7 @@ struct mfs {
 	unsigned char	*ibuf;		/* one block: inodes, indirects */
 	unsigned char	*dbuf;		/* one block, for file data */
 	enum mfs_order	order;
+	uint32_t	map_word;	/* bytes in a word of the bit maps */
 	int		fd;
 	int		writable;	/* opened by mfs_open_rw() */
 	unsigned char	*imap;		/* kept by mfs_write.c, or NULL */
@@ -193,6 +194,32 @@ int	mfs_open_tracks(struct mfs *, const char *, int,
  * text is not three numbers, SIZE is 0 or SIDE is not below HEADS.
  */
 int	mfs_parse_tracks(const char *, struct mfs_tracks *);
+
+/*
+ * The bit maps are arrays of words of 1, 2, 4 or 8 bytes, bit 0 of a word
+ * its lowest, in the byte order of the file system.  Little-endian, all
+ * are the same bytes; big-endian, they are not, and the systems differ:
+ * MINIX keeps words of 16 bits, util-linux bytes, and the Linux kernel
+ * bytes or words as the machine has them.  mfs_open_tracks() takes the
+ * maps as mfs_default_map_word() gives them.
+ */
+
+/*
+ * Parse the bits of a word of the bit maps, "8", "16", "32" or "64", into
+ * *bytes.  Returns 0 or -EINVAL.
+ */
+int	mfs_parse_map_word(const char *, uint32_t *);
+
+/* Take the bit maps of *fs as words of bytes bytes, 1, 2, 4 or 8. */
+void	mfs_set_map_word(struct mfs *, uint32_t);
+
+/*
+ * Write both bit maps anew as words of bytes bytes, reading them as fs
+ * takes them now, and take them so from then on; big-endian only, as
+ * little-endian the bytes stay the same.  Returns 0 or a negative errno
+ * value.
+ */
+int	mfs_convert_map_word(struct mfs *, uint32_t);
 
 /*
  * Lock the image open as fd for writing with fcntl(2), so that two
@@ -652,6 +679,7 @@ struct mfs_params {
 	uint32_t	namelen;	/* 0: 14, or 60 for V3 and flex */
 	int		flex;		/* Minix-vmd, V1 or V2: flex directories */
 	int		map_end;	/* the bits of the maps past the end */
+	uint32_t	map_word;	/* 0: mfs_default_map_word() */
 	uint32_t	nblocks;	/* size in blocks */
 	uint32_t	ninodes;	/* 0: one for every 3 blocks */
 	uint32_t	log_zone_size;
@@ -700,6 +728,14 @@ int	mfs_linux_only(int, uint32_t);
  * does not look at them.
  */
 int	mfs_default_map_end(int, uint32_t);
+
+/*
+ * The bytes in a word of the bit maps that a file system of a version and
+ * name length is taken to have: 2 for V1 and V2, as MINIX keeps them, and
+ * 1 for V3, as Linux writes them on big-endian machines, the only V3
+ * there is in that order.
+ */
+uint32_t mfs_default_map_word(int, uint32_t);
 
 /*
  * The s_max_size that MINIX works out for a version, block size and zone

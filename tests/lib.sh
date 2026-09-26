@@ -472,8 +472,8 @@ map_blocks() {
 }
 
 # set_map_bit IMAGE imap|zmap BIT 0|1 - clear or set a bit of a bit map.
-# The maps of V1 and V2 are arrays of 16-bit words in the byte order of
-# the image; those of V3 are arrays of bytes.
+# The maps are arrays of words in the byte order of the image, of as many
+# bits as "minixfs info" says of a big-endian one.
 set_map_bit() {
 	_set_map_bit_bs=$(info_field "$1" "block size")
 	_set_map_bit_start=$((2 * _set_map_bit_bs))
@@ -482,9 +482,10 @@ set_map_bit() {
 		    $(info_field "$1" "inode map blocks") * _set_map_bit_bs))
 	fi
 	_set_map_bit_byte=$(($3 / 8))
-	if [ "$(info_field "$1" "byte order")" = big-endian ] &&
-	    [ "$(info_field "$1" version)" -ne 3 ]; then
-		_set_map_bit_byte=$((_set_map_bit_byte ^ 1))
+	if [ "$(info_field "$1" "byte order")" = big-endian ]; then
+		_set_map_bit_w=$(info_field "$1" "bit map words")
+		_set_map_bit_byte=$((_set_map_bit_byte ^ \
+		    (${_set_map_bit_w% bits} / 8 - 1)))
 	fi
 	_set_map_bit_off=$((_set_map_bit_start + _set_map_bit_byte))
 	# od of FreeBSD pads the number with blanks, which its sh does not

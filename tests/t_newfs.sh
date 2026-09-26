@@ -509,10 +509,34 @@ map_order() {
 	    test "$word" = "0 3"
 }
 
+# -W: the bits in a word of the bit maps of a big-endian file system.
+map_words() {
+	for version in 1 2 3; do
+		for bits in 8 16 32 64; do
+			if [ "$version" -eq 3 ]; then
+				opts="-b 4096 -s 512"
+				spec="block=4096 blocks=512"
+			else
+				opts="-s 2048"
+				spec="blocks=2048"
+			fi
+			vs_mkimage "$version" "$opts -B be -W $bits -i 100" \
+			    "$spec order=be inodes=100 maxsize=minix end=0 \
+mapword=$bits" "V$version -W $bits"
+		done
+	done
+	run "$NEWFS_MINIXFS" -V 2 -B be -W 32 -s 100 -N "$T/img"
+	check_out_has "-N prints the bits of a word of the maps" \
+	    "^bit map words: 32 bits\$"
+	run "$NEWFS_MINIXFS" -V 2 -W 24 -s 100 "$T/img"
+	check_status "-W 24 is a usage error" 2
+}
+
 formats
 max_sizes
 map_ends
 map_order
+map_words
 defaults
 sizes
 refusals

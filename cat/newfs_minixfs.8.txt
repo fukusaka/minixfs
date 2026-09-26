@@ -7,7 +7,7 @@ SYNOPSIS
      newfs_minixfs -V version [-N] [-B le | be] [-b block-size] [-d directory
                    [-F specfile [-P dbdir [-x]]] [-o uid:gid]] [-e 0 | 1]
                    [-i inodes] [-l name-length | flex]
-                   [-m minix | linux | bytes] [-s blocks] [-t time]
+                   [-m minix | linux | bytes] [-s blocks] [-t time] [-W bits]
                    [-z log-zone-size] image
 
 DESCRIPTION
@@ -107,6 +107,11 @@ DESCRIPTION
      -t time
              The time of the root directory, in seconds since the Epoch, for
              images that must come out the same each time.
+
+     -W bits
+             Write the bit maps of a big-endian file system as words of bits
+             bits, 8, 16, 32 or 64, instead of 16 for V1 and V2 and 8 for V3;
+             see minixfs(5).
 
      -z log-zone-size
              A zone of 2 to the power of log-zone-size blocks; 0, one block,

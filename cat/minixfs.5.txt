@@ -85,16 +85,29 @@ DESCRIPTION
    Bit maps
      Bit i of the inode map is set when inode i is in use; bit i of the zone
      map when zone first data zone + i - 1 is.  Bit 0 of both is never used
-     and is always set.  The maps of V1 and V2 are arrays of 16-bit words in
-     the byte order of the file system, and those of V3 arrays of bytes in
-     either order, as Linux writes them on big-endian machines; bit 0 of a
-     word or byte is its lowest.  The bits past the last inode or zone are set
-     by the mkfs of MINIX 1.3 to 1.6.25 and by mkfs.minix of Linux, and left
-     clear by that of MINIX from 2.0.0 and of Minix-vmd.  The fsck of MINIX
-     from 2.0.0 and of Minix-vmd reports set ones as inodes or zones missing;
-     the Linux kernel counts clear ones as free, and sets them one by one once
-     the maps are full.  The fsck of MINIX 1.3 to 1.6.25 and fsck.minix ignore
-     them.
+     and is always set.  The maps are arrays of words in the byte order of the
+     file system, bit 0 of a word being its lowest.  Little-endian, words of
+     any width are the same bytes; big-endian, they are not, and the systems
+     keep words of these bits:
+
+           System                                  Bits
+           MINIX 1 and 2 (68000, SPARC)            16
+           util-linux                              8
+           Linux, PowerPC and most others          8
+           Linux, m68k with an MMU                 16
+           Linux, 32-bit NATIVE_ENDIAN machines    32
+           Linux, 64-bit NATIVE_ENDIAN machines    64
+
+     The NATIVE_ENDIAN machines of Linux are MIPS, SPARC, s390, SuperH,
+     MicroBlaze, Xtensa and m68k without an MMU; on them and on m68k, the
+     Linux kernel and util-linux disagree.  The tools take 16 bits for V1 and
+     V2 and 8 for V3, unless -W gives others.  The bits past the last inode or
+     zone are set by the mkfs of MINIX 1.3 to 1.6.25 and by mkfs.minix of
+     Linux, and left clear by that of MINIX from 2.0.0 and of Minix-vmd.  The
+     fsck of MINIX from 2.0.0 and of Minix-vmd reports set ones as inodes or
+     zones missing; the Linux kernel counts clear ones as free, and sets them
+     one by one once the maps are full.  The fsck of MINIX 1.3 to 1.6.25 and
+     fsck.minix ignore them.
 
    Inodes
      Inode 1 is the root directory; inode 0 does not exist.  A V1 inode is 32

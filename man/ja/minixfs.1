@@ -15,27 +15,32 @@
 .Sh SYNOPSIS
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Cm info
 .Ar image
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Cm ls
 .Op Fl lR
 .Ar image
 .Op Ar path
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Cm cat
 .Ar image
 .Ar path
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Cm blocks
 .Op Fl r
 .Ar image
 .Ar path
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Cm extract
 .Op Fl dv
 .Ar image
@@ -43,11 +48,13 @@
 .Op Ar path
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Cm tar
 .Ar image
 .Op Ar path
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Op Fl f
 .Cm put
 .Op Fl Rdin
@@ -57,6 +64,7 @@
 .Ar path
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Op Fl f
 .Cm mkdir
 .Op Fl p
@@ -66,6 +74,7 @@
 .Ar path ...
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Op Fl f
 .Cm rm
 .Op Fl r
@@ -73,6 +82,7 @@
 .Ar path ...
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Op Fl f
 .Cm mv
 .Ar image
@@ -80,6 +90,7 @@
 .Ar new
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Op Fl f
 .Cm ln
 .Op Fl s
@@ -88,6 +99,7 @@
 .Ar path
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Op Fl f
 .Cm chmod
 .Ar image
@@ -95,6 +107,7 @@
 .Ar path ...
 .Nm
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Op Fl f
 .Cm chown
 .Ar image
@@ -117,7 +130,7 @@ Minix-vmd のものも読みます。
 コマンドは次のとおりです。
 .Bl -tag -width Ds
 .It Cm info
-superblock の版、\:バイト順、\:マジック番号、\:名前の長さ、\:ブロックサイズ、\:inode・zone 数、\:ビットマップの大きさ、\:最初のデータ zone、\:zone サイズ、\:最大ファイルサイズ、\:clean の印を表示します。
+superblock の版、\:バイト順\:（ビッグエンディアンなら\:ビットマップの語のビット数も）、\:マジック番号、\:名前の長さ、\:ブロックサイズ、\:inode・zone 数、\:ビットマップの大きさ、\:最初のデータ zone、\:zone サイズ、\:最大ファイルサイズ、\:clean の印を表示します。
 Minix-vmd では亜種の名前も表示します。
 .Pp
 イメージとファイルシステムの容量、\:空き inode・zone 数、\:0xe5 または 0xa5 で埋まったセクタ数と、\:その連続長の最頻値も表示します。
@@ -309,6 +322,13 @@ clean でないイメージへの書き込みには
 は正しく見えますが、\:残りは壊れているように読めます。
 .Cm info
 の埋め草の数え上げでは、\:イメージの半分が 4608 バイトの連なりとして現れます。
+.It Fl W Ar bits
+ビッグエンディアンのファイルシステムのビットマップを、\:
+.Ar bits
+ビット\:（8・16・32・64）の語として扱います。
+指定がなければ、\:V1 と V2 は 16、\:V3 は 8 です。
+.Xr minixfs 5
+を参照してください。
 .It Fl f
 書き込むコマンドに、\:clean の印のないファイルシステムも変えさせます。
 印はそのままにします。

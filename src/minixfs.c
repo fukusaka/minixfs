@@ -16,9 +16,10 @@
  *
  * -M reads an image that holds the file system in the tracks of one side
  * only, such as a single-sided disk read as double-sided: tracks of SIZE
- * bytes, HEADS to a cylinder, of which side SIDE (from 0) is used.  -f
- * lets the commands that write change a file system that is not marked
- * clean.
+ * bytes, HEADS to a cylinder, of which side SIDE (from 0) is used.  -W
+ * gives the bits in a word of the bit maps of a big-endian file system;
+ * see mfs_default_map_word().  -f lets the commands that write change a
+ * file system that is not marked clean.
  *
  * Each command reports every problem it meets and goes on where it can.
  * The exit status is 0 on success, 1 if anything failed and 2 for a
@@ -51,13 +52,15 @@
 #define COPY_SIZE	65536		/* bytes copied at a time */
 
 struct mfs_tracks tracks;
+uint32_t map_word;
 int force;
 
 void
 usage(void)
 {
 	(void)fprintf(stderr,
-	    "usage: minixfs [-M SIZE:HEADS:SIDE] [-f] COMMAND ...\n"
+	    "usage: minixfs [-M SIZE:HEADS:SIDE] [-W 8|16|32|64] [-f] "
+	    "COMMAND ...\n"
 	    "       minixfs info IMAGE\n"
 	    "       minixfs ls [-lR] IMAGE [PATH]\n"
 	    "       minixfs cat IMAGE PATH\n"
@@ -92,8 +95,11 @@ open_image(struct cmd *c, const char *image)
 
 	c->image = image;
 	c->status = 0;
-	if ((r = mfs_open_tracks(&c->fs, image, 0, &tracks)) == 0)
+	if ((r = mfs_open_tracks(&c->fs, image, 0, &tracks)) == 0) {
+		if (map_word != 0)
+			mfs_set_map_word(&c->fs, map_word);
 		return;
+	}
 	if (r == -EINVAL)
 		errx(1, "%s: not a MINIX file system", image);
 	errx(1, "%s: %s", image, strerror(-r));
@@ -423,6 +429,9 @@ cmd_info(int argc, char **argv)
 	(void)printf("version: %d\n", fs->version);
 	(void)printf("byte order: %s\n",
 	    fs->order == MFS_BIG_ENDIAN ? "big-endian" : "little-endian");
+	if (fs->order == MFS_BIG_ENDIAN)
+		(void)printf("bit map words: %" PRIu32 " bits\n",
+		    fs->map_word * 8);
 	(void)printf("magic: 0x%04" PRIx16 "\n", fs->magic);
 	(void)printf("name length: %" PRIu32 "\n", fs->namelen);
 	(void)printf("block size: %" PRIu32 "\n", fs->block_size);
@@ -1478,10 +1487,18 @@ main(int argc, char **argv)
 	};
 	size_t i;
 
-	/* -M and -f come before the command, whose options getopt() reads. */
+	/*
+	 * -M, -W and -f come before the command, whose options getopt()
+	 * reads.
+	 */
 	while (argc > 1 && argv[1][0] == '-') {
 		if (strcmp(argv[1], "-M") == 0 && argc > 2) {
 			if (mfs_parse_tracks(argv[2], &tracks) < 0)
+				usage();
+			argc -= 2;
+			argv += 2;
+		} else if (strcmp(argv[1], "-W") == 0 && argc > 2) {
+			if (mfs_parse_map_word(argv[2], &map_word) < 0)
 				usage();
 			argc -= 2;
 			argv += 2;

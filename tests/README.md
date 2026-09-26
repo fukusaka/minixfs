@@ -35,9 +35,10 @@ is installed.  They print TAP.  Variables:
   `sh tests/vmd-fsck.sh SRC.TGZ DIR` builds into `DIR` from
   `1.7.0/SRC.TGZ` of the Minix-vmd distribution; nothing of Minix-vmd is
   kept in this tree
-- `UTILLINUX_SRC=DIR` - `t_utillinux.sh` also reads the big-endian V3
-  that `mkfs.minix` makes, rebuilt from the hexdump in the tests of the
-  util-linux sources in `DIR`; nothing of util-linux is kept in this tree
+- `UTILLINUX_SRC=DIR` - `t_utillinux.sh` also reads the big-endian V1,
+  V2 and V3 that `mkfs.minix` makes, rebuilt from the hexdumps in the
+  tests of the util-linux sources in `DIR`; nothing of util-linux is
+  kept in this tree
 - `UTILLINUX_NOSYNC=yes` - `t_utillinux.sh` has strace(1) skip the
   sync(2) calls of `fsck.minix`, three a run, which wait for every file
   system of the host; where strace cannot (it is Linux only), the test
@@ -67,18 +68,19 @@ top of `tests/mkimage.c`).  The scripts:
   format of Minix-vmd, the image that `tests/mkimage` makes from an
   empty tree, with the maximum file size and map tail bits of MINIX, or
   of Linux for names of 30 characters, or as `-m` and `-e` give; the
-  maps of a big-endian V3 as those of the little-endian one; defaults,
-  sizes, `-N`, the boot block, and the options it must refuse.  With
-  `-d`, the test tree goes into every format and comes back out with its
-  modes, sizes and times; hard and symbolic links, pipes, `-o`, owners
-  of `-o` that are no numbers or past their range, the size made to fit,
-  `-N`, sizes too small, names too long and files past the maximum file
-  size; a tree of many empty files, whose inode table the size made to
-  fit has room for; and, where fakeroot(1) is installed, devices.  With
-  `-F`, a specification in both forms sets modes, owners (by name, from
-  `-P`) and times, adds devices, links, pipes, empty files and escaped
-  names, skips optional entries, `-x` leaves out what it does not name,
-  and bad entries change nothing.
+  maps of a big-endian V3 as those of the little-endian one, and those
+  of every version in words of 8, 16, 32 and 64 bits with `-W`;
+  defaults, sizes, `-N`, the boot block, and the options it must refuse.
+  With `-d`, the test tree goes into every format and comes back out
+  with its modes, sizes and times; hard and symbolic links, pipes, `-o`,
+  owners of `-o` that are no numbers or past their range, the size made
+  to fit, `-N`, sizes too small, names too long and files past the
+  maximum file size; a tree of many empty files, whose inode table the
+  size made to fit has room for; and, where fakeroot(1) is installed,
+  devices.  With `-F`, a specification in both forms sets modes, owners
+  (by name, from `-P`) and times, adds devices, links, pipes, empty
+  files and escaped names, skips optional entries, `-x` leaves out what
+  it does not name, and bad entries change nothing.
 - `t_fsck.sh` - `fsck_minixfs` passes the test tree in every format and
   an empty file system, and finds each kind of damage in every version
   and byte order: a bad maximum file size, which becomes MINIX's, a
@@ -106,35 +108,44 @@ top of `tests/mkimage.c`).  The scripts:
   versions and byte orders; `-m` below the largest file is refused and
   changes nothing; `-B` turns the test tree of every format and zone
   size into the image mkimage makes in the other byte order, and back,
-  the maps of V3 unchanged; `-l` keeps every name and file of the test
-  tree, with a directory that needs an indirect zone, through 14 -> 30
-  -> 14, lists all names too long for 14 characters and changes nothing,
-  changes nothing when the directories would not fit, and refuses V3;
-  `-s` keeps every file of the test tree through a growth the zone map
-  has room for, one that moves the inode table and the zones, and a
-  shrink back; it shrinks an image whose files lie past the new end
-  (mkimage `skip=`) by moving them down, changes nothing for a size too
-  small, and refuses to outgrow V1 and to resize one side of a disk;
-  with `-k` the image file keeps its size, the file system shrinks
-  inside it and grows back as far as it holds, but no further; `-B`,
-  `-l` and `-s` refuse a file system not marked clean without `-f`, and
-  work after `fsck_minixfs -y`; a change asked for with one that is
-  refused, such as `-B be -s 1`, `-B be -m big` or `-l` on V3, does not
-  happen either; bad values are usage errors.
+  the maps of V3 unchanged; `-W old:new` writes the maps of the
+  big-endian test tree anew in each width as mkimage writes them, and
+  `-B` reads and writes them in the width `-W` gives; `-l` keeps every
+  name and file of the test tree, with a directory that needs an
+  indirect zone, through 14 -> 30 -> 14, lists all names too long for 14
+  characters and changes nothing, changes nothing when the directories
+  would not fit, and refuses V3; `-s` keeps every file of the test tree
+  through a growth the zone map has room for, one that moves the inode
+  table and the zones, and a shrink back; it shrinks an image whose
+  files lie past the new end (mkimage `skip=`) by moving them down,
+  changes nothing for a size too small, and refuses to outgrow V1 and to
+  resize one side of a disk; with `-k` the image file keeps its size,
+  the file system shrinks inside it and grows back as far as it holds,
+  but no further; `-B`, `-l` and `-s` refuse a file system not marked
+  clean without `-f`, and work after `fsck_minixfs -y`; a change asked
+  for with one that is refused, such as `-B be -s 1`, `-B be -m big` or
+  `-l` on V3, does not happen either; bad values are usage errors.
 - `t_utillinux.sh` - where util-linux is installed: `fsck.minix` accepts
   the test images and those of `newfs_minixfs`, images from `mkfs.minix`
   are readable and pass `fsck_minixfs`, a zone map with no tail bits
   grows with `tunefs -s` into those `newfs_minixfs` gives, and
   `fsck_minixfs` and `fsck.minix` find the same damage, the big-endian
-  V3 of `mkfs.minix` reads and passes where `UTILLINUX_SRC` is set, and
-  `fsck.minix` accepts what `fsck_minixfs -y` repaired, also into
-  `/lost+found` with `-l`.  Skipped otherwise.
+  V1, V2 and V3 of `mkfs.minix`, maps as bytes, pass `fsck_minixfs -W 8`
+  where `UTILLINUX_SRC` is set, and `fsck.minix` accepts what
+  `fsck_minixfs -y` repaired, also into `/lost+found` with `-l`.
+  Skipped otherwise.
 - `t_tar.sh` - where tar(1) is installed: `minixfs tar` of the test tree
   in several formats is read back by tar(1): contents, modes, owners and
   times, devices with their numbers, pipes, hard and symbolic links, a
   directory as the top, names too long for a plain ustar header, and a
   path of more than 8 KB, where tar(1) reads pax headers (that of
   MINIX 3 does not).
+- `t_mapword.sh` - the big-endian test tree with bit maps of words of 8,
+  16, 32 and 64 bits in V1, V2 and V3: with `-W` of its width, `minixfs
+  info` gives the width, `fsck_minixfs` passes it and finds the maps
+  wrong in another width, `minixfs` reads it and puts a file in it, and
+  `dump_minixfs` and `restore_minixfs` carry it into a file system of
+  the same width.
 - `t_tracks.sh` - `-M`: a file system spread over the tracks of either
   side of a double-sided image reads with `info`, `ls`, `cat`,
   `extract`, `tar` and `fsck_minixfs` as the file system itself, and
@@ -250,19 +261,19 @@ top of `tests/mkimage.c`).  The scripts:
   under is not in the directory but where it is kept there, and a file
   renamed to such a name is renamed as to any other if it is not open,
   and kept till the unmount if it is; a file system not marked clean is
-  mounted read-only, and flex directories of Minix-vmd written; writing
-  or cutting a file to grow past the maximum
-  file size of the super block fails with EFBIG; and a change that
-  fails on a zone number outside
-  the data area, or a sync whose fsync(2) fails (made to by strace(1)
-  on Linux), keeps the mark away at the unmount.  On FreeBSD no hard
-  link is made through the mount.  On NetBSD the list of every name,
-  which looks up "..", after which librefuse has freed the root, is
-  left out.  On MINIX 3, where it is a service of mount(8) on a vnd
-  device, the reading, run by hand it shows how to mount, and writing
-  is left out.  Skipped otherwise.  `MINIXFS_FUSE` names the program;
-  `FUSE_SUDO` is a command to mount and read with where users cannot
-  mount, such as `sudo` on NetBSD.
+  mounted read-only, flex directories of Minix-vmd written, and a
+  big-endian image with maps as bytes written with `-W 8`; writing or
+  cutting a file to grow past the maximum file size of the super block
+  fails with EFBIG; and a change that fails on a zone number outside the
+  data area, or a sync whose fsync(2) fails (made to by strace(1) on
+  Linux), keeps the mark away at the unmount.  On FreeBSD no hard link
+  is made through the mount.  On NetBSD the list of every name, which
+  looks up "..", after which librefuse has freed the root, is left out.
+  On MINIX 3, where it is a service of mount(8) on a vnd device, the
+  reading, run by hand it shows how to mount, and writing is left out.
+  Skipped otherwise.  `MINIXFS_FUSE` names the program; `FUSE_SUDO` is a
+  command to mount and read with where users cannot mount, such as
+  `sudo` on NetBSD.
 - `t_device.sh` - where an image can be put on a device, a loop device
   on Linux, an md device on FreeBSD and a vnd device on NetBSD and
   MINIX 3, as root or through `DEV_SUDO` (such as `sudo`): `info` and

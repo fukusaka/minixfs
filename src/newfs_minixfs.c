@@ -7,7 +7,7 @@
  *	newfs_minixfs -V version [-N] [-B le|be] [-b block-size]
  *	    [-d directory [-F specfile [-P dbdir] [-x]] [-o uid:gid]]
  *	    [-e 0|1] [-i inodes] [-l name-length|flex] [-m minix|linux|bytes]
- *	    [-s blocks] [-t time] [-z log-zone-size] image
+ *	    [-s blocks] [-t time] [-W 8|16|32|64] [-z log-zone-size] image
  *
  * The version has to be given.  The size is taken from -s, or else from
  * the size of an existing image file; with -s, an image file is created
@@ -16,8 +16,10 @@
  * bits of the maps past the last inode and zone are clear, as the mkfs
  * of MINIX 2 and later leaves them, but for names of 30 characters,
  * which only Linux reads, they are as mkfs.minix of Linux writes them;
- * -m and -e give others.  -l flex makes a V1 or V2 file system of
- * Minix-vmd, whose flex directories hold names of up to 60 characters.
+ * -m and -e give others, and -W the bits in a word of the bit maps of a
+ * big-endian file system, whose default mfs_default_map_word() gives.
+ * -l flex makes a V1 or V2 file system of Minix-vmd, whose flex
+ * directories hold names of up to 60 characters.
  *
  * With -d, the file system holds a copy of the directory: its files,
  * directories, symbolic links, devices and pipes, with their modes,
@@ -79,7 +81,7 @@ usage(void)
 	    "           [-o uid:gid]] [-e 0|1] [-i inodes]\n"
 	    "           [-l name-length|flex]\n"
 	    "           [-m minix|linux|bytes] [-s blocks] [-t time]\n"
-	    "           [-z log-zone-size] image\n");
+	    "           [-W 8|16|32|64] [-z log-zone-size] image\n");
 	exit(2);
 }
 
@@ -109,7 +111,7 @@ parse(int argc, char **argv, struct options *o)
 	p->order = MFS_LITTLE_ENDIAN;
 	p->time = (uint32_t)time(NULL);
 	p->map_end = -1;
-	while ((ch = getopt(argc, argv, "B:b:d:e:F:i:l:m:No:P:s:t:V:xz:")) !=
+	while ((ch = getopt(argc, argv, "B:b:d:e:F:i:l:m:No:P:s:t:V:W:xz:")) !=
 	    -1) {
 		switch (ch) {
 		case 'B':
@@ -176,6 +178,10 @@ parse(int argc, char **argv, struct options *o)
 			break;
 		case 'V':
 			p->version = (int)number("version", optarg);
+			break;
+		case 'W':
+			if (mfs_parse_map_word(optarg, &p->map_word) < 0)
+				usage();
 			break;
 		case 'z':
 			p->log_zone_size = number("zone size", optarg);
@@ -258,6 +264,10 @@ print_layout(const struct mfs_params *p, const struct mfs_layout *l)
 	(void)printf("version: %d\n", p->version);
 	(void)printf("byte order: %s\n",
 	    p->order == MFS_BIG_ENDIAN ? "big-endian" : "little-endian");
+	if (p->order == MFS_BIG_ENDIAN)
+		(void)printf("bit map words: %" PRIu32 " bits\n",
+		    (p->map_word != 0 ? p->map_word :
+		    mfs_default_map_word(p->version, l->namelen)) * 8);
 	(void)printf("magic: 0x%04" PRIx16 "\n", l->magic);
 	(void)printf("name length: %" PRIu32 "%s\n", l->namelen,
 	    p->flex ? ", flex" : "");
@@ -501,6 +511,8 @@ main(int argc, char **argv)
 		return 0;
 	if ((r = mfs_open_rw(&fs, o.image)) < 0)
 		errx(1, "%s: %s", o.image, strerror(-r));
+	if (o.params.map_word != 0)
+		mfs_set_map_word(&fs, o.params.map_word);
 	r = tree_copy(&fs, o.dir, &f);
 	mfs_close(&fs);
 	if (f.spec != NULL) {

@@ -442,6 +442,7 @@ mfs_open_tracks(struct mfs *fs, const char *path, int rw,
 	read_super(fs, sb);
 	if ((r = check_super(fs)) < 0)
 		goto fail;
+	fs->map_word = mfs_default_map_word(fs->version, fs->namelen);
 	if (fs->version == 3 && (fs->state & MFS_FLAG_MANDATORY) != 0) {
 		r = -ENOTSUP;
 		goto fail;
@@ -457,6 +458,69 @@ mfs_open_tracks(struct mfs *fs, const char *path, int rw,
 fail:
 	mfs_close(fs);
 	return r;
+}
+
+int
+mfs_parse_map_word(const char *s, uint32_t *bytes)
+{
+	if (strcmp(s, "8") == 0)
+		*bytes = 1;
+	else if (strcmp(s, "16") == 0)
+		*bytes = 2;
+	else if (strcmp(s, "32") == 0)
+		*bytes = 4;
+	else if (strcmp(s, "64") == 0)
+		*bytes = 8;
+	else
+		return -EINVAL;
+	return 0;
+}
+
+void
+mfs_set_map_word(struct mfs *fs, uint32_t bytes)
+{
+	fs->map_word = bytes;
+}
+
+int
+mfs_convert_map_word(struct mfs *fs, uint32_t bytes)
+{
+	static const enum mfs_map which[2] = { MFS_IMAP, MFS_ZMAP };
+	unsigned char *from, *to;
+	uint32_t blocks, bit, n, old;
+	int i, r;
+
+	if (fs->order != MFS_BIG_ENDIAN || bytes == fs->map_word) {
+		fs->map_word = bytes;
+		return 0;
+	}
+	old = fs->map_word;
+	for (i = 0; i < 2; i++) {
+		if ((r = mfs_load_map(fs, which[i], &from)) < 0)
+			return r;
+		blocks = which[i] == MFS_IMAP ? fs->imap_blocks :
+		    fs->zmap_blocks;
+		n = blocks * fs->block_size * 8;
+		if ((to = calloc(blocks, fs->block_size)) == NULL) {
+			free(from);
+			return -ENOMEM;
+		}
+		/* Each bit read as the old words, set as the new. */
+		for (bit = 0; bit < n; bit++) {
+			fs->map_word = old;
+			r = mfs_map_bit(fs, from, bit);
+			fs->map_word = bytes;
+			mfs_set_map_bit(fs, to, bit, r);
+		}
+		r = mfs_store_map(fs, which[i], to);
+		fs->map_word = old;
+		free(from);
+		free(to);
+		if (r < 0)
+			return r;
+	}
+	fs->map_word = bytes;
+	return 0;
 }
 
 int
@@ -932,20 +996,24 @@ mfs_load_map(struct mfs *fs, enum mfs_map which, unsigned char **mapp)
 	return 0;
 }
 
-/*
- * The maps of V1 and V2 are arrays of 16-bit words in the byte order of
- * the image, as MINIX keeps them.  Those of V3 are arrays of bytes in
- * either byte order, as Linux writes them on big-endian machines, the
- * only V3 there is in that order.
- */
+/* The byte of a map that holds bit n; see mfs_default_map_word(). */
+static uint32_t
+map_byte(const struct mfs *fs, uint32_t n)
+{
+	uint32_t byte;
+
+	byte = n / 8;
+	if (fs->order == MFS_BIG_ENDIAN)
+		byte ^= fs->map_word - 1;
+	return byte;
+}
+
 int
 mfs_map_bit(const struct mfs *fs, const unsigned char *map, uint32_t n)
 {
 	uint32_t byte;
 
-	byte = n / 8;
-	if (fs->order == MFS_BIG_ENDIAN && fs->version != 3)
-		byte ^= 1;
+	byte = map_byte(fs, n);
 	return (map[byte] >> (n % 8)) & 1;
 }
 
@@ -1244,9 +1312,7 @@ mfs_set_map_bit(const struct mfs *fs, unsigned char *map, uint32_t n, int v)
 {
 	uint32_t byte;
 
-	byte = n / 8;
-	if (fs->order == MFS_BIG_ENDIAN && fs->version != 3)
-		byte ^= 1;
+	byte = map_byte(fs, n);
 	if (v)
 		map[byte] |= (unsigned char)(1 << (n % 8));
 	else

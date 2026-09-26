@@ -11,6 +11,7 @@
 .Op Fl lwy
 .Op Fl e Cm 0 | 1
 .Op Fl M Ar size : Ns Ar heads : Ns Ar side
+.Op Fl W Ar bits
 .Ar image
 .Sh DESCRIPTION
 .Nm
@@ -122,6 +123,11 @@ for the track layout.
 With
 .Fl y ,
 repair only the selected side.
+.It Fl W Ar bits
+Take the bit maps of a big-endian file system as words of
+.Ar bits
+bits, 8, 16, 32 or 64, instead of 16 for V1 and V2 and 8 for V3; see
+.Xr minixfs 5 .
 .El
 .Sh EXIT STATUS
 .Nm

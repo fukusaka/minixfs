@@ -23,6 +23,7 @@
 .Op Fl m Cm minix | linux | Ar bytes
 .Op Fl s Ar blocks
 .Op Fl t Ar time
+.Op Fl W Ar bits
 .Op Fl z Ar log-zone-size
 .Ar image
 .Sh DESCRIPTION
@@ -168,6 +169,11 @@ The size in blocks.
 .It Fl t Ar time
 The time of the root directory, in seconds since the Epoch, for images
 that must come out the same each time.
+.It Fl W Ar bits
+Write the bit maps of a big-endian file system as words of
+.Ar bits
+bits, 8, 16, 32 or 64, instead of 16 for V1 and V2 and 8 for V3; see
+.Xr minixfs 5 .
 .It Fl z Ar log-zone-size
 A zone of 2 to the power of
 .Ar log-zone-size
