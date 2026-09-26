@@ -1208,7 +1208,7 @@ check_end(struct check *c, unsigned char *map, uint32_t nblocks,
 	int want;
 
 	if (c->end == -1 && (!c->warn ||
-	    mfs_default_map_end(c->fs.version, c->fs.namelen)))
+	    mfs_linux_only(c->fs.version, c->fs.namelen)))
 		return;
 	want = c->end == -1 ? 0 : c->end;
 	n = (uint64_t)nblocks * c->fs.block_size * 8;
@@ -1328,6 +1328,8 @@ map_blocks(const struct check *c, uint64_t n)
 /*
  * What the fsck of MINIX 3 warns about.  The zone map may have a bit for
  * each zone, as MINIX makes it, or for each data zone, as Linux does.
+ * The maximum file size is not noted where only Linux reads the file
+ * system.
  */
 static void
 warn_super(struct check *c)
@@ -1354,7 +1356,8 @@ warn_super(struct check *c)
 		    "inode table leaves room from %" PRIu64,
 		    fs->firstdatazone, first);
 
-	if (fs->max_size != (max = mfs_minix_max_size(fs)))
+	if (!mfs_linux_only(fs->version, fs->namelen) &&
+	    fs->max_size != (max = mfs_minix_max_size(fs)))
 		warning(c, "the maximum file size is %" PRIu32 ", where MINIX "
 		    "works out %" PRIu32, fs->max_size, max);
 	if (fs->log_zone_size > 8)

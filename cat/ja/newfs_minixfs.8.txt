@@ -110,10 +110,11 @@ DESCRIPTION
 
      -m minix | linux | bytes
              superblock の最大ファイルサイズです。 minix は、二重間接 zone
-             の届く範囲から MINIX が計算する値で、既定です。 MINIX
+             の届く範囲から MINIX が計算する値で、MINIX
              がどのファイルも全部読めます。 linux は Linux の mkfs.minix
              が書く値で、V2 と V3 では 2147483647 です。 bytes は 1 から
-             2147483647 までの数値です。 Linux
+             2147483647 までの数値です。 既定は、30 文字の名前では
+             linux、ほかは minix です。 Linux
              とこのパッケージの道具は、ファイルをこの大きさまでに抑えます。
              minixfs(5) を参照してください。
 

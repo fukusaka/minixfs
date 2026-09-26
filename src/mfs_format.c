@@ -145,9 +145,15 @@ mfs_plan(const struct mfs_params *p, struct mfs_layout *l)
 }
 
 int
-mfs_default_map_end(int version, uint32_t namelen)
+mfs_linux_only(int version, uint32_t namelen)
 {
 	return version != 3 && namelen == 30;
+}
+
+int
+mfs_default_map_end(int version, uint32_t namelen)
+{
+	return mfs_linux_only(version, namelen);
 }
 
 uint32_t

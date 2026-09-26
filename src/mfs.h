@@ -683,9 +683,16 @@ struct mfs_layout {
 uint32_t mfs_linux_max_size(int, uint32_t);
 
 /*
+ * Whether a file system of a version and name length is one that only
+ * Linux reads: the names of 30 characters of V1 and V2, which MINIX does
+ * not read.  Such a file system gets what Linux gives by default.
+ */
+int	mfs_linux_only(int, uint32_t);
+
+/*
  * The bits of the maps past the last inode and zone, 0 or 1, that a new
- * file system of a version and name length gets: set for the extension
- * of Linux, as mkfs.minix of Linux sets them and as the Linux kernel
+ * file system of a version and name length gets: set for one that only
+ * Linux reads, as mkfs.minix of Linux sets them and as the Linux kernel
  * counts free zones and inodes over the whole of the maps, and clear for
  * the rest, which MINIX reads, as its mkfs leaves them and as the fsck of
  * MINIX 2.0.4, of Minix-vmd and of MINIX 3 take a bit set there for a

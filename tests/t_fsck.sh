@@ -479,6 +479,8 @@ mkimage "$T/spec" "$T/img"
 run "$FSCK_MINIXFS" -w "$T/img"
 check_true "-w does not note them for names of 30, which MINIX does not \
 read" test "$(grep -c ' bits past the last ' "$T/out")" -eq 0
+check_true "nor the maximum file size that Linux writes" \
+    test "$(grep -c ' maximum file size is ' "$T/out")" -eq 0
 
 # A file past the maximum file size is whole, but Linux maps no block
 # past it and none of the systems lets it grow: -w notes it, and it is no

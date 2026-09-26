@@ -12,13 +12,12 @@
  * The version has to be given.  The size is taken from -s, or else from
  * the size of an existing image file; with -s, an image file is created
  * or cut to that size.  -N prints the layout and writes nothing.  The
- * maximum file size is what MINIX works out, all that it reads, unless
- * -m gives that of Linux or a number.  The bits of the maps past the
- * last inode and zone are clear, as the mkfs of MINIX leaves them, but
- * set for names of 30 characters, which only Linux reads, as mkfs.minix
- * of Linux sets them, unless -e gives them.  -l flex makes a V1 or V2
- * file system of Minix-vmd, whose flex directories hold names of up to
- * 60 characters.
+ * maximum file size is what MINIX works out, all that it reads, and the
+ * bits of the maps past the last inode and zone are clear, as the mkfs
+ * of MINIX leaves them, but for names of 30 characters, which only Linux
+ * reads, they are as mkfs.minix of Linux writes them; -m and -e give
+ * others.  -l flex makes a V1 or V2 file system of Minix-vmd, whose flex
+ * directories hold names of up to 60 characters.
  *
  * With -d, the file system holds a copy of the directory: its files,
  * directories, symbolic links, devices and pipes, with their modes,
@@ -275,7 +274,11 @@ print_layout(const struct mfs_params *p, const struct mfs_layout *l)
 	(void)printf("bits past the end of the maps: %d\n", p->map_end);
 }
 
-/* The maximum file size that -m asks for, or what MINIX works out. */
+/*
+ * The maximum file size that -m asks for, or by default what MINIX works
+ * out, or what mkfs.minix of Linux writes where only Linux reads the file
+ * system.
+ */
 static uint32_t
 max_size(const struct options *o, uint32_t block_size)
 {
@@ -284,6 +287,8 @@ max_size(const struct options *o, uint32_t block_size)
 	char *end;
 
 	p = &o->params;
+	if (o->max == NULL && mfs_linux_only(p->version, p->namelen))
+		return mfs_linux_max_size(p->version, p->log_zone_size);
 	if (o->max == NULL || strcmp(o->max, "minix") == 0)
 		return mfs_minix_size(p->version, block_size,
 		    p->log_zone_size);

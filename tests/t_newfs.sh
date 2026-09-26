@@ -58,11 +58,14 @@ formats() {
 		blocks=$((2097152 / bsize))
 		opts="$opts -B $order -s $blocks -i 100 -z $logzone"
 		spec="$spec order=$order blocks=$blocks inodes=100"
-		spec="$spec logzone=$logzone maxsize=minix"
-		# The bits past the end of the maps are clear but for the
-		# names of 30 characters of Linux.
-		if [ "$namelen" != 30 ]; then
-			spec="$spec end=0"
+		spec="$spec logzone=$logzone"
+		# The maximum file size and the bits past the end of the
+		# maps are as MINIX has them, but as Linux has them for the
+		# names of 30 characters, which only Linux reads.
+		if [ "$namelen" = 30 ]; then
+			spec="$spec maxsize=linux"
+		else
+			spec="$spec maxsize=minix end=0"
 		fi
 		vs_mkimage "$version" "$opts" "$spec" \
 		    "V$format/$order/$logzone"

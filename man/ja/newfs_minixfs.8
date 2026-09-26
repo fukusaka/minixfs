@@ -178,12 +178,15 @@ Minix-vmd の mkfs と同じく、\:マジック番号は 14 文字のもの、\
 .It Fl m Cm minix | linux | Ar bytes
 superblock の最大ファイルサイズです。
 .Cm minix
-は、\:二重間接 zone の届く範囲から MINIX が計算する値で、\:既定です。
-MINIX がどのファイルも\:全部読めます。
+は、\:二重間接 zone の届く範囲から MINIX が計算する値で、\:MINIX がどのファイルも\:全部読めます。
 .Cm linux
 は Linux の mkfs.minix が書く値で、\:V2 と V3 では 2147483647 です。
 .Ar bytes
 は 1 から 2147483647 までの数値です。
+既定は、\:30 文字の名前では
+.Cm linux Ns 、\:ほかは
+.Cm minix
+です。
 Linux と\:このパッケージの道具は、\:ファイルを\:この大きさまでに\:抑えます。
 .Xr minixfs 5
 を参照してください。

@@ -92,9 +92,8 @@ copies a directory tree into one:
 new image is sized for the tree unless `-s` specifies its size. `-F`
 reads an mtree specification such as METALOG.
 The first 1024 bytes, reserved for boot code, are preserved.
-The default maximum file size is MINIX-compatible; `-m linux` gives
-that of Linux. The map tail bits follow MINIX, or Linux for
-30-character names; `-e` overrides them.
+The maximum file size and the map tail bits follow MINIX, or Linux for
+30-character names; `-m` and `-e` override them.
 
 ### Check and repair
 

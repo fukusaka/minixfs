@@ -92,9 +92,8 @@ of MINIX leaves them, or 1, as that of Linux sets them; see
 .Xr minixfs 5 .
 .It Fl m Cm minix | linux | Ar bytes
 Set the maximum file size in the super block to what MINIX works out
-from the zones that the double indirect zone reaches, as
-.Xr newfs_minixfs 8
-writes it by default, to what mkfs.minix of Linux writes, or to
+from the zones that the double indirect zone reaches, to what mkfs.minix
+of Linux writes, or to
 .Ar bytes ,
 from 1 to 2147483647.
 Linux and the tools of this package keep files to it; see CAVEATS in

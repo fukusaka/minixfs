@@ -175,11 +175,16 @@ number of names of 14, the super block of Minix-vmd, and the bits of
 the maps past the last inode and zone clear.
 .It Fl m Cm minix | linux | Ar bytes
 The maximum file size in the super block: what MINIX works out from the
-zones that the double indirect zone reaches, the default, so that MINIX
-reads every file in full; what mkfs.minix of Linux writes, 2147483647 in
-V2 and V3; or
+zones that the double indirect zone reaches, so that MINIX reads every
+file in full; what mkfs.minix of Linux writes, 2147483647 in V2 and V3;
+or
 .Ar bytes ,
 from 1 to 2147483647.
+The default is
+.Cm linux
+for names of 30 characters and
+.Cm minix
+otherwise.
 Linux and the tools of this package keep files to it; see
 .Xr minixfs 5 .
 .It Fl s Ar blocks
