@@ -23,6 +23,7 @@
 .Op Fl F Ar specfile Op Fl P Ar dbdir Op Fl x
 .Op Fl o Ar uid : Ns Ar gid
 .Oc
+.Op Fl e Cm 0 | 1
 .Op Fl i Ar inodes
 .Op Fl l Ar name-length | Cm flex
 .Op Fl m Cm minix | linux | Ar bytes
@@ -156,6 +157,11 @@ V1 と V2 のブロックは常に 1024 バイトです。
 を与えます。
 どちらも数値です。
 V1 の inode はグループを 1 バイトで持つので、\:255 を超えるグループのあるディレクトリツリーを V1 にするにはこれが要ります。
+.It Fl e Cm 0 | 1
+マップの最後の inode や zone より後ろのビットを、\:MINIX と同じ 0 か、\:Linux と同じ 1 にします。
+既定は、\:30 文字の名前では 1、\:ほかは 0 です。
+.Xr minixfs 5
+を参照してください。
 .It Fl i Ar inodes
 inode の数です。
 inode 表のブロックが埋まるまで切り上げます。

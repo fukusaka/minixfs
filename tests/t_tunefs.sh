@@ -34,7 +34,7 @@ for fs in "1 le" "2 be" "3 le" "3 be"; do
 	check_out_has "$v: tunefs prints the maximum file size" \
 	    "^max file size: $max (MINIX works out $minix)\$"
 	check_out_has "$v: tunefs prints the bits past the end" \
-	    "^bits past the end of the maps: 1\$"
+	    "^bits past the end of the maps: 0\$"
 
 	cp "$T/img" "$T/before"
 	run "$TUNEFS_MINIXFS" -N -c dirty -e 0 -m 1000 "$T/img"
@@ -76,14 +76,14 @@ for fs in "1 le" "2 be" "3 le" "3 be"; do
 	tuned "-m 123456"
 	check_info "$v: -m takes a number" "$T/img" "max file size" 123456
 
-	run "$TUNEFS_MINIXFS" -e 0 "$T/img"
-	tuned "-e 0"
-	run "$FSCK_MINIXFS" -e 0 "$T/img"
-	check_status "$v: -e 0 clears the bits past the end" 0
 	run "$TUNEFS_MINIXFS" -e 1 "$T/img"
 	tuned "-e 1"
 	run "$FSCK_MINIXFS" -e 1 "$T/img"
-	check_status "$v: -e 1 sets them" 0
+	check_status "$v: -e 1 sets the bits past the end" 0
+	run "$TUNEFS_MINIXFS" -e 0 "$T/img"
+	tuned "-e 0"
+	run "$FSCK_MINIXFS" -e 0 "$T/img"
+	check_status "$v: -e 0 clears them" 0
 done
 
 # -m does not go below the largest file, which would then no longer be

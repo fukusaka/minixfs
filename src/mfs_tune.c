@@ -812,9 +812,13 @@ mfs_grow(struct mfs *fs, uint32_t nblocks, int flags)
 	(void)memcpy(zmap, oldmap, (size_t)fs->zmap_blocks * fs->block_size);
 	oldbits = (uint64_t)oldz - oldfirst;
 	newbits = (uint64_t)newz - first;
-	/* The bits past the end follow the old ones, or else are set. */
+	/*
+	 * The bits past the end follow the old ones, or else are what a new
+	 * file system gets.
+	 */
 	pad = oldbits + 1 < (uint64_t)fs->zmap_blocks * bits ?
-	    mfs_map_bit(fs, oldmap, (uint32_t)oldbits + 1) : 1;
+	    mfs_map_bit(fs, oldmap, (uint32_t)oldbits + 1) :
+	    mfs_default_map_end(fs->version, fs->namelen);
 	for (i = (uint32_t)oldbits + 1; i < k * bits; i++)
 		mfs_set_map_bit(fs, zmap, i, i > newbits ? pad : 0);
 	if (flags & MFS_RESIZE_CHECK)
@@ -1021,10 +1025,14 @@ mfs_shrink(struct mfs *fs, uint32_t nblocks, int flags)
 			goto out;
 	}
 
-	/* The bits past the new end follow the old ones, or else are set. */
+	/*
+	 * The bits past the new end follow the old ones, or else are what a
+	 * new file system gets.
+	 */
 	n = fs->nzones - fs->firstdatazone;
 	pad = (uint64_t)n + 1 < (uint64_t)fs->zmap_blocks *
-	    fs->block_size * 8 ? mfs_map_bit(fs, zmap, n + 1) : 1;
+	    fs->block_size * 8 ? mfs_map_bit(fs, zmap, n + 1) :
+	    mfs_default_map_end(fs->version, fs->namelen);
 	for (bit = s.newz - fs->firstdatazone + 1; bit <= n; bit++)
 		mfs_set_map_bit(fs, zmap, bit, pad);
 	if ((r = mfs_store_map(fs, MFS_ZMAP, zmap)) < 0 ||

@@ -65,7 +65,8 @@ DESCRIPTION
 
      -e 0 | 1
              Set the bits of each map past the last inode or zone to 0, as the
-             mkfs of MINIX leaves them, or 1, as that of Linux sets them.
+             mkfs of MINIX leaves them, or 1, as that of Linux sets them; see
+             minixfs(5).
 
      -m minix | linux | bytes
              Set the maximum file size in the super block to what MINIX works

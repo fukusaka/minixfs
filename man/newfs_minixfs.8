@@ -17,6 +17,7 @@
 .Op Fl F Ar specfile Op Fl P Ar dbdir Op Fl x
 .Op Fl o Ar uid : Ns Ar gid
 .Oc
+.Op Fl e Cm 0 | 1
 .Op Fl i Ar inodes
 .Op Fl l Ar name-length | Cm flex
 .Op Fl m Cm minix | linux | Ar bytes
@@ -153,6 +154,11 @@ and the group
 numbers both.
 A V1 inode keeps its group in one byte, so a tree with groups above 255
 needs this in V1.
+.It Fl e Cm 0 | 1
+The bits of the maps past the last inode and zone: 0, as MINIX leaves
+them, or 1, as Linux sets them; see
+.Xr minixfs 5 .
+The default is 1 for names of 30 characters and 0 otherwise.
 .It Fl i Ar inodes
 The number of inodes, rounded up to fill the blocks of the inode table;
 by default one for about every three blocks, or more if the tree of

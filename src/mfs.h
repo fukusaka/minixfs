@@ -651,6 +651,7 @@ struct mfs_params {
 	uint32_t	block_size;	/* 0: 1024, or 4096 for V3 */
 	uint32_t	namelen;	/* 0: 14, or 60 for V3 and flex */
 	int		flex;		/* Minix-vmd, V1 or V2: flex directories */
+	int		map_end;	/* the bits of the maps past the end */
 	uint32_t	nblocks;	/* size in blocks */
 	uint32_t	ninodes;	/* 0: one for every 3 blocks */
 	uint32_t	log_zone_size;
@@ -680,6 +681,17 @@ struct mfs_layout {
  * for V2 and V3.
  */
 uint32_t mfs_linux_max_size(int, uint32_t);
+
+/*
+ * The bits of the maps past the last inode and zone, 0 or 1, that a new
+ * file system of a version and name length gets: set for the extension
+ * of Linux, as mkfs.minix of Linux sets them and as the Linux kernel
+ * counts free zones and inodes over the whole of the maps, and clear for
+ * the rest, which MINIX reads, as its mkfs leaves them and as the fsck of
+ * MINIX 2.0.4, of Minix-vmd and of MINIX 3 take a bit set there for a
+ * zone or inode missing.
+ */
+int	mfs_default_map_end(int, uint32_t);
 
 /*
  * The s_max_size that MINIX works out for a version, block size and zone

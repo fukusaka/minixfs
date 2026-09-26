@@ -6,16 +6,19 @@
  *
  *	newfs_minixfs -V version [-N] [-B le|be] [-b block-size]
  *	    [-d directory [-F specfile [-P dbdir] [-x]] [-o uid:gid]]
- *	    [-i inodes] [-l name-length|flex] [-m minix|linux|bytes]
+ *	    [-e 0|1] [-i inodes] [-l name-length|flex] [-m minix|linux|bytes]
  *	    [-s blocks] [-t time] [-z log-zone-size] image
  *
  * The version has to be given.  The size is taken from -s, or else from
  * the size of an existing image file; with -s, an image file is created
  * or cut to that size.  -N prints the layout and writes nothing.  The
  * maximum file size is what MINIX works out, all that it reads, unless
- * -m gives that of Linux or a number.  -l flex makes a V1 or V2 file
- * system of Minix-vmd, whose flex directories hold names of up to 60
- * characters.
+ * -m gives that of Linux or a number.  The bits of the maps past the
+ * last inode and zone are clear, as the mkfs of MINIX leaves them, but
+ * set for names of 30 characters, which only Linux reads, as mkfs.minix
+ * of Linux sets them, unless -e gives them.  -l flex makes a V1 or V2
+ * file system of Minix-vmd, whose flex directories hold names of up to
+ * 60 characters.
  *
  * With -d, the file system holds a copy of the directory: its files,
  * directories, symbolic links, devices and pipes, with their modes,
@@ -74,7 +77,8 @@ usage(void)
 	(void)fprintf(stderr,
 	    "usage: newfs_minixfs -V version [-N] [-B le|be] [-b block-size]\n"
 	    "           [-d directory [-F specfile [-P dbdir] [-x]]\n"
-	    "           [-o uid:gid]] [-i inodes] [-l name-length|flex]\n"
+	    "           [-o uid:gid]] [-e 0|1] [-i inodes]\n"
+	    "           [-l name-length|flex]\n"
 	    "           [-m minix|linux|bytes] [-s blocks] [-t time]\n"
 	    "           [-z log-zone-size] image\n");
 	exit(2);
@@ -105,7 +109,9 @@ parse(int argc, char **argv, struct options *o)
 	p = &o->params;
 	p->order = MFS_LITTLE_ENDIAN;
 	p->time = (uint32_t)time(NULL);
-	while ((ch = getopt(argc, argv, "B:b:d:F:i:l:m:No:P:s:t:V:xz:")) != -1) {
+	p->map_end = -1;
+	while ((ch = getopt(argc, argv, "B:b:d:e:F:i:l:m:No:P:s:t:V:xz:")) !=
+	    -1) {
 		switch (ch) {
 		case 'B':
 			if (strcmp(optarg, "le") == 0)
@@ -120,6 +126,14 @@ parse(int argc, char **argv, struct options *o)
 			break;
 		case 'd':
 			o->dir = optarg;
+			break;
+		case 'e':
+			if (strcmp(optarg, "0") == 0)
+				p->map_end = 0;
+			else if (strcmp(optarg, "1") == 0)
+				p->map_end = 1;
+			else
+				usage();
 			break;
 		case 'F':
 			o->specfile = optarg;
@@ -258,6 +272,7 @@ print_layout(const struct mfs_params *p, const struct mfs_layout *l)
 	(void)printf("first data zone: %" PRIu32 "\n", l->firstdatazone);
 	(void)printf("log zone size: %" PRIu32 "\n", p->log_zone_size);
 	(void)printf("max file size: %" PRIu32 "\n", l->max_size);
+	(void)printf("bits past the end of the maps: %d\n", p->map_end);
 }
 
 /* The maximum file size that -m asks for, or what MINIX works out. */
@@ -441,6 +456,9 @@ main(int argc, char **argv)
 	if (block_size == 0)
 		block_size = o.params.version == 3 ? V3_BLOCK : STATIC_BLOCK;
 	o.params.max_size = max_size(&o, block_size);
+	if (o.params.map_end == -1)
+		o.params.map_end = mfs_default_map_end(o.params.version,
+		    o.params.namelen);
 	if (o.dir != NULL) {
 		tree_shape(&o, block_size, &f);
 		scan(&o, &f, &need);

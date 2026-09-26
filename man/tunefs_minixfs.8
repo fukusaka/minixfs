@@ -88,7 +88,8 @@ that Linux keeps, in V3 in the flags of MINIX 3, which mounts a file
 system that is not clean read-only, and in Minix-vmd in its flags.
 .It Fl e Cm 0 | 1
 Set the bits of each map past the last inode or zone to 0, as the mkfs
-of MINIX leaves them, or 1, as that of Linux sets them.
+of MINIX leaves them, or 1, as that of Linux sets them; see
+.Xr minixfs 5 .
 .It Fl m Cm minix | linux | Ar bytes
 Set the maximum file size in the super block to what MINIX works out
 from the zones that the double indirect zone reaches, as

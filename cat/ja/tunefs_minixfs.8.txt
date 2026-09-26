@@ -68,7 +68,8 @@ DESCRIPTION
 
      -e 0 | 1
              各マップの、最後の inode や zone より後ろのビットを、MINIX の
-             mkfs と同じ 0 か、Linux の mkfs と同じ 1 にします。
+             mkfs と同じ 0 か、Linux の mkfs と同じ 1 にします。 minixfs(5)
+             を参照してください。
 
      -m minix | linux | bytes
              superblock の最大ファイルサイズを変えます。 minix は二重間接 zone

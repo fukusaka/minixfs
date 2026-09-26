@@ -14,8 +14,7 @@
  * of MINIX of its version, with the magic number of names of 14, and
  * differs as the mkfs of Minix-vmd makes it: the super block has the
  * zone size in one byte, the flags in the next and 0x7f, 0x13 where
- * Linux keeps its state; the bits of the maps past the last inode and
- * zone are left clear; and "." and ".." take a slot each.
+ * Linux keeps its state, and "." and ".." take a slot each.
  *
  * The first 1024 bytes of the device, where a boot block may live, are
  * left alone.
@@ -145,6 +144,12 @@ mfs_plan(const struct mfs_params *p, struct mfs_layout *l)
 	return 0;
 }
 
+int
+mfs_default_map_end(int version, uint32_t namelen)
+{
+	return version != 3 && namelen == 30;
+}
+
 uint32_t
 mfs_linux_max_size(int version, uint32_t log_zone_size)
 {
@@ -202,8 +207,8 @@ fill_super(const struct mfs_params *p, const struct mfs_layout *l,
 /*
  * Write a bit map of nblocks blocks at block start in which bits 0 to
  * used are set, bits up to last are clear, and the bits after last are
- * set, or clear for Minix-vmd.  The maps are arrays of words, 16 bits
- * wide in V1 and V2 and 32 bits in V3, in the byte order of the image.
+ * as the parameters ask.  The maps are arrays of words, 16 bits wide in
+ * V1 and V2 and 32 bits in V3, in the byte order of the image.
  */
 static int
 write_map(int fd, const struct mfs_params *p, const struct mfs_layout *l,
@@ -219,7 +224,7 @@ write_map(int fd, const struct mfs_params *p, const struct mfs_layout *l,
 		(void)memset(buf, 0, l->block_size);
 		for (i = 0; i < per; i++) {
 			bit = (uint64_t)b * per + i;
-			if (bit <= used || (bit > last && !p->flex)) {
+			if (bit <= used || (bit > last && p->map_end)) {
 				byte = i / 8;
 				if (p->order == MFS_BIG_ENDIAN)
 					byte ^= p->version == 3 ? 3 : 1;

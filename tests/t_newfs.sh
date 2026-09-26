@@ -59,6 +59,11 @@ formats() {
 		opts="$opts -B $order -s $blocks -i 100 -z $logzone"
 		spec="$spec order=$order blocks=$blocks inodes=100"
 		spec="$spec logzone=$logzone maxsize=minix"
+		# The bits past the end of the maps are clear but for the
+		# names of 30 characters of Linux.
+		if [ "$namelen" != 30 ]; then
+			spec="$spec end=0"
+		fi
 		vs_mkimage "$version" "$opts" "$spec" \
 		    "V$format/$order/$logzone"
 	done
@@ -82,6 +87,9 @@ defaults() {
 	check_info "an empty V1 has one data zone in use" "$T/img" \
 	    "free zones" 1420
 	check_info "V1 is marked clean as Linux marks it" "$T/img" clean yes
+	run "$TUNEFS_MINIXFS" "$T/img"
+	check_out_has "V1 leaves the bits past the end of the maps clear" \
+	    "^bits past the end of the maps: 0\$"
 
 	rm -f "$T/img"
 	run "$NEWFS_MINIXFS" -V 3 -s 2048 "$T/img"
@@ -431,10 +439,10 @@ EOF
 # MINIX writes it, or that of Linux, or a number; -d keeps files to it.
 max_sizes() {
 	vs_mkimage 2 "-l 14 -B le -s 2048 -i 100 -m linux" \
-	    "namelen=14 order=le blocks=2048 inodes=100 maxsize=linux" \
+	    "namelen=14 order=le blocks=2048 inodes=100 maxsize=linux end=0" \
 	    "-m linux"
 	vs_mkimage 3 "-b 4096 -B be -s 512 -i 100 -m 123456" \
-	    "block=4096 order=be blocks=512 inodes=100 maxsize=123456" \
+	    "block=4096 order=be blocks=512 inodes=100 maxsize=123456 end=0" \
 	    "-m 123456"
 	rm -f "$T/img"
 	run "$NEWFS_MINIXFS" -V 2 -m 0 -s 100 "$T/img"
@@ -454,8 +462,30 @@ max_sizes() {
 	check_true "and writes nothing" test ! -e "$T/img"
 }
 
+# -e: the bits of the maps past the last inode and zone, clear by default
+# as the mkfs of MINIX leaves them, set for the names of 30 characters
+# that only Linux reads, as mkfs.minix of Linux sets them.
+map_ends() {
+	vs_mkimage 2 "-l 14 -e 1 -s 2048 -i 100" \
+	    "namelen=14 order=le blocks=2048 inodes=100 maxsize=minix end=1" \
+	    "-e 1"
+	vs_mkimage 1 "-l 30 -e 0 -s 2048 -i 100" \
+	    "namelen=30 order=le blocks=2048 inodes=100 maxsize=minix end=0" \
+	    "-l 30 -e 0"
+	vs_mkimage 2 "-l flex -e 1 -s 2048 -i 100" \
+	    "vmd order=le blocks=2048 inodes=100 maxsize=minix end=1" \
+	    "-l flex -e 1"
+	rm -f "$T/img"
+	run "$NEWFS_MINIXFS" -V 2 -e 2 -s 100 "$T/img"
+	check_status "-e 2 is a usage error" 2
+	run "$NEWFS_MINIXFS" -V 2 -l 30 -s 100 -N "$T/img"
+	check_out_has "-N prints the bits past the end of the maps" \
+	    "^bits past the end of the maps: 1\$"
+}
+
 formats
 max_sizes
+map_ends
 defaults
 sizes
 refusals

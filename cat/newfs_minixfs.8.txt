@@ -5,9 +5,10 @@ NAME
 
 SYNOPSIS
      newfs_minixfs -V version [-N] [-B le | be] [-b block-size] [-d directory
-                   [-F specfile [-P dbdir [-x]]] [-o uid:gid]] [-i inodes]
-                   [-l name-length | flex] [-m minix | linux | bytes]
-                   [-s blocks] [-t time] [-z log-zone-size] image
+                   [-F specfile [-P dbdir [-x]]] [-o uid:gid]] [-e 0 | 1]
+                   [-i inodes] [-l name-length | flex]
+                   [-m minix | linux | bytes] [-s blocks] [-t time]
+                   [-z log-zone-size] image
 
 DESCRIPTION
      newfs_minixfs makes a MINIX file system of version 1, 2 or 3, or one of
@@ -82,6 +83,11 @@ DESCRIPTION
              Give every file of the tree the owner uid and the group gid,
              numbers both.  A V1 inode keeps its group in one byte, so a tree
              with groups above 255 needs this in V1.
+
+     -e 0 | 1
+             The bits of the maps past the last inode and zone: 0, as MINIX
+             leaves them, or 1, as Linux sets them; see minixfs(5).  The
+             default is 1 for names of 30 characters and 0 otherwise.
 
      -i inodes
              The number of inodes, rounded up to fill the blocks of the inode

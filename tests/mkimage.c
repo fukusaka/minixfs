@@ -13,7 +13,7 @@
  *
  *	fs   [version=1|2|3] order=le|be [namelen=14|30] [block=N]
  *	     blocks=N inodes=N [logzone=N] [spare=N] [gap=N] [skip=N] [vmd]
- *	     [maxsize=linux|minix|N]
+ *	     [maxsize=linux|minix|N] [end=0|1]
  *	dir  PATH MODE UID GID MTIME
  *	file PATH MODE UID GID MTIME SIZE SEED [HOLESTART:HOLELEN ...]
  *	link PATH TARGET UID GID MTIME
@@ -31,15 +31,18 @@
  * leaves the first N data zones free, so that the files lie further in.
  * maxsize is the maximum file size of the super block: as mkfs.minix of
  * Linux writes it (the default), what the zones reach up to the double
- * indirect zone, as the mkfs of MINIX writes it, or N.
+ * indirect zone, as the mkfs of MINIX writes it, or N.  end gives the
+ * bits of the maps past the last inode and zone: set by default, as
+ * mkfs.minix of Linux sets them, and clear with end=0, as the mkfs of
+ * MINIX leaves them.
  * vmd makes a V1 or V2 file system as Minix-vmd does: its super block
  * keeps the zone size in a byte, flags (flex directories, clean) in the
  * next and 0x7f, 0x13 at byte 18, the bits of its maps past the end are
- * clear, and its flex directories hold entries of 8-byte slots, with
- * names of up to 60 characters.  An entry takes a slot for the inode
- * number, the count of extra slots and 5 bytes of the name, and the
- * extra slots for the rest, the name ending with a NUL; an entry that
- * would cross a block starts the next one instead.
+ * clear unless end=1, and its flex directories hold entries of 8-byte
+ * slots, with names of up to 60 characters.  An entry takes a slot for
+ * the inode number, the count of extra slots and 5 bytes of the name,
+ * and the extra slots for the rest, the name ending with a NUL; an entry
+ * that would cross a block starts the next one instead.
  *
  * MODE is octal permission bits.  File contents are a pattern made from
  * SEED; bytes inside a hole are zero, and zones that lie wholly inside a
@@ -157,6 +160,7 @@ struct image {
 	uint32_t	isize;		/* bytes of an inode */
 	uint32_t	logzone;
 	int		minix_max;	/* maxsize=minix */
+	int		end;		/* end=0|1, or -1 */
 	uint32_t	maxsize;	/* maxsize=N, or 0 */
 	uint32_t	spare;		/* map blocks beyond the need */
 	uint32_t	gap;		/* zones before the first data zone */
@@ -555,6 +559,10 @@ fs_option(struct parser *ps, char *s)
 		img->minix_max = 0;
 	else if (strncmp(s, "maxsize=", 8) == 0)
 		img->maxsize = number(ps, s + 8, 10);
+	else if (strcmp(s, "end=0") == 0)
+		img->end = 0;
+	else if (strcmp(s, "end=1") == 0)
+		img->end = 1;
 	else
 		syntax(ps, "unknown fs option", s);
 }
@@ -585,6 +593,8 @@ check_version(const struct parser *ps, struct image *img)
 	if (img->vmd && img->version == 3)
 		syntax(ps, "Minix-vmd is V1 or V2", "");
 	img->maxname = img->vmd ? 60 : img->namelen;
+	if (img->end == -1)
+		img->end = !img->vmd;
 	img->zbytes = img->version == 1 ? 2 : 4;
 	img->isize = img->version == 1 ? 32 : 64;
 	img->dino = img->version == 3 ? 4 : 2;
@@ -630,6 +640,7 @@ parse_fs(struct parser *ps, char *p)
 	img = ps->img;
 	img->version = 1;
 	img->bsize = 1024;
+	img->end = -1;
 	while ((s = field(&p)) != NULL)
 		fs_option(ps, s);
 	check_version(ps, img);
@@ -1031,10 +1042,7 @@ mark_inodes(const struct image *img, unsigned char *map,
 	}
 }
 
-/*
- * Bit 0 of each map is never used; bits past the end are set, or left
- * clear for Minix-vmd, as its mkfs leaves them.
- */
+/* Bit 0 of each map is never used; bits past the end are as end gives. */
 static void
 write_maps(const struct image *img)
 {
@@ -1044,14 +1052,14 @@ write_maps(const struct image *img)
 	bits = img->bsize * 8;
 	map = img->data + (size_t)START_BLOCK * img->bsize;
 	for (bit = 0; bit < img->imap_blocks * bits; bit++)
-		if (bit == 0 || (bit > img->ninodes && !img->vmd))
+		if (bit == 0 || (bit > img->ninodes && img->end))
 			set_bit(img, map, bit);
 	mark_inodes(img, map, &img->root);
 	map += (size_t)img->imap_blocks * img->bsize;
 	for (bit = 0; bit < img->zmap_blocks * bits; bit++)
 		if (bit == 0 || (bit > img->skip &&
 		    bit <= img->next_zone - img->firstdatazone) ||
-		    (bit > img->nzones - img->firstdatazone && !img->vmd))
+		    (bit > img->nzones - img->firstdatazone && img->end))
 			set_bit(img, map, bit);
 }
 

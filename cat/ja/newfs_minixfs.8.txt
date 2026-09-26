@@ -5,9 +5,10 @@ NAME
 
 SYNOPSIS
      newfs_minixfs -V version [-N] [-B le | be] [-b block-size] [-d directory
-                   [-F specfile [-P dbdir [-x]]] [-o uid:gid]] [-i inodes]
-                   [-l name-length | flex] [-m minix | linux | bytes]
-                   [-s blocks] [-t time] [-z log-zone-size] image
+                   [-F specfile [-P dbdir [-x]]] [-o uid:gid]] [-e 0 | 1]
+                   [-i inodes] [-l name-length | flex]
+                   [-m minix | linux | bytes] [-s blocks] [-t time]
+                   [-z log-zone-size] image
 
 DESCRIPTION
      newfs_minixfs は、ファイルまたはデバイス image に、版 1・2・3 の MINIX
@@ -86,6 +87,11 @@ DESCRIPTION
              を与えます。 どちらも数値です。 V1 の inode はグループを 1
              バイトで持つので、255 を超えるグループのあるディレクトリツリーを
              V1 にするにはこれが要ります。
+
+     -e 0 | 1
+             マップの最後の inode や zone より後ろのビットを、MINIX と同じ 0
+             か、Linux と同じ 1 にします。 既定は、30 文字の名前では 1、ほかは
+             0 です。 minixfs(5) を参照してください。
 
      -i inodes
              inode の数です。 inode 表のブロックが埋まるまで切り上げます。

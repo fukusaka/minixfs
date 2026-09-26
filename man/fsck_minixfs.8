@@ -104,8 +104,8 @@ Check that the bits of each map past the last inode or zone are 0 or 1,
 and with
 .Fl y
 set them so.
-The mkfs of MINIX leaves them clear and that of Linux sets them, so
-neither is wrong unless this says which to expect.
+Without this, neither is a problem; see
+.Xr minixfs 5 .
 .It Fl w
 Note, as warnings that are not problems, what the fsck of MINIX 3 warns
 about: map blocks beyond what the maps need, a first data zone later

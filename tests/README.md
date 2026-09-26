@@ -63,17 +63,19 @@ top of `tests/mkimage.c`).  The scripts:
 - `t_newfs.sh` - `newfs_minixfs` makes, in every format and the flex
   format of Minix-vmd, the image that `tests/mkimage` makes from an
   empty tree, with the maximum file size MINIX works out, that of Linux
-  with `-m linux` or a number; defaults, sizes, `-N`, the boot block,
-  and the options it must refuse.  With `-d`, the test tree goes into
-  every format and comes back out with its modes, sizes and times; hard
-  and symbolic links, pipes, `-o`, owners of `-o` that are no numbers or
-  past their range, the size made to fit, `-N`, sizes too small, names
-  too long and files past the maximum file size; a tree of many empty
-  files, whose inode table the size made to fit has room for; and, where
-  fakeroot(1) is installed, devices.  With `-F`, a specification in both
-  forms sets modes, owners (by name, from `-P`) and times, adds devices,
-  links, pipes, empty files and escaped names, skips optional entries,
-  `-x` leaves out what it does not name, and bad entries change nothing.
+  with `-m linux` or a number, and map tail bits of MINIX, or of Linux
+  for names of 30 characters, or as `-e` gives; defaults, sizes, `-N`,
+  the boot block, and the options it must refuse.  With `-d`, the test
+  tree goes into every format and comes back out with its modes, sizes
+  and times; hard and symbolic links, pipes, `-o`, owners of `-o` that
+  are no numbers or past their range, the size made to fit, `-N`, sizes
+  too small, names too long and files past the maximum file size; a tree
+  of many empty files, whose inode table the size made to fit has room
+  for; and, where fakeroot(1) is installed, devices.  With `-F`, a
+  specification in both forms sets modes, owners (by name, from `-P`)
+  and times, adds devices, links, pipes, empty files and escaped names,
+  skips optional entries, `-x` leaves out what it does not name, and bad
+  entries change nothing.
 - `t_fsck.sh` - `fsck_minixfs` passes the test tree in every format and
   an empty file system, and finds each kind of damage in every version
   and byte order: a bad maximum file size, which becomes MINIX's, a
@@ -117,10 +119,11 @@ top of `tests/mkimage.c`).  The scripts:
   does not happen either; bad values are usage errors.
 - `t_utillinux.sh` - where util-linux is installed: `fsck.minix` accepts
   the test images and those of `newfs_minixfs`, images from `mkfs.minix`
-  are readable and pass `fsck_minixfs`, and `fsck_minixfs` and
-  `fsck.minix` find the same damage, and `fsck.minix` accepts what
-  `fsck_minixfs -y` repaired, also into `/lost+found` with `-l`.
-  Skipped otherwise.
+  are readable and pass `fsck_minixfs`, a zone map with no tail bits
+  grows with `tunefs -s` into those `newfs_minixfs` gives, and
+  `fsck_minixfs` and `fsck.minix` find the same damage, and `fsck.minix`
+  accepts what `fsck_minixfs -y` repaired, also into `/lost+found` with
+  `-l`.  Skipped otherwise.
 - `t_tar.sh` - where tar(1) is installed: `minixfs tar` of the test tree
   in several formats is read back by tar(1): contents, modes, owners and
   times, devices with their numbers, pipes, hard and symbolic links, a

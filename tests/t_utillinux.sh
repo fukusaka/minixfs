@@ -210,8 +210,29 @@ else
 	skip "fsck.minix accepts the test images" "no $FSCK_MINIX"
 fi
 
+# mkfs_full_map: mkfs.minix sizes the zone map by the data zones, so that
+# 8196 blocks with 16 inodes leave no bit past the last zone.  When
+# tunefs_minixfs -s grows such an image, the new bits past the end are
+# what newfs_minixfs gives: clear for names of 14, set for names of 30.
+# tunefs -e sets those of the inode map to match first.
+mkfs_full_map() {
+	for n in 14:0 30:1; do
+		end=${n#*:}
+		n=${n%:*}
+		dd if=/dev/zero of="$T/img" bs=1024 count=8196 2>/dev/null
+		run "$MKFS_MINIX" -2 -n "$n" -i 16 "$T/img"
+		check_status "mkfs.minix -2 -n $n -i 16 succeeds" 0
+		"$TUNEFS_MINIXFS" -e "$end" "$T/img" >/dev/null
+		run "$TUNEFS_MINIXFS" -s 9000 "$T/img"
+		check_status "names of $n: a full zone map grows" 0
+		run "$FSCK_MINIXFS" -e "$end" "$T/img"
+		check_status "names of $n: the new bits past the end are $end" 0
+	done
+}
+
 if have "$MKFS_MINIX"; then
 	mkfs_readable
+	mkfs_full_map
 else
 	skip "images from mkfs.minix are readable" "no $MKFS_MINIX"
 fi
