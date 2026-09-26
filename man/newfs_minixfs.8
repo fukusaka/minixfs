@@ -19,6 +19,7 @@
 .Oc
 .Op Fl i Ar inodes
 .Op Fl l Ar name-length
+.Op Fl m Cm minix | linux | Ar bytes
 .Op Fl s Ar blocks
 .Op Fl t Ar time
 .Op Fl z Ar log-zone-size
@@ -160,6 +161,15 @@ needs them.
 The length of names in V1 and V2: 14, as in MINIX and the default, or
 30, the extension of Linux, which has magic numbers of its own.
 V3 names are always 60 characters.
+.It Fl m Cm minix | linux | Ar bytes
+The maximum file size in the super block: what MINIX works out from the
+zones that the double indirect zone reaches, the default, so that MINIX
+reads every file in full; what mkfs.minix of Linux writes, 2147483647 in
+V2 and V3; or
+.Ar bytes ,
+from 1 to 2147483647.
+Linux and the tools of this package keep files to it; see
+.Xr minixfs 5 .
 .It Fl s Ar blocks
 The size in blocks.
 .It Fl t Ar time

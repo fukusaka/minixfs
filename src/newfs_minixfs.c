@@ -6,12 +6,14 @@
  *
  *	newfs_minixfs -V version [-N] [-B le|be] [-b block-size]
  *	    [-d directory [-F specfile [-P dbdir] [-x]] [-o uid:gid]]
- *	    [-i inodes] [-l name-length] [-s blocks] [-t time]
- *	    [-z log-zone-size] image
+ *	    [-i inodes] [-l name-length] [-m minix|linux|bytes]
+ *	    [-s blocks] [-t time] [-z log-zone-size] image
  *
  * The version has to be given.  The size is taken from -s, or else from
  * the size of an existing image file; with -s, an image file is created
- * or cut to that size.  -N prints the layout and writes nothing.
+ * or cut to that size.  -N prints the layout and writes nothing.  The
+ * maximum file size is what MINIX works out, all that it reads, unless
+ * -m gives that of Linux or a number.
  *
  * With -d, the file system holds a copy of the directory: its files,
  * directories, symbolic links, devices and pipes, with their modes,
@@ -57,6 +59,7 @@ struct options {
 	const char		*owner;		/* -o, or NULL */
 	const char		*specfile;	/* -F, or NULL */
 	const char		*dbdir;		/* -P, or NULL */
+	const char		*max;		/* -m, or NULL */
 	int			exclude;	/* -x */
 	int			dry_run;	/* -N */
 	int			sized;		/* -s given */
@@ -70,7 +73,8 @@ usage(void)
 	    "usage: newfs_minixfs -V version [-N] [-B le|be] [-b block-size]\n"
 	    "           [-d directory [-F specfile [-P dbdir] [-x]]\n"
 	    "           [-o uid:gid]] [-i inodes] [-l name-length]\n"
-	    "           [-s blocks] [-t time] [-z log-zone-size] image\n");
+	    "           [-m minix|linux|bytes] [-s blocks] [-t time]\n"
+	    "           [-z log-zone-size] image\n");
 	exit(2);
 }
 
@@ -99,7 +103,7 @@ parse(int argc, char **argv, struct options *o)
 	p = &o->params;
 	p->order = MFS_LITTLE_ENDIAN;
 	p->time = (uint32_t)time(NULL);
-	while ((ch = getopt(argc, argv, "B:b:d:F:i:l:No:P:s:t:V:xz:")) != -1) {
+	while ((ch = getopt(argc, argv, "B:b:d:F:i:l:m:No:P:s:t:V:xz:")) != -1) {
 		switch (ch) {
 		case 'B':
 			if (strcmp(optarg, "le") == 0)
@@ -123,6 +127,9 @@ parse(int argc, char **argv, struct options *o)
 			break;
 		case 'x':
 			o->exclude = 1;
+			break;
+		case 'm':
+			o->max = optarg;
 			break;
 		case 'i':
 			p->ninodes = number("number of inodes", optarg);
@@ -239,6 +246,30 @@ print_layout(const struct mfs_params *p, const struct mfs_layout *l)
 	(void)printf("inode table blocks: %" PRIu32 "\n", l->itable_blocks);
 	(void)printf("first data zone: %" PRIu32 "\n", l->firstdatazone);
 	(void)printf("log zone size: %" PRIu32 "\n", p->log_zone_size);
+	(void)printf("max file size: %" PRIu32 "\n", l->max_size);
+}
+
+/* The maximum file size that -m asks for, or what MINIX works out. */
+static uint32_t
+max_size(const struct options *o, uint32_t block_size)
+{
+	const struct mfs_params *p;
+	unsigned long v;
+	char *end;
+
+	p = &o->params;
+	if (o->max == NULL || strcmp(o->max, "minix") == 0)
+		return mfs_minix_size(p->version, block_size,
+		    p->log_zone_size);
+	if (strcmp(o->max, "linux") == 0)
+		return mfs_linux_max_size(p->version, p->log_zone_size);
+	errno = 0;
+	v = strtoul(o->max, &end, 10);
+	if (errno != 0 || *end != '\0' || end == o->max || o->max[0] == '-' ||
+	    v == 0 || v > INT32_MAX)
+		errx(2, "%s: give minix, linux or a size from 1 to %d", o->max,
+		    INT32_MAX);
+	return (uint32_t)v;
 }
 
 static void
@@ -281,8 +312,7 @@ tree_shape(const struct options *o, uint32_t block_size, struct tree_fs *f)
 	f->log_zone_size = o->params.log_zone_size;
 	f->namelen = o->params.namelen != 0 ? o->params.namelen :
 	    o->params.version == 3 ? 60 : 14;
-	f->max_size = mfs_max_size(o->params.version,
-	    o->params.log_zone_size);
+	f->max_size = o->params.max_size;
 	if (o->owner == NULL)
 		return;
 	if ((gid = strchr(o->owner, ':')) == NULL)
@@ -392,6 +422,7 @@ main(int argc, char **argv)
 	block_size = o.params.block_size;
 	if (block_size == 0)
 		block_size = o.params.version == 3 ? V3_BLOCK : STATIC_BLOCK;
+	o.params.max_size = max_size(&o, block_size);
 	if (o.dir != NULL) {
 		tree_shape(&o, block_size, &f);
 		scan(&o, &f, &need);

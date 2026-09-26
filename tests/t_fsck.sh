@@ -47,13 +47,14 @@ check_field() {
 
 # damage_super: the super block.
 damage_super() {
-	max=$(info_field "$T/good" "max file size")
+	max=$("$TUNEFS_MINIXFS" "$T/good" |
+	    sed -n 's/.*(MINIX works out \([0-9]*\))$/\1/p')
 	cp "$T/good" "$T/img"
 	set_super "$T/img" maxsize 0
 	fsck_damaged "a maximum file size of 0" \
 	    "the super block gives a maximum file size of 0"
-	check_info "$v: -y sets the maximum file size" "$T/fixed" \
-	    "max file size" "$max"
+	check_info "$v: -y sets the maximum file size MINIX works out" \
+	    "$T/fixed" "max file size" "$max"
 
 	# Half of the image is enough to hold the files.
 	size=$(($(wc -c <"$T/good")))

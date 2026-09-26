@@ -54,7 +54,7 @@ formats() {
 		blocks=$((2097152 / bsize))
 		opts="$opts -B $order -s $blocks -i 100 -z $logzone"
 		spec="$spec order=$order blocks=$blocks inodes=100"
-		spec="$spec logzone=$logzone"
+		spec="$spec logzone=$logzone maxsize=minix"
 		vs_mkimage "$version" "$opts" "$spec" \
 		    "V$format/$order/$logzone"
 	done
@@ -400,7 +400,35 @@ EOF
 	check_status "-x without -F is a usage error" 2
 }
 
+# -m: the maximum file size, what MINIX works out by default, as mkfs of
+# MINIX writes it, or that of Linux, or a number; -d keeps files to it.
+max_sizes() {
+	vs_mkimage 2 "-l 14 -B le -s 2048 -i 100 -m linux" \
+	    "namelen=14 order=le blocks=2048 inodes=100 maxsize=linux" \
+	    "-m linux"
+	vs_mkimage 3 "-b 4096 -B be -s 512 -i 100 -m 123456" \
+	    "block=4096 order=be blocks=512 inodes=100 maxsize=123456" \
+	    "-m 123456"
+	rm -f "$T/img"
+	run "$NEWFS_MINIXFS" -V 2 -m 0 -s 100 "$T/img"
+	check_status "-m 0 is a usage error" 2
+	run "$NEWFS_MINIXFS" -V 2 -m 2147483648 -s 100 "$T/img"
+	check_status "-m past the largest signed 32-bit size is a usage error" \
+	    2
+	rm -rf "$T/t"
+	mkdir -p "$T/t"
+	dd if=/dev/zero of="$T/t/f" bs=10001 count=1 2>/dev/null
+	run "$NEWFS_MINIXFS" -V 2 -m 10001 -d "$T/t" "$T/img"
+	check_status "-d takes a file of the maximum file size" 0
+	rm -f "$T/img"
+	run "$NEWFS_MINIXFS" -V 2 -m 10000 -d "$T/t" "$T/img"
+	check_err "-d refuses a file past the maximum file size" \
+	    "10001 bytes are more than the largest file, 10000"
+	check_true "and writes nothing" test ! -e "$T/img"
+}
+
 formats
+max_sizes
 defaults
 sizes
 refusals

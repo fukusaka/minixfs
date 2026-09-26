@@ -6,8 +6,8 @@ NAME
 SYNOPSIS
      newfs_minixfs -V version [-N] [-B le | be] [-b block-size] [-d directory
                    [-F specfile [-P dbdir [-x]]] [-o uid:gid]] [-i inodes]
-                   [-l name-length] [-s blocks] [-t time] [-z log-zone-size]
-                   image
+                   [-l name-length] [-m minix | linux | bytes] [-s blocks]
+                   [-t time] [-z log-zone-size] image
 
 DESCRIPTION
      newfs_minixfs は、ファイルまたはデバイス image に、版 1・2・3 の MINIX
@@ -95,6 +95,15 @@ DESCRIPTION
              V1 と V2 の名前の長さです。 MINIX と同じ 14（既定）か、Linux
              の拡張の 30 で、30 のほうは専用のマジック番号を持ちます。 V3
              の名前は常に 60 文字です。
+
+     -m minix | linux | bytes
+             superblock の最大ファイルサイズです。 minix は、二重間接 zone
+             の届く範囲から MINIX が計算する値で、既定です。 MINIX
+             がどのファイルも全部読めます。 linux は Linux の mkfs.minix
+             が書く値で、V2 と V3 では 2147483647 です。 bytes は 1 から
+             2147483647 までの数値です。 Linux
+             とこのパッケージの道具は、ファイルをこの大きさまでに抑えます。
+             minixfs(5) を参照してください。
 
      -s blocks
              ブロック単位の大きさです。

@@ -1312,7 +1312,7 @@ check_super(struct check *c)
 	fs = &c->fs;
 	if (fs->max_size == 0 || fs->max_size > MAX_SIZE) {
 		size = fs->max_size;
-		fs->max_size = mfs_max_size(fs->version, fs->log_zone_size);
+		fs->max_size = mfs_minix_max_size(fs);
 		problem(c, put_super(c), "the super block gives a maximum file "
 		    "size of %" PRIu32, size);
 	}

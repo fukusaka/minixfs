@@ -91,6 +91,8 @@ copies a directory tree into one:
 `-V` is required. With `-d`, a new image is sized for the tree unless
 `-s` specifies its size. `-F` reads an mtree specification such as METALOG.
 The first 1024 bytes, reserved for boot code, are preserved.
+The maximum file size is what MINIX reads in full; `-m linux` gives
+that of Linux.
 
 ### Check and repair
 

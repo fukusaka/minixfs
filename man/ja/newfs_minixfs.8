@@ -25,6 +25,7 @@
 .Oc
 .Op Fl i Ar inodes
 .Op Fl l Ar name-length
+.Op Fl m Cm minix | linux | Ar bytes
 .Op Fl s Ar blocks
 .Op Fl t Ar time
 .Op Fl z Ar log-zone-size
@@ -165,6 +166,18 @@ inode 表のブロックが埋まるまで切り上げます。
 V1 と V2 の名前の長さです。
 MINIX と同じ 14（既定）か、\:Linux の拡張の 30 で、\:30 のほうは専用のマジック番号を持ちます。
 V3 の名前は常に 60 文字です。
+.It Fl m Cm minix | linux | Ar bytes
+superblock の最大ファイルサイズです。
+.Cm minix
+は、\:二重間接 zone の届く範囲から MINIX が計算する値で、\:既定です。
+MINIX がどのファイルも\:全部読めます。
+.Cm linux
+は Linux の mkfs.minix が書く値で、\:V2 と V3 では 2147483647 です。
+.Ar bytes
+は 1 から 2147483647 までの数値です。
+Linux と\:このパッケージの道具は、\:ファイルを\:この大きさまでに\:抑えます。
+.Xr minixfs 5
+を参照してください。
 .It Fl s Ar blocks
 ブロック単位の大きさです。
 .It Fl t Ar time

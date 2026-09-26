@@ -631,6 +631,7 @@ struct mfs_params {
 	uint32_t	nblocks;	/* size in blocks */
 	uint32_t	ninodes;	/* 0: one for every 3 blocks */
 	uint32_t	log_zone_size;
+	uint32_t	max_size;	/* 0: what MINIX works out */
 	uint32_t	time;		/* of the root directory */
 };
 
@@ -651,17 +652,21 @@ struct mfs_layout {
 };
 
 /*
- * The s_max_size that a new file system of a version and zone size
- * gets: what the zones of V1 reach, and the largest signed 32-bit size
- * for V2 and V3, as Linux writes it.
+ * The s_max_size that mkfs.minix of Linux writes for a version and zone
+ * size: what the zones of V1 reach, and the largest signed 32-bit size
+ * for V2 and V3.
  */
-uint32_t mfs_max_size(int, uint32_t);
+uint32_t mfs_linux_max_size(int, uint32_t);
 
 /*
- * The s_max_size that MINIX works out for an open file system: what the
- * zones reach up to the double indirect zone, which is all that MINIX
- * uses, but no more than the largest signed 32-bit size.
+ * The s_max_size that MINIX works out for a version, block size and zone
+ * size: what the zones reach up to the double indirect zone, which is
+ * all that MINIX uses, but no more than the largest signed 32-bit size.
+ * A new file system gets it unless asked for another.
  */
+uint32_t mfs_minix_size(int, uint32_t, uint32_t);
+
+/* mfs_minix_size() for an open file system. */
 uint32_t mfs_minix_max_size(const struct mfs *);
 
 /*

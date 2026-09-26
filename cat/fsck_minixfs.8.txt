@@ -45,16 +45,17 @@ DESCRIPTION
              it has none; zone numbers outside the data area and the second
              use of a zone are cleared; sizes are cut to what the zones reach,
              to whole entries and to the text of a symbolic link.  Link counts
-             and bit maps are corrected, unreferenced inodes are freed, and
-             the maximum file size in the super block is corrected.  A root
-             that is not a directory and an image shorter than the file system
-             are left.  Each problem is followed by ‘(repaired)’ or ‘(not
-             repaired)’.  The image is then checked again and marked clean if
-             nothing is left — in V1 and V2 as Linux marks it, in V3 with the
-             clean flag of MINIX 3, which otherwise mounts the file system
-             read-only — or marked as having errors if problems remain.  The
-             image is locked with fcntl(2) while it is written, and one that
-             another program holds is refused.
+             and bit maps are corrected, unreferenced inodes are freed, and a
+             maximum file size in the super block that is 0 or past 2147483647
+             becomes the one MINIX works out.  A root that is not a directory
+             and an image shorter than the file system are left.  Each problem
+             is followed by ‘(repaired)’ or ‘(not repaired)’.  The image is
+             then checked again and marked clean if nothing is left — in V1
+             and V2 as Linux marks it, in V3 with the clean flag of MINIX 3,
+             which otherwise mounts the file system read-only — or marked as
+             having errors if problems remain.  The image is locked with
+             fcntl(2) while it is written, and one that another program holds
+             is refused.
 
      -l      With -y, link unreferenced inodes into /lost+found as ‘#’ and
              their inode number, trees below directories and all, rather than

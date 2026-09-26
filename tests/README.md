@@ -56,19 +56,21 @@ top of `tests/mkimage.c`).  The scripts:
   with status 0 or 1 (`fsck_minixfs`: up to 3), without crashing and
   without writing outside `DEST`.
 - `t_newfs.sh` - `newfs_minixfs` makes, in every format, the image that
-  `tests/mkimage` makes from an empty tree; defaults, sizes, `-N`, the
-  boot block, and the options it must refuse.  With `-d`, the test tree
+  `tests/mkimage` makes from an empty tree, with the maximum file size
+  MINIX works out, that of Linux with `-m linux` or a number; defaults,
+  sizes, `-N`, the boot block, and the options it must refuse.  With `-d`, the test tree
   goes into every format and comes back out with its modes, sizes and
   times; hard and symbolic links, pipes, `-o`, owners of `-o` that are
   no numbers or past their range, the size made to fit, `-N`, sizes too
-  small and names too long; and, where fakeroot(1) is
+  small, names too long and files past the maximum file size; and, where fakeroot(1) is
   installed, devices.  With `-F`, a specification in both forms sets
   modes, owners (by name, from `-P`) and times, adds devices, links,
   pipes, empty files and escaped names, skips optional entries, `-x`
   leaves out what it does not name, and bad entries change nothing.
 - `t_fsck.sh` - `fsck_minixfs` passes the test tree in every format and
   an empty file system, and finds each kind of damage in every version
-  and byte order: a bad maximum file size, a short image, the clean mark
+  and byte order: a bad maximum file size, which becomes MINIX's, a
+  short image, the clean mark
   and the errors Linux records, bit maps that disagree with the files
   and a clear bit 0, wrong link counts, zones outside the data area or
   used twice, inodes that no directory names or with no valid type, bad

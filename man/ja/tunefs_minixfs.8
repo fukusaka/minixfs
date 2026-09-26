@@ -93,11 +93,11 @@ MINIX 3 は clean で\:ないファイルシステムを\:読み出し専用で\
 .It Fl m Cm minix | linux | Ar bytes
 superblock の最大ファイルサイズを変えます。
 .Cm minix
-は二重間接 zone の届く範囲から MINIX が計算する値、\:
-.Cm linux
-は Linux と
+は二重間接 zone の届く範囲から MINIX が計算する値\:（
 .Xr newfs_minixfs 8
-が書く値、\:
+の既定）\:、\:
+.Cm linux
+は Linux の mkfs.minix が書く値、\:
 .Ar bytes
 は 1 から 2147483647 までの数値です。
 Linux と\:このパッケージの道具は、\:ファイルを\:この大きさまでに\:抑えます。

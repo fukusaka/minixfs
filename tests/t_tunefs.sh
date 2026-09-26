@@ -62,10 +62,16 @@ for fs in "1 le" "2 be" "3 le" "3 be"; do
 	run "$FSCK_MINIXFS" -w "$T/img"
 	check_true "$v: fsck -w has nothing to say after -m minix" \
 	    test "$(grep -c ': warning: ' "$T/out")" -eq 0
+	# mkfs.minix of Linux writes what the zones reach in V1, and the
+	# largest signed 32-bit size in V2 and V3.
+	linux=2147483647
+	if [ "$version" -eq 1 ]; then
+		linux=$minix
+	fi
 	run "$TUNEFS_MINIXFS" -m linux "$T/img"
 	tuned "-m linux"
-	check_info "$v: -m linux gives what newfs_minixfs writes" "$T/img" \
-	    "max file size" "$max"
+	check_info "$v: -m linux gives what mkfs.minix of Linux writes" \
+	    "$T/img" "max file size" "$linux"
 	run "$TUNEFS_MINIXFS" -m 123456 "$T/img"
 	tuned "-m 123456"
 	check_info "$v: -m takes a number" "$T/img" "max file size" 123456

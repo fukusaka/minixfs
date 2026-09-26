@@ -13,6 +13,7 @@
  *
  *	fs   [version=1|2|3] order=le|be [namelen=14|30] [block=N]
  *	     blocks=N inodes=N [logzone=N] [spare=N] [gap=N] [skip=N] [vmd]
+ *	     [maxsize=linux|minix|N]
  *	dir  PATH MODE UID GID MTIME
  *	file PATH MODE UID GID MTIME SIZE SEED [HOLESTART:HOLELEN ...]
  *	link PATH TARGET UID GID MTIME
@@ -28,6 +29,9 @@
  * each bit map N more blocks than it needs, and gap leaves N zones between
  * the inode table and the first data zone, as other mkfs may.  skip
  * leaves the first N data zones free, so that the files lie further in.
+ * maxsize is the maximum file size of the super block: as mkfs.minix of
+ * Linux writes it (the default), what the zones reach up to the double
+ * indirect zone, as the mkfs of MINIX writes it, or N.
  * vmd makes a V1 or V2 file system as Minix-vmd does: its super block
  * keeps the zone size in a byte, flags (flex directories, clean) in the
  * next and 0x7f, 0x13 at byte 18, and its flex directories hold entries
@@ -151,6 +155,8 @@ struct image {
 	uint32_t	inode_start;
 	uint32_t	isize;		/* bytes of an inode */
 	uint32_t	logzone;
+	int		minix_max;	/* maxsize=minix */
+	uint32_t	maxsize;	/* maxsize=N, or 0 */
 	uint32_t	spare;		/* map blocks beyond the need */
 	uint32_t	gap;		/* zones before the first data zone */
 	uint32_t	skip;		/* data zones left free at the start */
@@ -542,6 +548,12 @@ fs_option(struct parser *ps, char *s)
 		img->skip = number(ps, s + 5, 10);
 	else if (strcmp(s, "vmd") == 0)
 		img->vmd = 1;
+	else if (strcmp(s, "maxsize=minix") == 0)
+		img->minix_max = 1;
+	else if (strcmp(s, "maxsize=linux") == 0)
+		img->minix_max = 0;
+	else if (strncmp(s, "maxsize=", 8) == 0)
+		img->maxsize = number(ps, s + 8, 10);
 	else
 		syntax(ps, "unknown fs option", s);
 }
@@ -925,18 +937,25 @@ lay_out(struct image *img, struct node *dir)
 	}
 }
 
-/* The maximum file size stored in the super block, as mkfs writes it. */
+/*
+ * The maximum file size stored in the super block: N, or what the zones
+ * reach, up to the double indirect zone for MINIX and to every level for
+ * V1 of Linux, whose V2 and V3 get the largest signed 32-bit size.
+ */
 static uint32_t
 max_size(const struct image *img)
 {
 	uint64_t bytes, per, zones;
-	uint32_t i;
+	uint32_t i, levels;
 
-	if (img->version != 1)
+	if (img->maxsize != 0)
+		return img->maxsize;
+	if (img->version != 1 && !img->minix_max)
 		return 0x7fffffff;
+	levels = img->minix_max ? 2 : img->nlevels;
 	zones = NR_DZONES;
 	per = 1;
-	for (i = 0; i < img->nlevels; i++) {
+	for (i = 0; i < levels; i++) {
 		per *= img->nind;
 		zones += per;
 	}

@@ -329,15 +329,22 @@ device_size(const struct mfs *fs)
 }
 
 uint32_t
+mfs_minix_size(int version, uint32_t block_size, uint32_t log_zone_size)
+{
+	uint64_t max, n, zones;
+
+	n = block_size / (version == 1 ? 2 : 4);
+	zones = NR_DZONES + n + n * n;
+	max = INT32_MAX;
+	if (((max - 1) >> log_zone_size) / block_size >= zones)
+		max = (zones * block_size) << log_zone_size;
+	return (uint32_t)max;
+}
+
+uint32_t
 mfs_minix_max_size(const struct mfs *fs)
 {
-	uint64_t max, zones;
-
-	zones = fs->ndzones + fs->nindirs + (uint64_t)fs->nindirs * fs->nindirs;
-	max = INT32_MAX;
-	if (((max - 1) >> fs->log_zone_size) / fs->block_size >= zones)
-		max = (zones * fs->block_size) << fs->log_zone_size;
-	return (uint32_t)max;
+	return mfs_minix_size(fs->version, fs->block_size, fs->log_zone_size);
 }
 
 uint64_t

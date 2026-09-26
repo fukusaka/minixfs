@@ -70,7 +70,8 @@ outside the data area and the second use of a zone are cleared; sizes
 are cut to what the zones reach, to whole entries and to the text of a
 symbolic link.
 Link counts and bit maps are corrected, unreferenced inodes are freed,
-and the maximum file size in the super block is corrected.
+and a maximum file size in the super block that is 0 or past 2147483647
+becomes the one MINIX works out.
 A root that is not a directory and an image shorter than the file
 system are left.
 Each problem is followed by

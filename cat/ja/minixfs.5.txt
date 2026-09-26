@@ -275,8 +275,8 @@ CAVEATS
      MINIX は、ファイルのうち二重間接 zone が届く範囲より先を、エラーなしで 0
      として読みます。 V2 と V3 では、Linux とこのパッケージは三重間接 zone
      を使って、superblock の最大ファイルサイズまでその先を書きます。 Linux の
-     mkfs.minix と newfs_minixfs(8) は、この値を 2147483647 にします。
-     そのため、1024 バイトのブロックの V2 で 67378176
+     mkfs.minix は、この値を 2147483647 にし、 newfs_minixfs(8) も -m linux
+     ではそうします。 そのため、1024 バイトのブロックの V2 で 67378176
      バイトを超えるファイルは、MINIX では全部は読めません。 ‘tunefs_minixfs -m
      minix’ で、どちらも MINIX が読める範囲に抑えられます。
 

@@ -190,7 +190,7 @@ max_size(const struct mfs *fs, const char *s)
 	if (strcmp(s, "minix") == 0)
 		return mfs_minix_max_size(fs);
 	if (strcmp(s, "linux") == 0)
-		return mfs_max_size(fs->version, fs->log_zone_size);
+		return mfs_linux_max_size(fs->version, fs->log_zone_size);
 	errno = 0;
 	v = strtoul(s, &end, 10);
 	if (errno != 0 || *end != '\0' || end == s || s[0] == '-' || v == 0 ||

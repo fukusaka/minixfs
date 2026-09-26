@@ -314,10 +314,11 @@ MINIX 3 after 3.3.0 refuses zones of more than one block.
 MINIX reads the part of a file past what the double indirect zone
 reaches as zeros, without an error.
 In V2 and V3, Linux and this package write past it, through the triple
-indirect zone, up to the maximum file size in the super block, which
-mkfs.minix of Linux and
+indirect zone, up to the maximum file size in the super block, which mkfs.minix of
+Linux sets to 2147483647, and
 .Xr newfs_minixfs 8
-set to 2147483647.
+too with
+.Fl m Cm linux .
 A file over 67378176 bytes in V2 with 1024-byte blocks is thus not read
 in full by MINIX.
 .Ql tunefs_minixfs -m minix

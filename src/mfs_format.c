@@ -123,7 +123,8 @@ mfs_plan(const struct mfs_params *p, struct mfs_layout *l)
 		return -EFBIG;
 	l->firstdatazone = (uint32_t)first;
 
-	l->max_size = mfs_max_size(p->version, p->log_zone_size);
+	l->max_size = p->max_size != 0 ? p->max_size :
+	    mfs_minix_size(p->version, l->block_size, p->log_zone_size);
 	if (p->version == 1) {
 		l->magic = l->namelen == 14 ? MFS_MAGIC_V1 : MFS_MAGIC_V1L;
 	} else {
@@ -137,7 +138,7 @@ mfs_plan(const struct mfs_params *p, struct mfs_layout *l)
 }
 
 uint32_t
-mfs_max_size(int version, uint32_t log_zone_size)
+mfs_linux_max_size(int version, uint32_t log_zone_size)
 {
 	uint64_t bytes;
 

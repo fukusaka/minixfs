@@ -6,8 +6,8 @@ NAME
 SYNOPSIS
      newfs_minixfs -V version [-N] [-B le | be] [-b block-size] [-d directory
                    [-F specfile [-P dbdir [-x]]] [-o uid:gid]] [-i inodes]
-                   [-l name-length] [-s blocks] [-t time] [-z log-zone-size]
-                   image
+                   [-l name-length] [-m minix | linux | bytes] [-s blocks]
+                   [-t time] [-z log-zone-size] image
 
 DESCRIPTION
      newfs_minixfs makes a MINIX file system of version 1, 2 or 3 in the file
@@ -92,6 +92,14 @@ DESCRIPTION
              The length of names in V1 and V2: 14, as in MINIX and the
              default, or 30, the extension of Linux, which has magic numbers
              of its own.  V3 names are always 60 characters.
+
+     -m minix | linux | bytes
+             The maximum file size in the super block: what MINIX works out
+             from the zones that the double indirect zone reaches, the
+             default, so that MINIX reads every file in full; what mkfs.minix
+             of Linux writes, 2147483647 in V2 and V3; or bytes, from 1 to
+             2147483647.  Linux and the tools of this package keep files to
+             it; see minixfs(5).
 
      -s blocks
              The size in blocks.
