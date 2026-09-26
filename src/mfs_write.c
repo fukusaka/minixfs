@@ -548,25 +548,15 @@ slot_fn(const struct mfs_dirent *de, void *arg)
 	return 0;
 }
 
-/*
- * Add an entry to a flex directory, as search_dir() of Minix-vmd enters
- * one: each block is walked from entry to entry, and the entry goes where
- * enough free slots follow one another in a block, or else at the start
- * of a new block.  The name is padded with NULs to the end of its last
- * slot.
- */
-static int
-add_flex(struct mfs *fs, struct mfs_inode *dp, const char *name,
-    uint32_t ino)
+int
+mfs_flex_place(struct mfs *fs, const struct mfs_inode *dp, size_t len,
+    uint32_t *where)
 {
-	unsigned char entry[FLEX_SLOT * (FLEX_MAX_EXTENT + 1)];
 	uint32_t nblocks, off, pos, slots, s, need, nfree;
 	unsigned char *buf, *p;
 	ssize_t n;
-	size_t len;
 
-	len = strlen(name);
-	need = 1 + (uint32_t)(len + 3) / FLEX_SLOT;
+	need = (uint32_t)MFS_FLEX_SLOTS(len);
 	slots = fs->block_size / FLEX_SLOT;
 	nblocks = (dp->size + fs->block_size - 1) / fs->block_size;
 	/* mfs_pread() reads through fs->dbuf. */
@@ -595,11 +585,28 @@ add_flex(struct mfs *fs, struct mfs_inode *dp, const char *name,
 		}
 	}
 	free(buf);
+	*where = off;
+	return 0;
+}
+
+/* Add an entry to a flex directory where mfs_flex_place() puts it. */
+static int
+add_flex(struct mfs *fs, struct mfs_inode *dp, const char *name,
+    uint32_t ino)
+{
+	unsigned char entry[FLEX_SLOT * (FLEX_MAX_EXTENT + 1)];
+	uint32_t off;
+	size_t len;
+	int r;
+
+	len = strlen(name);
+	if ((r = mfs_flex_place(fs, dp, len, &off)) < 0)
+		return r;
 	(void)memset(entry, 0, sizeof(entry));
 	put16(fs->order, entry, ino);
-	entry[FLEX_EXTENT] = (unsigned char)(need - 1);
+	entry[FLEX_EXTENT] = (unsigned char)(MFS_FLEX_SLOTS(len) - 1);
 	(void)memcpy(entry + FLEX_NAME, name, len);
-	return mfs_pwrite(fs, dp, entry, need * FLEX_SLOT, off);
+	return mfs_pwrite(fs, dp, entry, MFS_FLEX_SLOTS(len) * FLEX_SLOT, off);
 }
 
 int

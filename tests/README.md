@@ -139,7 +139,9 @@ top of `tests/mkimage.c`).  The scripts:
   the library (`tests/mfsop`) as Minix-vmd does it, a new directory of
   two slots, an entry that does not fit in a block starting the next and
   freed slots taken again, which the fsck of Minix-vmd passes where
-  `VMD_FSCK` is set; the clean flag set and cleared alone, `tunefs -B`
+  `VMD_FSCK` is set; `fsck -y` putting `.` and `..` back, moving an
+  entry out of the slot of `.`, and making `/lost+found` there with
+  `-l`, which the fsck of Minix-vmd passes too; the clean flag set and cleared alone, `tunefs -B`
   and `-l` refused, and `-s` working.  `t_read.sh` reads the test tree
   as Minix-vmd V1 and V2 as well.
 - `t_restore.sh` - `restore_minixfs` restores dumps of the test tree

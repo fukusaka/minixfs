@@ -7,9 +7,8 @@
 # of every length up to 60 read back, entries that would cross a block
 # start the next one, and the clean flag is its own.  The library adds,
 # links, renames and removes entries of flex directories as Minix-vmd
-# does, which its own fsck passes where VMD_FSCK names it; what writes
-# entries at a place of its own, as fsck does, refuses, and the rest
-# works.
+# does, and fsck puts back "." and ".." and makes lost+found in them,
+# which the fsck of Minix-vmd passes where VMD_FSCK names it.
 
 # shellcheck source=tests/lib.sh
 . ./tests/lib.sh
@@ -186,6 +185,52 @@ for fs in "1 le" "2 le" "2 be"; do
 	run "$FSCK_MINIXFS" "$T/w.img"
 	check_status "$v: fsck passes the directory of two blocks" 0
 	vmd_fsck "$v: so does the fsck of Minix-vmd, again" "$T/w.img"
+
+	# fsck puts "." and ".." back in flex directories, moving an entry
+	# that takes the slot of ".", and makes /lost+found in them.  /d is
+	# inode 2, and a, its first file, inode 3.
+	cp "$T/good" "$T/w.img"
+	"$FSCK_MINIXFS" -y "$T/w.img" >/dev/null
+	"$TUNEFS_MINIXFS" -e 0 -m minix "$T/w.img" >/dev/null
+	cp "$T/w.img" "$T/base.img"
+	dz=$(($(get_inode "$T/w.img" 2 zone0) * 1024))
+	poke_number "$T/w.img" "$dz" 16 0
+	poke_number "$T/w.img" $((dz + 8)) 16 0
+	run "$FSCK_MINIXFS" -y "$T/w.img"
+	check_out_has "$v: fsck -y puts \".\" back in a flex directory" \
+	    '"\." is not entry 1 (repaired)$'
+	check_out_has "$v: and \"..\"" '"\.\." is not entry 2 (repaired)$'
+	run "$FSCK_MINIXFS" "$T/w.img"
+	check_status "$v: nothing is left of the missing dots" 0
+	vmd_fsck "$v: the fsck of Minix-vmd passes the dots put back" \
+	    "$T/w.img"
+
+	cp "$T/base.img" "$T/w.img"
+	poke_number "$T/w.img" "$dz" 16 3
+	poke "$T/w.img" $((dz + 3)) 172 172 000 000 000
+	run "$FSCK_MINIXFS" -y "$T/w.img"
+	check_out_has "$v: fsck -y puts \".\" in place of another entry" \
+	    '"\." is not entry 1 (repaired)$'
+	run "$MINIXFS" ls "$T/w.img" /d
+	check_out_has "$v: which it moves" "^zz\$"
+	run "$FSCK_MINIXFS" "$T/w.img"
+	check_status "$v: nothing is left of the entry moved" 0
+	vmd_fsck "$v: the fsck of Minix-vmd passes the entry moved" \
+	    "$T/w.img"
+
+	# Take "d", the third entry of the root, away from /d and its tree.
+	cp "$T/base.img" "$T/w.img"
+	rz=$(($(get_inode "$T/w.img" 1 zone0) * 1024))
+	poke_number "$T/w.img" $((rz + 16)) 16 0
+	run "$FSCK_MINIXFS" -y -l "$T/w.img"
+	check_out_has "$v: fsck -y -l makes /lost+found in a flex directory" \
+	    ": made /lost+found\$"
+	run "$MINIXFS" ls "$T/w.img" /lost+found
+	echo "#2" >"$T/want"
+	check_out "$v: and links the tree into it" "$T/want"
+	run "$FSCK_MINIXFS" "$T/w.img"
+	check_status "$v: nothing is left after -y -l" 0
+	vmd_fsck "$v: the fsck of Minix-vmd passes /lost+found" "$T/w.img"
 
 	run "$TUNEFS_MINIXFS" -B be "$T/img"
 	check_err "$v: -B refuses Minix-vmd" "Minix-vmd"

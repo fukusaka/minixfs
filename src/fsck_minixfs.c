@@ -777,6 +777,25 @@ free_entry(const struct check *c, const struct entries *e)
 	return off;
 }
 
+/*
+ * Add an entry name, naming ino, to the directory *dp: in a flex
+ * directory where Minix-vmd would add it, growing it as grow_dir() does.
+ */
+static int
+add_flex(struct check *c, struct mfs_inode *dp, const char *name,
+    uint32_t ino)
+{
+	uint32_t off;
+	int r;
+
+	if ((r = mfs_flex_place(&c->fs, dp, strlen(name), &off)) < 0)
+		return r;
+	if ((r = grow_dir(c, dp, off + MFS_FLEX_SLOTS(strlen(name)) *
+	    c->fs.dirent_size)) < 0)
+		return r;
+	return mfs_put_entry(&c->fs, dp, off, ino, name);
+}
+
 /* Add an entry name, naming ino, to the directory dir. */
 static int
 add_entry(struct check *c, uint32_t dir, const char *name, uint32_t ino)
@@ -787,8 +806,11 @@ add_entry(struct check *c, uint32_t dir, const char *name, uint32_t ino)
 	int r;
 
 	(void)memset(&e, 0, sizeof(e));
-	if ((r = mfs_get_inode(&c->fs, dir, &dp)) < 0 ||
-	    (r = mfs_readdir(&c->fs, &dp, collect_fn, &e)) < 0)
+	if ((r = mfs_get_inode(&c->fs, dir, &dp)) < 0)
+		return r;
+	if (c->fs.flex)
+		return add_flex(c, &dp, name, ino);
+	if ((r = mfs_readdir(&c->fs, &dp, collect_fn, &e)) < 0)
 		goto out;
 	off = free_entry(c, &e);
 	if (off >= dp.size &&
@@ -798,6 +820,35 @@ add_entry(struct check *c, uint32_t dir, const char *name, uint32_t ino)
 out:
 	free(e.ent);
 	return r;
+}
+
+/*
+ * Put name, naming ino, into slot k (0 or 1) of the flex directory *dp,
+ * whose entries in use e holds.  An entry with another name whose slots
+ * take that one is freed, and added again elsewhere once the slot is
+ * written.
+ */
+static int
+put_flex_dot(struct check *c, struct mfs_inode *dp, const struct entries *e,
+    uint32_t k, const char *name, uint32_t ino)
+{
+	const struct mfs_dirent *old;
+	uint32_t off;
+	size_t i;
+	int r;
+
+	off = k * c->fs.dirent_size;
+	old = NULL;
+	for (i = 0; i < e->n; i++)
+		if (e->ent[i].off <= off && off < e->ent[i].off +
+		    MFS_FLEX_SLOTS(strlen(e->ent[i].name)) * c->fs.dirent_size &&
+		    (e->ent[i].off != off || strcmp(e->ent[i].name, name) != 0))
+			old = &e->ent[i];
+	if (old != NULL && (r = mfs_set_entry(&c->fs, dp, old->off, 0)) < 0)
+		return r;
+	if ((r = mfs_put_entry(&c->fs, dp, off, ino, name)) < 0)
+		return r;
+	return old != NULL ? add_flex(c, dp, old->name, old->ino) : 0;
 }
 
 /*
@@ -822,6 +873,10 @@ put_dot(struct check *c, const struct dotfix *f, uint32_t k,
 	    (r = grow_dir(c, &dp, off + c->fs.dirent_size)) < 0 ||
 	    (r = mfs_readdir(&c->fs, &dp, collect_fn, &e)) < 0)
 		goto out;
+	if (c->fs.flex) {
+		r = put_flex_dot(c, &dp, &e, k, name, ino);
+		goto out;
+	}
 
 	old = NULL;
 	for (i = 0; i < e.n; i++)

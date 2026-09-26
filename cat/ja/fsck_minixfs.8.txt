@@ -100,8 +100,4 @@ SEE ALSO
 AUTHORS
      Shoichi Fukusaka
 
-BUGS
-     Minix-vmd の flex ディレクトリも検査しますが、そこへ ‘.’ や ‘..’
-     を書き戻したり、 lost+found を作ったりはしません。
-
 minixfs                       September 26, 2026                       minixfs

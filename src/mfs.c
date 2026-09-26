@@ -1183,17 +1183,25 @@ mfs_put_entry(struct mfs *fs, const struct mfs_inode *dp, uint32_t off,
 	size_t len;
 	int r;
 
-	/* Entries of flex directories are not all the same size. */
-	if (fs->flex)
-		return -ENOTSUP;
 	if ((len = strlen(name)) > fs->namelen)
 		return -ENAMETOOLONG;
+	/* A flex entry takes its slots within one block. */
+	if (fs->flex && off % fs->block_size + MFS_FLEX_SLOTS(len) * FLEX_SLOT >
+	    fs->block_size)
+		return -EINVAL;
 	if ((r = entry_block(fs, dp, off, &block)) < 0)
 		return r;
 	p = fs->dbuf + off % fs->block_size;
-	put_ino(fs, p, ino);
-	(void)memset(p + fs->dirent_ino, 0, fs->namelen);
-	(void)memcpy(p + fs->dirent_ino, name, len);
+	if (fs->flex) {
+		(void)memset(p, 0, MFS_FLEX_SLOTS(len) * FLEX_SLOT);
+		put_ino(fs, p, ino);
+		p[FLEX_EXTENT] = (unsigned char)(MFS_FLEX_SLOTS(len) - 1);
+		(void)memcpy(p + FLEX_NAME, name, len);
+	} else {
+		put_ino(fs, p, ino);
+		(void)memset(p + fs->dirent_ino, 0, fs->namelen);
+		(void)memcpy(p + fs->dirent_ino, name, len);
+	}
 	return mfs_write_block(fs, block, fs->dbuf);
 }
 

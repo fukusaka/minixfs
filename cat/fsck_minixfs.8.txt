@@ -96,8 +96,4 @@ SEE ALSO
 AUTHORS
      Shoichi Fukusaka
 
-BUGS
-     The flex directories of Minix-vmd are checked, but ‘.’ and ‘..’ are not
-     put back there, nor is lost+found made in them.
-
 minixfs                       September 26, 2026                       minixfs

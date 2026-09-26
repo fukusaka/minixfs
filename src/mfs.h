@@ -51,6 +51,13 @@
 #define MFS_VMD_FLEX	0x01		/* Minix-vmd: flex directories */
 #define MFS_VMD_CLEAN	0x02		/* Minix-vmd: cleanly unmounted */
 
+/*
+ * The slots of 8 bytes that an entry of a flex directory of Minix-vmd
+ * takes for a name of len bytes: the first holds 5 bytes of the name and
+ * the rest 8 each, the name ending with a NUL.
+ */
+#define MFS_FLEX_SLOTS(len)	(1 + ((len) + 3) / 8)
+
 /* File types in the mode word; the values are those of MINIX. */
 #define MFS_S_IFMT	0170000
 #define MFS_S_IFIFO	0010000
@@ -381,9 +388,12 @@ int	mfs_set_entry(struct mfs *, const struct mfs_inode *, uint32_t,
 /*
  * Write a whole directory entry, inode number ino and name, at byte
  * offset off of the directory *dp.  The offset may be anywhere in the
- * zones of *dp, also past its size.  Returns 0, -ENAMETOOLONG, -ENOTSUP
- * in a flex directory of Minix-vmd, whose entries are not all of one
- * size, or another negative errno value.
+ * zones of *dp, also past its size.  In a flex directory of Minix-vmd the
+ * entry takes as many slots as the name needs, which must lie within one
+ * block, and the name is padded with NULs to the end of its last slot.
+ * Returns 0, -ENAMETOOLONG, -EINVAL for an offset that is not that of an
+ * entry or a slot, or for slots that would cross a block, or another
+ * negative errno value.
  */
 int	mfs_put_entry(struct mfs *, const struct mfs_inode *, uint32_t,
 	    uint32_t, const char *);
@@ -446,6 +456,15 @@ int	mfs_pwrite(struct mfs *, struct mfs_inode *, const void *, size_t,
  */
 int	mfs_add_entry(struct mfs *, struct mfs_inode *, const char *,
 	    uint32_t);
+
+/*
+ * Where an entry of a name of len bytes goes in the flex directory *dp,
+ * as mfs_add_entry() puts it: into *off, which is the size rounded up
+ * to a whole block where the directory has to grow.  Returns 0 or a
+ * negative errno value.
+ */
+int	mfs_flex_place(struct mfs *, const struct mfs_inode *, size_t,
+	    uint32_t *);
 
 /*
  * Mark inode ino free in the inode map; the caller clears the inode.
