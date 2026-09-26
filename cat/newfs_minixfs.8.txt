@@ -40,10 +40,10 @@ DESCRIPTION
 
      -d directory
              Copy the directory tree in name order, preserving modes, owners,
-             times, hard links and sparse blocks.  The image root inherits the
-             source directory's attributes.  Symbolic links use mode 0777;
-             sockets are skipped with a warning.  Device files can be copied
-             without root privileges.
+             times and hard links; blocks of zeros become holes.  The image
+             root inherits the source directory's attributes.  Symbolic links
+             use mode 0777; sockets are skipped with a warning.  Device files
+             can be copied without root privileges.
 
              Before writing, check name lengths, IDs, device numbers, link
              counts and capacity, counting holes as data.  Report all problems
@@ -76,9 +76,10 @@ DESCRIPTION
              with groups above 255 needs this in V1.
 
      -e 0 | 1
-             The bits of the maps past the last inode and zone: 0, as MINIX
-             leaves them, or 1, as Linux sets them; see minixfs(5).  The
-             default is 1 for names of 30 characters and 0 otherwise.
+             The bits of the maps past the last inode and zone: 0, as MINIX 2
+             and later leave them, or 1, as MINIX 1 and Linux set them; see
+             minixfs(5).  The default is 1 for names of 30 characters and 0
+             otherwise.
 
      -i inodes
              The number of inodes, rounded up to fill the blocks of the inode

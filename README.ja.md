@@ -74,7 +74,7 @@ MINIX 3 のサービス設定は [mount_minixfs(8)](cat/ja/mount_minixfs.8.txt) 
 
 `-V` は必須です。`-d` で新規作成するときは、`-s` がなければ必要容量を自動計算します。
 `-l flex` は Minix-vmd 形式です。BSD のアンマウントは `umount /mnt` です。
-MINIX 3 の書き込みを含む OS 固有の制限は [mount_minixfs(8) の BUGS](cat/ja/mount_minixfs.8.txt) を参照してください。
+MINIX 3 の書き込みは不安定です。OS 固有の制限と既知の不具合は [mount_minixfs(8) の BUGS](cat/ja/mount_minixfs.8.txt) を参照してください。
 
 ### 検査と設定変更
 

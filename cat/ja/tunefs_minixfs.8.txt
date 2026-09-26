@@ -68,9 +68,9 @@ DESCRIPTION
              でないファイルシステムを読み出し専用でマウントします。
 
      -e 0 | 1
-             各マップの、最後の inode や zone より後ろのビットを、MINIX の
-             mkfs と同じ 0 か、Linux の mkfs と同じ 1 にします。 minixfs(5)
-             を参照してください。
+             各マップの、最後の inode や zone より後ろのビットを、MINIX 2
+             以降の mkfs と同じ 0 か、MINIX 1 と Linux の mkfs と同じ 1
+             にします。 minixfs(5) を参照してください。
 
      -m minix | linux | bytes
              superblock の最大ファイルサイズを変えます。 minix は二重間接 zone

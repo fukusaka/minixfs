@@ -88,12 +88,13 @@ DESCRIPTION
      and is always set.  The maps of V1 and V2 are arrays of 16-bit words in
      the byte order of the file system, and those of V3 arrays of bytes in
      either order, as Linux writes them on big-endian machines; bit 0 of a
-     word or byte is its lowest.  The bits past the last inode or zone are
-     clear as the mkfs of MINIX and of Minix-vmd leaves them, or set as
-     mkfs.minix of Linux does.  The fsck of MINIX 2.0.4, Minix-vmd 1.7.0 and
-     MINIX 3 reports set ones as inodes or zones missing; the Linux kernel
-     counts clear ones as free, and sets them one by one once the maps are
-     full.  The fsck of MINIX 1.3 and 1.6.25 and fsck.minix ignore them.
+     word or byte is its lowest.  The bits past the last inode or zone are set
+     by the mkfs of MINIX 1.3 to 1.6.25 and by mkfs.minix of Linux, and left
+     clear by that of MINIX from 2.0.0 and of Minix-vmd.  The fsck of MINIX
+     from 2.0.0 and of Minix-vmd reports set ones as inodes or zones missing;
+     the Linux kernel counts clear ones as free, and sets them one by one once
+     the maps are full.  The fsck of MINIX 1.3 to 1.6.25 and fsck.minix ignore
+     them.
 
    Inodes
      Inode 1 is the root directory; inode 0 does not exist.  A V1 inode is 32

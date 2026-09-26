@@ -20,7 +20,8 @@
  *	-f	change a file system that is not marked clean with -B, -l
  *		and -s all the same
  *	-e	set the bits of each map past the last inode or zone to 0,
- *		as the mkfs of MINIX leaves them, or 1, as that of Linux
+ *		as the mkfs of MINIX 2 and later leaves them, or 1, as
+ *		those of MINIX 1 and Linux set them
  *	-l	names of 14 or 30 characters, in V1 and V2 but not
  *		Minix-vmd: every directory is written anew with entries
  *		of the new size.  Names too long for 14 are listed, and

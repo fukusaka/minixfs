@@ -26,10 +26,11 @@
  *	  use that no directory names, both bit maps, and bit 0 of each map,
  *	  which is never used but must be set;
  *	- with -e, the bits of each map past the last inode or zone, which
- *	  must be 0 or 1 as given.  The mkfs of MINIX leaves them clear and
- *	  that of Linux sets them, so they are not checked without -e; -w
- *	  notes those set, which the fsck of MINIX reports, but for names
- *	  of 30 characters, which MINIX does not read.
+ *	  must be 0 or 1 as given.  The mkfs of MINIX 2 and later leaves
+ *	  them clear and those of MINIX 1 and Linux set them, so they are
+ *	  not checked without -e; -w notes those set, which the fsck of
+ *	  MINIX 2 and later reports, but for names of 30 characters, which
+ *	  MINIX does not read.
  *
  * The walk goes breadth first and reads each directory once, so that
  * neither depth nor loops of directories can stop it; a directory that a
@@ -1195,8 +1196,9 @@ check_bit0(struct check *c, unsigned char *map, const char *name,
 
 /*
  * With -e, the bits of a map past the last inode or zone, from bit first
- * to the end of its blocks.  The mkfs of MINIX leaves them clear and that
- * of Linux sets them, so neither is wrong unless -e says which to expect.
+ * to the end of its blocks.  The mkfs of MINIX 2 and later leaves them
+ * clear and those of MINIX 1 and Linux set them, so neither is wrong
+ * unless -e says which to expect.
  * Without -e, -w notes those set, which the fsck of MINIX takes for
  * inodes or zones missing, in a file system that MINIX reads.
  */

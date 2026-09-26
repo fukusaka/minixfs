@@ -34,7 +34,7 @@
  * indirect zone, as the mkfs of MINIX writes it, or N.  end gives the
  * bits of the maps past the last inode and zone: set by default, as
  * mkfs.minix of Linux sets them, and clear with end=0, as the mkfs of
- * MINIX leaves them.
+ * MINIX 2 and later leaves them.
  * vmd makes a V1 or V2 file system as Minix-vmd does: its super block
  * keeps the zone size in a byte, flags (flex directories, clean) in the
  * next and 0x7f, 0x13 at byte 18, the bits of its maps past the end are

@@ -466,8 +466,8 @@ max_sizes() {
 }
 
 # -e: the bits of the maps past the last inode and zone, clear by default
-# as the mkfs of MINIX leaves them, set for the names of 30 characters
-# that only Linux reads, as mkfs.minix of Linux sets them.
+# as the mkfs of MINIX 2 and later leaves them, set for the names of 30
+# characters that only Linux reads, as mkfs.minix of Linux sets them.
 map_ends() {
 	vs_mkimage 2 "-l 14 -e 1 -s 2048 -i 100" \
 	    "namelen=14 order=le blocks=2048 inodes=100 maxsize=minix end=1" \

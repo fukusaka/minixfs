@@ -14,10 +14,10 @@
  * or cut to that size.  -N prints the layout and writes nothing.  The
  * maximum file size is what MINIX works out, all that it reads, and the
  * bits of the maps past the last inode and zone are clear, as the mkfs
- * of MINIX leaves them, but for names of 30 characters, which only Linux
- * reads, they are as mkfs.minix of Linux writes them; -m and -e give
- * others.  -l flex makes a V1 or V2 file system of Minix-vmd, whose flex
- * directories hold names of up to 60 characters.
+ * of MINIX 2 and later leaves them, but for names of 30 characters,
+ * which only Linux reads, they are as mkfs.minix of Linux writes them;
+ * -m and -e give others.  -l flex makes a V1 or V2 file system of
+ * Minix-vmd, whose flex directories hold names of up to 60 characters.
  *
  * With -d, the file system holds a copy of the directory: its files,
  * directories, symbolic links, devices and pipes, with their modes,

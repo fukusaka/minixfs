@@ -694,9 +694,10 @@ int	mfs_linux_only(int, uint32_t);
  * file system of a version and name length gets: set for one that only
  * Linux reads, as mkfs.minix of Linux sets them and as the Linux kernel
  * counts free zones and inodes over the whole of the maps, and clear for
- * the rest, which MINIX reads, as its mkfs leaves them and as the fsck of
- * MINIX 2.0.4, of Minix-vmd and of MINIX 3 take a bit set there for a
- * zone or inode missing.
+ * the rest, which MINIX reads, as the mkfs of MINIX 2 and later leaves
+ * them and as its fsck and that of Minix-vmd take a bit set there for a
+ * zone or inode missing; the fsck of MINIX 1, whose mkfs sets them,
+ * does not look at them.
  */
 int	mfs_default_map_end(int, uint32_t);
 

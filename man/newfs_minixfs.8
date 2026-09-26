@@ -67,8 +67,8 @@ The block size of V3, a multiple of 1024 up to 32768; 4096 by default,
 the smallest that MINIX 3 mounts.
 V1 and V2 always have blocks of 1024 bytes.
 .It Fl d Ar directory
-Copy the directory tree in name order, preserving modes, owners, times,
-hard links and sparse blocks.
+Copy the directory tree in name order, preserving modes, owners, times
+and hard links; blocks of zeros become holes.
 The image root inherits the source directory's attributes.
 Symbolic links use mode 0777; sockets are skipped with a warning.
 Device files can be copied without root privileges.
@@ -127,8 +127,8 @@ numbers both.
 A V1 inode keeps its group in one byte, so a tree with groups above 255
 needs this in V1.
 .It Fl e Cm 0 | 1
-The bits of the maps past the last inode and zone: 0, as MINIX leaves
-them, or 1, as Linux sets them; see
+The bits of the maps past the last inode and zone: 0, as MINIX 2 and
+later leave them, or 1, as MINIX 1 and Linux set them; see
 .Xr minixfs 5 .
 The default is 1 for names of 30 characters and 0 otherwise.
 .It Fl i Ar inodes

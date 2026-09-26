@@ -90,7 +90,7 @@ clean の印がないファイルシステムでも、\:
 V1 と V2 では Linux の状態欄に、\:V3 では MINIX 3 のフラグに、\:Minix-vmd ではそのフラグに付けます。
 MINIX 3 は clean で\:ないファイルシステムを\:読み出し専用で\:マウントします。
 .It Fl e Cm 0 | 1
-各マップの、\:最後の inode や zone より後ろのビットを、\:MINIX の mkfs と同じ 0 か、\:Linux の mkfs と同じ 1 にします。
+各マップの、\:最後の inode や zone より後ろのビットを、\:MINIX 2 以降の mkfs と同じ 0 か、\:MINIX 1 と Linux の mkfs と同じ 1 にします。
 .Xr minixfs 5
 を参照してください。
 .It Fl m Cm minix | linux | Ar bytes
