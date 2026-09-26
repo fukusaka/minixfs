@@ -2,331 +2,152 @@
 
 [English](README.md)
 
-MINIX ファイルシステムのイメージを扱う道具です。移植性のある C で、一から書いています。
+MINIX ファイルシステムのイメージを読み書きし、マウント・バックアップする道具です。
+Linux、FreeBSD、NetBSD、MINIX 3 向けに、移植性のある C で一から実装しています。
 
-目標は、Linux、FreeBSD、NetBSD、そして MINIX 3 自身の上で動く、MINIX ファイルシステムの
-FUSE ファイルシステムと管理用の道具一式です。
+## 対応形式
 
-1. MINIX の V1・V2・V3 ファイルシステム
-2. リトルエンディアンとビッグエンディアンのイメージを自動で見分ける
-3. `mkfs`・`tunefs` のような管理コマンド
-4. 結果を信頼できるだけの十分なテスト
-
-## 現状
-
-- `minixfs` コマンドによる、V1・V2・V3 ファイルシステムの読み出し（どちらのバイト順でも）
-- `mount_minixfs` による、FUSE でのマウント（読み出し専用、`-w` で書き込み可能）
-- `newfs_minixfs` による、どの版でも空のファイルシステムの作成
-- `fsck_minixfs` による、整合性の検査と修復
-- `tunefs_minixfs` による、設定の変更
-- `dump_minixfs` による、BSD の dump の形式での書き出しと、`restore_minixfs` による復元
-  （NetBSD、FreeBSD、Linux の dump も復元できます）
+V1・V2・V3 と Minix-vmd に対応します。バイト順は自動判別し、
+リトルエンディアンとビッグエンディアンのどちらも読めます。
 
 | マジック番号 | 版 | 名前 | 出どころ |
 |--------|---------|-------|--------|
 | 0x137f | V1      | 14    | MINIX |
+| 0x137f | V1      | 14。flex ディレクトリなら 60 | Minix-vmd。独自の superblock |
 | 0x138f | V1      | 30    | Linux の拡張 |
 | 0x2468 | V2      | 14    | MINIX |
+| 0x2468 | V2      | 14。flex ディレクトリなら 60 | Minix-vmd。独自の superblock |
 | 0x2478 | V2      | 30    | Linux の拡張 |
 | 0x4d5a | V3      | 60    | MINIX 3。ブロックサイズは superblock から |
 
-V2 と V3 の inode には三重間接 zone があります。Linux は使い、MINIX は使いませんが、これも読みます。
+V2・V3 の三重間接 zone にも対応します。形式の詳細は [minixfs(5)](cat/ja/minixfs.5.txt)、
+Minix-vmd への書き込み制限は各コマンドの man を参照してください。
 
-Philip Homburg と Kees Bot による MINIX の派生 Minix-vmd は、MINIX のマジック番号を持つ V1 と V2
-のファイルシステムを、独自の superblock で書きます。zone の大きさを 1 バイトに、フラグ（flex
-ディレクトリ、clean）を次の 1 バイトに持ち、Linux が状態を置く場所に 0x7f と 0x13 のバイトを
-持つので、それで見分けます。flex ディレクトリは 8 バイトのスロットでできた項目を持ち、名前は
-60 文字までです。どちらも読みます。`info` はこの亜種の名前を示し、clean の印はこの亜種のものを
-使います。決まった大きさのディレクトリ項目を書く処理（"." や ".." を戻す、`/lost+found`、
-`tunefs_minixfs -B` と `-l`）は、これを拒みます。
+## ビルドとインストール
 
-バイト順はマジック番号から分かります。PC で作ったイメージはリトルエンディアン、68000 の機械
-（Atari ST、Amiga、Macintosh）で作ったものはビッグエンディアンで、PC の Linux カーネルは後者を
-読めません。
-
-## ビルド
+C99 と POSIX.1-2008 が必要です。追加ライブラリは不要で、GNU make と BSD make に対応します。
 
     make
+    make install
 
-Makefile は GNU make でも BSD make でも動きます。コードは C99 と POSIX.1-2008 のインターフェース
-だけを使い、ライブラリは要りません。
+`make install` はコマンドを `PREFIX`（既定は `/usr/local`）、man を `MANDIR` の下に配置します。
 
-`mount_minixfs` は FUSE のライブラリが要るので、求めたときだけビルドします。
+FUSE のマウントコマンドは別途ビルドします。
 
-    make fuse                                           # libfuse 3
-    make fuse FUSE_LIBS="-lrefuse -lpuffs"              # NetBSD
-    make fuse FUSE_LIBS="-lrefuse -lpuffs" FUSE_VERSION=26   # FUSE 2
-    make fuse-minix                                     # MINIX 3
+    make fuse                                            # libfuse 3
+    make fuse FUSE_LIBS="-lrefuse -lpuffs"                 # NetBSD
+    make fuse FUSE_LIBS="-lrefuse -lpuffs" FUSE_VERSION=26 # 古い librefuse
+    make fuse-minix                                      # MINIX 3
 
-`FUSE_CFLAGS` と `FUSE_LIBS` の既定は `pkg-config fuse3` の出力です。FreeBSD では、libfuse 3 は
-パッケージ fusefs-libs3 と pkgconf で入り、カーネルには fusefs モジュール（`kldload fusefs`）が要ります。
-root 以外の利用者がマウントするには、sysctl の `vfs.usermount` を 1 にします。ソースは FUSE の高水準 API
-だけを使い、FUSE 3 の形（`FUSE_VERSION=31`、既定）か FUSE 2 の形（`FUSE_VERSION=26`、古い
-librefuse 向け）でビルドできます。
+`FUSE_CFLAGS` と `FUSE_LIBS` の既定は `pkg-config fuse3` の出力です。
+FreeBSD では fusefs-libs3 と pkgconf をインストールし、`kldload fusefs` でカーネルモジュールを
+読み込みます。一般ユーザーのマウントには `vfs.usermount=1` が必要です。
+MINIX 3 のサービス設定は [mount_minixfs(8)](cat/ja/mount_minixfs.8.txt) を参照してください。
 
 ## 使い方
 
-    minixfs [-M SIZE:HEADS:SIDE] info IMAGE
-    minixfs [-M ...] ls [-lR] IMAGE [PATH]
-    minixfs [-M ...] cat IMAGE PATH
-    minixfs [-M ...] blocks [-r] IMAGE PATH
-    minixfs [-M ...] extract [-dv] IMAGE DEST [PATH]
-    minixfs [-M ...] tar IMAGE [PATH] > ARCHIVE
-    minixfs [-M ...] [-f] put [-Rdin] [-o uid:gid] IMAGE HOST... PATH
-    minixfs [-M ...] [-f] mkdir [-p] [-m mode] [-o uid:gid] IMAGE PATH...
-    minixfs [-M ...] [-f] rm [-r] IMAGE PATH...
-    minixfs [-M ...] [-f] mv IMAGE OLD NEW
-    minixfs [-M ...] [-f] ln [-s] IMAGE TARGET PATH
-    minixfs [-M ...] [-f] chmod IMAGE MODE PATH...
-    minixfs [-M ...] [-f] chown IMAGE UID:GID PATH...
+イメージにはファイルまたはデバイスを指定します。各コマンドのリンク先に詳しい説明があります。
 
-`info` は、superblock、イメージとファイルシステムの大きさ、イメージのうち 0xe5 か 0xa5 だけの
-セクタがどれだけあるかを、その連なりの最も多い長さとともに表示します。これらの値はフォーマットが
-残すもので、ほかには誰も書きません。書かれた面より多くの面で読み取ったディスクは、1 トラックずつの
-連なりがイメージの半分を占める形で現れます。途中で切れた写しや、ディスクより小さいファイル
-システムも現れます。どれもそれ自体は誤りではありません。
+### マウントせずに読み書きする
 
-`ls -l` は、モード、リンク数、所有者、グループ、大きさ（デバイスならメジャー番号とマイナー番号）、
-UTC の更新時刻を表示します。`blocks` は、ファイルを収めるファイルシステムのブロックを、ファイルの
-順に、穴は `-` として一覧します。`-r` では、MINIX の installboot がブートブロックに書き込むように、
-最初のブロックと数の連なりとして一覧します。
+[minixfs(1)](cat/ja/minixfs.1.txt) でファイルを一覧・抽出・変更できます。
 
-`extract` はイメージからディレクトリのツリーを写します。アクセス許可（set-user-ID・set-group-ID・
-sticky ビットを除く）と時刻を保ち、リンクが 2 つ以上あるファイルの 2 つ目以降の名前はリンクとして
-作ります。FIFO は作り、デバイスは root が要る `-d` を付けたときだけ作ります。作らなかったデバイスと、
-写せないソケットは、最後に警告として数を示し、`-v` を付ければ 1 件ずつ示します。`DEST` に既にある
-名前は、tar(1) と同じく置き換えます。ディレクトリでなければ先に消すので、複数枚組のディスクを順に
-1 つのツリーに展開できます。
+    minixfs ls -l root.img /etc
+    minixfs cat root.img /etc/passwd > passwd
+    minixfs extract root.img out
+    minixfs put -R usr.img src /usr
 
-`tar` は、代わりにツリーを POSIX の ustar アーカイブとして標準出力に書きます。デバイスと FIFO も
-入れ、ハードリンクはリンクのまま、ustar に収まらない長い名前は pax のヘッダに入れます。tar(1) は
-特権なしでこれを一覧でき、root で実行すればデバイスも作ります。ソケットは入れられません。
+`extract` と `put` は既存の名前を置き換えます。`put -n` は既存のものを残し、`put -i` は
+置き換える前に確認します。`extract` でデバイスを作るには `-d` と root 権限が必要です。
+イメージ内に作るファイルの所有者は格納先のディレクトリから引き継ぎ、`-o uid:gid` で変更できます。
 
-`extract` は `DEST` の外には書きません。名前が空の項目、`.`・`..`、`/` を含む項目は拒み、
-ディレクトリのループも拒みます。
+ほかに `info`、`blocks`、`tar`、`mkdir`、`rm`、`mv`、`ln`、`chmod`、`chown` があります。
 
-`-M SIZE:HEADS:SIDE` は、`minixfs`、`fsck_minixfs`、`tunefs_minixfs`、`mount_minixfs` の
-どれも受け付けます。ディスクの片面のトラックだけにファイルシステムがあるイメージを読みます。
-トラックは SIZE バイトで、1 シリンダに HEADS 個あり、そのうち面 SIDE（0 から数える）に
-ファイルシステムがあります。片面 360K のディスクを両面 720K として読んだもの、たとえば Atari
-MINIX 1.5 のディスクは `-M 4608:2:0` で、トラックは 1 つおきに空です。こうしたイメージでも
-superblock は正しい位置にあるので、`info` は正しく見えますが、残りは壊れているように読めます。
-`fsck_minixfs -y -M` は、そうしたイメージをその場で修復し、もう片方の面には手を付けません。
+### FUSE でマウントする
 
-`put` から後のコマンドは、mtools が MS-DOS のイメージを変えるのと同じように、マウントせずに
-イメージを変えます。`put` は `extract` の逆向きで、ホストのファイルをイメージに写します。`PATH` が
-ディレクトリならその中に元の名前で、そうでなければ `PATH` という名前で入れます。ディレクトリは
-`-R`、デバイスは `-d` のときだけ入れます。既存の名前があれば置き換えますが、`-n` なら残し、`-i` なら
-先に尋ねます。`mkdir`、`rm`、`mv`、`ln` と `ln -s`、`chmod`（8 進数）、`chown`（数）は、同じ名前の
-コマンドと同じことをします。作ったものは、それを作ったディレクトリの所有者のものになります。
-イメージの中のファイルの所有者は、そのイメージを使うシステムの側の事柄であって、`minixfs` を
-動かした人とは関係がないからです。`-o uid:gid` で別の所有者を与えられます。コマンドの実行中、
-イメージはロックされ、clean の印は外れます。clean の印のないファイルシステムは、`-f` がなければ
-拒みます。
+[mount_minixfs(8)](cat/ja/mount_minixfs.8.txt) は、既定では読み出し専用でマウントします。
 
-    mount_minixfs [-w [-u always|sync|seconds]] [-M SIZE:HEADS:SIDE]
-        [FUSE options] IMAGE MOUNTPOINT
+    mount_minixfs usr.img /mnt
+    fusermount3 -u /mnt
 
-イメージをマウントします。`-w` がなければ読み出し専用です。inode 番号、モード、所有者、時刻、
-デバイス番号はイメージのとおりです。`-w` を付けると、ファイル、ディレクトリ、リンクを、作り、消し、
-名前を変え、変更できます。アクセス許可はカーネルが検査し、新しいファイルは呼び出し元のものに
-なります。ただし、ディレクトリが set-group-ID のときと、inode が呼び出し元のグループを持てないとき
-（V1 では 1 バイト）は、ディレクトリのグループになります。書き込みでマウントしている間、イメージはほかの書き手に対してロックされ、clean の
-印を外します。アンマウントで印を付け直します。clean の印のないイメージや flex ディレクトリのものは、
-警告を出して読み出し専用でマウントします。`-u` はビットマップをいつイメージに書くかで、fsync と
-アンマウントのとき（`sync`、既定）、変わるたび（`always`）、またはそれに加えて指定の秒数ごとです。
-アンマウントは、Linux では `fusermount3 -u MOUNTPOINT`、BSD では `umount MOUNTPOINT` で行います。
-`-o rw,ro,update=X,tracks=X` は、mount(8) が渡す形で `-w`、読み出し専用、`-u X`、`-M X` を
-表します。開いたまま消したファイルは閉じられるまで残ります。その間 libfuse が隠す名前は、名前が
-14 文字のファイルシステムでは、また `-o hide=memory` を指定すればそれより長くても、ディレクトリに
-置かずメモリに持ちます。MINIX 3 では、mount(8) が vnd デバイスの上で起動するサービスで
-（`mount -t minixfs -o rw /dev/vnd0 /mnt`）、置き方は mount_minixfs(8) のとおりです。そこでは
-libpuffs が新しいシンボリックリンク、FIFO、文字デバイスを誤って扱うので、書き込みは当てになりません。
+書き込む場合は `-w` を付けます。BSD では `umount /mnt` でアンマウントします。
+Minix-vmd の flex ディレクトリは常に読み出し専用です。
+MINIX 3 での書き込みは不安定です。各 OS の制限と既知のデータ消失条件は man の BUGS を参照してください。
 
-イメージに書き込むコマンドは、開いている間イメージを fcntl(2) でロックし、ほかのコマンドが
-ロックしているイメージは拒みます。
+### イメージを作る
 
-    newfs_minixfs -V version [-N] [-B le|be] [-b block-size]
-        [-d directory [-F specfile [-P dbdir] [-x]] [-o uid:gid]]
-        [-i inodes] [-l name-length] [-s blocks] [-t time]
-        [-z log-zone-size] image
+[newfs_minixfs(8)](cat/ja/newfs_minixfs.8.txt) で、空のファイルシステム、または
+ディレクトリツリーを取り込んだファイルシステムを作れます。
 
-ファイルシステムを、空で、または `-d` でディレクトリの写しを入れて作ります。版は必ず指定します。
-既定は、リトルエンディアン、V1 と V2 では 14 文字の名前、V3 では 4096 バイトのブロック
-（MINIX 3 がマウントできる最小）、およそ 3 ブロックに 1 つの inode、1 ブロックの zone です。
-大きさは `-s` で決めます。このときイメージファイルを作るか、その大きさに切り詰めます。`-s` が
-なければ、既存のファイルの大きさを使います。`-t` はルートディレクトリの時刻で、毎回同じイメージを
-作りたいときに使います。`-N` は配置を表示するだけで、何も書きません。先頭の 1024 バイトは
-ブートブロックの場所なので、手を付けません。
+    newfs_minixfs -V 1 -s 360 floppy.img
+    newfs_minixfs -V 2 -d tree -o 0:0 tree.img
 
-`-d` を付けると、ディレクトリのファイル、ディレクトリ、シンボリックリンク、デバイス、FIFO を、
-モード・所有者・時刻とともに、名前の順に入れます（シンボリックリンクのモードは、MINIX と Linux と
-同じく 0777）。名前の順にするので、同じツリーからは同じイメージができます。ハードリンクはリンクの
-まま、すべてゼロのブロックは穴のままにし、ルートディレクトリはそのディレクトリ自身のモード・
-所有者・時刻を受け継ぎます。ソケットは警告を出して除きます。`-o uid:gid` はすべてのファイルに
-その所有者とグループを与えます。V1 で 255 を超えるグループがあるときに要ります。
+`-V` は必須です。`-d` で新規イメージを作る場合、`-s` がなければツリーに必要な容量を確保します。
+`-F` は METALOG などの mtree 指定を読み込みます。ブートコード用の先頭 1024 バイトは保持します。
 
-`-F` は、NetBSD の makefs の `-F` と同じく mtree(8) の指定を読みます。階層形式と、ビルドが書く
-METALOG のようなフルパス形式の両方を読めます。項目は、指す対象の型、モード、所有者、グループ、
-時刻、リンク先、デバイス番号を定め、ディレクトリの値を上書きします。ディレクトリにないものは、
-項目のとおりに作ります（通常ファイルは空）。ただし `optional` の付いた項目は除きます。型が
-ファイルと食い違えば誤りです。ユーザー名とグループ名は、`-P` のディレクトリの `master.passwd`
-か `passwd` と `group` で、なければシステムのもので引きます。`-x` を付けると、指定にあるものだけを
-入れます。チェックサム、大きさ、フラグは読み飛ばし、パターンを含む名前は扱いません。書き込む前に
-すべてを確かめます。長すぎる名前、大きすぎる所有者とデバイス番号、容量（穴もデータとして数える）
-です。`-s` もイメージファイルもなければ、その数で足りる大きさのイメージを、`-i` がなければツリーに
-足りるだけの inode とともに作ります。
+### 検査・修復する
 
-    fsck_minixfs [-lwy] [-e 0|1] [-M SIZE:HEADS:SIDE] image
+[fsck_minixfs(8)](cat/ja/fsck_minixfs.8.txt) は、既定では書き込まずに検査します。
 
-ファイルシステムを検査します。superblock（最大ファイルサイズ、ファイルシステム全体を持つ
-イメージか、Linux が記録した誤り）、ディレクトリ項目（inode 番号、名前、"." と ".."）、inode
-（型、大きさ、zone 番号、二重に使われた zone、デバイスファイルの zone、シンボリックリンクの
-中身）、リンク数、どのディレクトリも名前を持たない inode、2 つのビットマップです。問題ごとに
-1 行と、最後に要約を表示します。`-y` がなければイメージは読むだけです。
+    fsck_minixfs root.img
+    fsck_minixfs -y -l usr.img
 
-`-y` を付けると、直せる問題はそれぞれ直します。悪い項目は消し、"." と ".." は正しい先に向けるか
-戻し、悪い zone 番号と二度目に使われた zone は消し、大きさは切り詰め、リンク数は合わせ、どの
-ディレクトリも名前を持たない inode は解放し、ビットマップを合わせます。そのあとでもう一度検査し、
-clean の印を付けるか、問題が残っていれば誤りありの印を付けます。さらに `-l` を付けると、どの
-ディレクトリも名前を持たない inode を、解放せずに、その下のツリーごと `/lost+found` に `#` と
-番号の名前で入れます。`/lost+found` がなければ作ります。MINIX と Linux には `/lost+found` が
-なく、その fsck はそうした inode を解放するので、`-l` は既定ではありません。
+`-y` で修復します。未参照 inode（ディレクトリから参照されていない inode）は解放しますが、`-l` を併用すると `/lost+found` に保存します。
+修復後に再検査し、問題が残っていなければ clean の印を付けます。
 
-`-e 0` か `-e 1` を付けると、各ビットマップの最後の inode や zone より後ろのビットが 0 か 1 で
-なければなりません。MINIX の mkfs は 0 のままにし、Linux の mkfs と `newfs_minixfs` は 1 に
-するので、既定では検査しません。`-w` を付けると、MINIX 3 の fsck が警告するものも示します。
-ビットマップが要る以上のブロック、inode 表から許されるより後ろの最初のデータ zone、MINIX が
-計算するのと違う最大ファイルサイズ（Linux と `newfs_minixfs` は V2 と V3 に 2147483647 を書く）、
-とても大きな zone です。これらの配置は動くので、問題ではありません。終了コードは、ファイル
-システムに矛盾がなければ（`-y` なら修復後に）0、問題が残れば 1、そもそも検査できなければ 3 です。
+### 設定を変更する
 
-clean の印のないファイルシステムは、そのことを示しますが、問題とはしません。V1 と V2 は Linux と
-同じ場所に印を持ち、MINIX はその語を 0 のままにします。V3 は MINIX 3 のフラグに持ち、MINIX 3 は
-clean でないファイルシステムを読み出し専用でマウントします。`newfs_minixfs` は新しいファイル
-システムに clean の印を付けます。
+[tunefs_minixfs(8)](cat/ja/tunefs_minixfs.8.txt) は、バイト順、名前の長さ、容量などを変更します。
+オプションなしでは現在の設定を表示し、`-N` では変更予定を表示します。
 
-    tunefs_minixfs [-fN] [-B le|be] [-c clean|dirty] [-e 0|1]
-        [-l 14|30] [-m minix|linux|bytes]
-        [-M SIZE:HEADS:SIDE] [-s blocks [-k]] image
+    tunefs_minixfs -B le -l 30 atari.img
+    tunefs_minixfs -s 2880 floppy.img
 
-ファイルシステムの設定を変えます。オプションがなければ、または `-N` を付ければ、設定を表示する
-だけで何も書きません。`-N` はほかのオプションで何が変わるかを示します。
+`-B`・`-l`・`-s` を使う前に、アンマウントし、`fsck_minixfs` で検査してバックアップを取ってください。
+中断すると変換途中の状態が残ります。`-l` と `-s` の併用では、先行する変更の適用後に容量変更が
+失敗する場合があります。`-s` はイメージファイルの容量も変更しますが、`-k` 指定時とデバイスでは保持します。
 
-- `-B` は、ファイルシステムのすべての数値を、PC と同じリトルエンディアンか、Atari ST と Amiga と
-  同じビッグエンディアンで書き直します。superblock、ビットマップの語、inode、間接 zone、
-  ディレクトリの inode 番号です。
-- `-l` は、V1 か V2 のファイルシステムの名前を 14 文字か 30 文字にします。マジック番号が変わり、
-  すべてのディレクトリを新しい大きさの項目で書き直します。書き込む前にすべての名前を確かめ、
-  14 文字に収まらない名前はすべて示して、何も変えません。大きくなるディレクトリが収まらない
-  ときも同じです。
-- `-s` は、ファイルシステムとイメージファイルを、そのブロック数に広げるか縮めます。広げるとき、
-  zone マップに新しい zone の分の余地がなければブロックを足し、inode 表と使用中のデータ zone を
-  すべて後ろへ移して、zone 番号をすべて合わせて書き換えます。縮めるとき、新しい末尾より後ろに
-  ある使用中の zone をその前の空き zone へ移し、それを指す zone 番号を書き換えます。zone マップの
-  ブロック数は変えないので、`fsck_minixfs -w` がそれを示します。使用中のものが収まらなければ、
-  何も変えません。`-k` を付けたとき、およびデバイスでは常に、イメージは大きさを保ち、新しい大きさを
-  すでに収めていなければなりません。stat(2) はデバイスの大きさを示さないので、システムに問い合わせ
-  ます（BLKGETSIZE64、DIOCGMEDIASIZE、DIOCGETP）。
-- `-c` は、Linux と MINIX 3 が印を持つ場所に、clean か dirty の印を付けます。
-- `-e` は、ビットマップの最後の inode や zone より後ろのビットを、MINIX の mkfs と同じ 0 か、
-  Linux の mkfs と同じ 1 にします。
-- `-m` は、superblock の最大ファイルサイズを、MINIX が計算する値、Linux と `newfs_minixfs` が書く
-  値、または数値にします。
+### バックアップ・復元する
 
-変更は、古い値と新しい値を並べて示します。superblock とビットマップより多くを書き換える変更は、
-`fsck_minixfs` が通り、マウントしていないファイルシステムを前提とします。途中で止まると中途半端な
-状態になるので、写しを取っておいてください。Linux と MINIX 3 は、書き込みでマウントしている間は
-clean の印を外し、アンマウント時に自分の持つ内容で上書きします。そのため `-B`、`-l`、`-s` は、
-clean の印のないファイルシステムを拒みます。`-f` を付ければ変更します。`fsck_minixfs -y` は矛盾の
-ないファイルシステムに clean の印を付けるので、印の欄を使わない MINIX で作った V1 と V2 の
-ファイルシステムにも、これで印が付きます。どれもマウント中のファイルシステムには使えません。
-MINIX も Linux も、マウント中のファイルシステムを広げられません。
+[dump_minixfs(8)](cat/ja/dump_minixfs.8.txt) は、BSD dump 形式で全体・増分バックアップを作ります。
+[restore_minixfs(8)](cat/ja/restore_minixfs.8.txt) は、その一覧表示・復元に加え、
+NetBSD・FreeBSD・Linux・旧 BSD の dump も読み込みます。
 
-    dump_minixfs [-0123456789u] [-D dumpdates] [-L label]
-        [-M SIZE:HEADS:SIDE] [-T date] -f file image [path]
+    dump_minixfs -0u -D dumpdates -f usr.0 usr.img
+    newfs_minixfs -V 3 -s 16384 new.img
+    restore_minixfs -r -f usr.0 new.img
 
-ファイルシステムを、NetBSD の dump が UFS1 を書くのと同じ形式で、イメージのバイト順で書き出す
-ので、NetBSD の restore で読めます。restore はルートを 2 とするので、inode n は inode n + 1 に
-なります。レベル n の dump は、dumpdates ファイル（`-u`、`-D`）にある、それより低いレベルの
-最後の dump の後に変わったもの、または `-T` の日時の後に変わったものを持ちます。path を与えると、
-そのディレクトリとその下だけを、レベル 0 で書きます。Linux の restore はこれを読みません。
-NetBSD が UFS1 について作る dump も同じで、その 64 ビットの日時を自分のレコード数として
-受け取るためです。
+復元先にはファイルが収まる容量を指定してください。
+空のファイルシステムに全体を復元し、その後に増分を順に復元します。
+復元間では、前回の復元と inode の対応を記録する `restoresymtable` を保持してください。
+復元時には、dump にない名前の削除も行います。
 
-    restore_minixfs -t [-c] -f file
-    restore_minixfs -r [-cNv] [-M SIZE:HEADS:SIDE] [-o uid:gid]
-        [-s symtable] -f file image
+容量不足や dump の途中切れなど、回復可能な失敗では、原因を解消して同じ dump を再実行できます。
+I/O エラーや強制終了後は、先に `fsck_minixfs -y` で検査してください。
+全体の dump から復元をやり直す必要がある場合もあります。
+拡張属性・ファイルフラグ・ソケットは警告して除外します。Linux の圧縮 dump と複数ボリュームの dump は未対応です。
 
-BSD の dump の形式の dump を読みます。`dump_minixfs` のもの、NetBSD と FreeBSD の UFS1 と UFS2
-のもの、Linux の dump の ext2・ext3・ext4 のもの（0.4b49 からヘッダに書く連続の符号化も）、
-4.2BSD と 4.3BSD のものを、4.4BSD・4.2BSD・V7 のどのディレクトリでも、どちらのバイト順でも
-読みます。`-t` は名前を一覧します。`-r` は、全体の dump を空のファイルシステムに戻し、その後で
-差分の dump を順に上に重ねます。dump の各 inode をどの inode にしたかは `-s`（既定は
-`restoresymtable`）に記録します。dump の各ディレクトリは dump のとおりの中身になり、最後の名前が
-なくなったファイルは解放します。名前と inode の数は、書き込む前に確かめます。パイプではなく
-ファイルから読むなら、所有者、デバイス番号、大きさも確かめます。`-o` はすべてのファイルに 1 つの
-所有者を与えるもので、収まらない所有者があるときに使います。拡張属性、ファイルフラグ、ソケットは
-警告を出して除きます。Linux の圧縮した dump と、複数のボリュームにわたる dump は読みません。
+## イメージへの書き込み
 
-ほかのコマンドは、成功すれば 0、何かに失敗すれば 1 で終了します。どのコマンドも、使い方の誤りなら
-2 で終了します。
+書き込み中はイメージをロックし、同時変更を防ぎます。`minixfs` の書き込みコマンド、
+`mount_minixfs -w`、`restore_minixfs` は書き込み中に clean の印を外します。
+中断や整合性を損なうエラーの後は印が戻らないため、次の書き込み前に `fsck_minixfs -y` で検査してください。
 
-## マニュアル
+clean でないイメージは、`mount_minixfs` では読み出し専用になり、`restore_minixfs` では書き込めません。
+`minixfs` の書き込みコマンドと `tunefs_minixfs -B`・`-l`・`-s` は、`-f` でこの検査を省略できます。
+`minixfs -f` は、書き込みに成功しても元の clean でない状態を保持します。
 
-マニュアルは、英語のものが `man/` に、日本語のものが `man/ja/` にあります。コマンドについては
-minixfs(1)、mount_minixfs(8)、newfs_minixfs(8)、fsck_minixfs(8)、tunefs_minixfs(8)、
-dump_minixfs(8)、restore_minixfs(8)、ファイルシステムの形式については minixfs(5) です。
-`make install` はこれらを `MANDIR` の下に、コマンドを `PREFIX` の下に入れます。`make lint-man`
-はマニュアルを検査します。
+## 資料と開発
 
-## テスト
+- [日本語 man](man/ja/) / [英語 man](man/)：オプション、既定値、終了コード、制限。[cat/](cat/) に、`make catman` で整形したテキスト版があります。`make lint-man` で書式を検査します。
+- [テスト](tests/README.md)：`make check` の実行と、サニタイザ・移植性の検証。
+- [実装](docs/implementation.md)：ソースの構成と設計資料。
+- [コーディング規約](STYLE.md)：変更時の規約。
 
-    make check
-
-テストが何を確かめるか、サニタイザ・ほかのシェル・JUnit の出力で流す方法は、`tests/README.md`
-を参照してください。
-
-## ファイルの構成
-
-    src/mfs.h, src/mfs.c    ライブラリ: superblock、inode、zone の対応、
-                            ファイルのデータ、ディレクトリ、パスの検索
-    src/minixfs.h, src/minixfs.c
-                            minixfs コマンド: 共通部分と、読むコマンド
-    src/minixfs_write.c     minixfs の書くコマンド
-    src/mount_minixfs.c     FUSE ファイルシステム
-    src/newfs_minixfs.c     newfs_minixfs コマンド
-    src/fsck_minixfs.c      fsck_minixfs コマンド
-    src/tunefs_minixfs.c    tunefs_minixfs コマンド
-    src/dump_minixfs.c      dump_minixfs コマンド
-    src/restore_minixfs.c   restore_minixfs コマンド
-    src/dumpfmt.h, src/dumpfmt.c
-                            BSD の dump の形式: ヘッダ、ビットマップ、
-                            c_addr の連続の符号化、ディレクトリ項目
-    src/tree.h, src/tree.c  newfs_minixfs -d: ディレクトリのツリーの写し
-    src/spec.h, src/spec.c  newfs_minixfs -F: mtree の指定の読み取り
-    src/mfs_format.c        ライブラリ: 新しいファイルシステムの配置と書き込み
-    src/mfs_tune.c          ライブラリ: ファイルシステムのその場での変更
-    src/mfs_write.c         ライブラリ: inode と zone の確保と解放、
-                            ファイルの書き込みと大きさの変更、
-                            ディレクトリ項目の追加
-    src/mfs_ops.c           ライブラリ: ファイルとディレクトリの作成、
-                            リンク、削除、名前の変更
-    src/layout.h            ディスク上の配置
-    src/compat.h            システムごとの違い
-    tests/                  テスト。tests/README.md を参照
-    docs/                   道具が動くシステムについての覚え書き
-
-## 参考
-
-ディスク上の形式は、MINIX のソースの定義（MINIX 2.0.4 の `fs/super.h`、`fs/inode.h`、
-`fs/type.h`、`fs/const.h` と、MINIX 3 の `minix/fs/mfs`）に従っています。MINIX、Linux、ほかの
-MINIX ファイルシステムの実装のコードは使っていません。
-
-## 貢献
-
-コードの決まりは `STYLE.md` を参照してください。
+ディスク形式は MINIX 2.0.4（`fs/super.h`、`fs/inode.h`、`fs/type.h`、`fs/const.h`）、
+MINIX 3（`minix/fs/mfs`）、Minix-vmd 1.7.0（`sys/fs/super.h`、`sys/fs/const.h`、`include/dirent.h`）の
+定義に従っています。
 
 ## ライセンス
 
-BSD 2-Clause。`LICENSE` を参照してください。
+BSD 2-Clause。[LICENSE](LICENSE) を参照してください。
