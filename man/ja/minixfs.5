@@ -120,7 +120,7 @@ zone マップのビット
 Linux の NATIVE_ENDIAN 機は\:MIPS・SPARC・s390・SuperH・MicroBlaze・Xtensa・MMU の無い m68k で、\:これらと m68k では\:Linux のカーネルと util-linux が食い違います。
 このパッケージの道具は、\:
 .Fl W
-がなければ、\:V1 と V2 は 16 ビット、\:V3 は 8 ビットとして扱います。
+がなければ、\:V1 と V2 の 14 文字の名前と\:Minix-vmd は\:MINIX と同じ 16 ビット、\:MINIX が BE で読まない\:30 文字の名前と V3 は\:8 ビットとして扱います。
 最後の inode や zone より後ろのビットは、\:MINIX 1.3〜1.6.25 の mkfs と\:Linux の mkfs.minix は 1、\:MINIX 2.0.0 以降と\:Minix-vmd の mkfs は 0 にします。
 MINIX 2.0.0 以降と\:Minix-vmd の fsck は\:1 を足りない inode や zone として報告し、\:Linux のカーネルは\:0 を空きに数えて、\:マップが埋まると\:1 つずつ立てます。
 MINIX 1.3〜1.6.25 の fsck と\:fsck.minix は\:ここを見ません。

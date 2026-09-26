@@ -147,8 +147,7 @@ mfs_plan(const struct mfs_params *p, struct mfs_layout *l)
 uint32_t
 mfs_default_map_word(int version, uint32_t namelen)
 {
-	(void)namelen;
-	return version == 3 ? 1 : 2;
+	return version == 3 || mfs_linux_only(version, namelen) ? 1 : 2;
 }
 
 int

@@ -35,8 +35,8 @@
  * bits of the maps past the last inode and zone: set by default, as
  * mkfs.minix of Linux sets them, and clear with end=0, as the mkfs of
  * MINIX 2 and later leaves them.  mapword gives the bits in a word of the
- * bit maps of a big-endian file system: 16 for V1 and V2 and 8 for V3 by
- * default.
+ * bit maps of a big-endian file system: 16 for V1 and V2 with names of 14
+ * and 8 for the rest by default.
  * vmd makes a V1 or V2 file system as Minix-vmd does: its super block
  * keeps the zone size in a byte, flags (flex directories, clean) in the
  * next and 0x7f, 0x13 at byte 18, the bits of its maps past the end are
@@ -607,7 +607,8 @@ check_version(const struct parser *ps, struct image *img)
 	if (img->end == -1)
 		img->end = !img->vmd;
 	if (img->mapword == 0)
-		img->mapword = img->version == 3 ? 1 : 2;
+		img->mapword = img->version == 3 || img->namelen == 30 ?
+		    1 : 2;
 	img->zbytes = img->version == 1 ? 2 : 4;
 	img->isize = img->version == 1 ? 32 : 64;
 	img->dino = img->version == 3 ? 4 : 2;

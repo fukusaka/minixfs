@@ -530,6 +530,15 @@ mapword=$bits" "V$version -W $bits"
 	    "^bit map words: 32 bits\$"
 	run "$NEWFS_MINIXFS" -V 2 -W 24 -s 100 "$T/img"
 	check_status "-W 24 is a usage error" 2
+	# Names of 14, which MINIX reads, take words of 16 bits by default;
+	# names of 30, which only Linux reads, bytes, as util-linux has them.
+	for n in 14:16 30:8; do
+		rm -f "$T/img"
+		"$NEWFS_MINIXFS" -V 2 -l "${n%:*}" -B be -s 100 "$T/img" \
+		    >/dev/null
+		check_info "V2, names of ${n%:*}: maps of ${n#*:}-bit words" \
+		    "$T/img" "bit map words" "${n#*:} bits"
+	done
 }
 
 formats

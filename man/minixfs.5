@@ -118,7 +118,9 @@ are not, and the systems keep words of these bits:
 The NATIVE_ENDIAN machines of Linux are MIPS, SPARC, s390, SuperH,
 MicroBlaze, Xtensa and m68k without an MMU; on them and on m68k, the
 Linux kernel and util-linux disagree.
-The tools take 16 bits for V1 and V2 and 8 for V3, unless
+The tools take 16 bits for V1 and V2 with names of 14 and for Minix-vmd,
+as MINIX keeps them, and 8 for names of 30 and V3, which MINIX does not
+read big-endian, unless
 .Fl W
 gives others.
 The bits past the last inode or zone are set by the mkfs of MINIX 1.3

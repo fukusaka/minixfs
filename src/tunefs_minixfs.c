@@ -41,7 +41,8 @@
  *	-W	the bits in a word of the bit maps of a big-endian file
  *		system: read them as words of the first number, or as the
  *		version has them, and write them anew as words of the
- *		second; with -B be, write them so
+ *		second; with -B be, write them so.  Without it, -l writes
+ *		them as the new name length has them
  *
  * Each change is printed as the old and the new value.  The byte order
  * is changed first, then the words of the bit maps, then the name length,
@@ -595,6 +596,17 @@ main(int argc, char **argv)
 		    "the bit map words and the name length were changed, "
 		    "nothing else" :
 		    "the name length was changed, nothing else";
+		/* The words of the maps follow the new name length. */
+		max = mfs_default_map_word(fs.version, o.namelen);
+		if (o.word_new == 0 && fs.order == MFS_BIG_ENDIAN &&
+		    fs.map_word != max) {
+			len = fs.map_word;
+			if (write && (r = mfs_convert_map_word(&fs, max)) < 0)
+				errx(1, "%s: bit maps: %s; %s", o.image,
+				    strerror(-r), done);
+			(void)printf("bit map words: %" PRIu32 " -> %" PRIu32
+			    " bits\n", len * 8, max * 8);
+		}
 	}
 	if (o.nblocks != 0) {
 		len = fs.nblocks;

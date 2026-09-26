@@ -86,9 +86,10 @@ DESCRIPTION
      -W [old:]new
              Write the bit maps of a big-endian file system anew as words of
              new bits, reading them as words of old bits, or of 16 for V1 and
-             V2 and 8 for V3; with -B be, write them as words of new bits, and
-             with -B le, read them as words of old bits.  The widths are 8,
-             16, 32 and 64; see minixfs(5).
+             V2 with names of 14 and 8 for the rest; with -B be, write them as
+             words of new bits, and with -B le, read them as words of old
+             bits.  Without it, -l writes them in the width of the new name
+             length.  The widths are 8, 16, 32 and 64; see minixfs(5).
 
 EXIT STATUS
      tunefs_minixfs exits with 0 on success, 1 if anything failed, and 2 for a

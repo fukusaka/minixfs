@@ -114,7 +114,7 @@ Write the bit maps of a big-endian file system anew as words of
 .Ar new
 bits, reading them as words of
 .Ar old
-bits, or of 16 for V1 and V2 and 8 for V3; with
+bits, or of 16 for V1 and V2 with names of 14 and 8 for the rest; with
 .Fl B Cm be ,
 write them as words of
 .Ar new
@@ -123,6 +123,9 @@ bits, and with
 read them as words of
 .Ar old
 bits.
+Without it,
+.Fl l
+writes them in the width of the new name length.
 The widths are 8, 16, 32 and 64; see
 .Xr minixfs 5 .
 .El

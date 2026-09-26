@@ -212,6 +212,16 @@ for fs in "1 le" "1 be" "2 le" "2 be"; do
 	check_same_file "$v: -N -l writes nothing" "$T/before" "$T/img"
 	for len in 30 14; do
 		run "$TUNEFS_MINIXFS" -l "$len" "$T/img"
+		# Big-endian, the maps take the words of the new length.
+		if [ "$order" = be ]; then
+			if [ "$len" -eq 30 ]; then
+				words="16 -> 8"
+			else
+				words="8 -> 16"
+			fi
+			check_out_has "$v: -l $len rewrites the maps" \
+			    "^bit map words: $words bits\$"
+		fi
 		tuned "-l $len"
 		check_info "$v: -l $len gives $len-character names" "$T/img" \
 		    "name length" "$len"

@@ -82,8 +82,8 @@ DESCRIPTION
 
      -W bits
              Take the bit maps of a big-endian file system as words of bits
-             bits, 8, 16, 32 or 64, instead of 16 for V1 and V2 and 8 for V3;
-             see minixfs(5).
+             bits, 8, 16, 32 or 64, instead of 16 for V1 and V2 with names of
+             14 and 8 for the rest; see minixfs(5).
 
 EXIT STATUS
      fsck_minixfs exits with 0 if the file system is consistent, after the

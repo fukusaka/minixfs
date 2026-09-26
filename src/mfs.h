@@ -731,9 +731,9 @@ int	mfs_default_map_end(int, uint32_t);
 
 /*
  * The bytes in a word of the bit maps that a file system of a version and
- * name length is taken to have: 2 for V1 and V2, as MINIX keeps them, and
- * 1 for V3, as Linux writes them on big-endian machines, the only V3
- * there is in that order.
+ * name length is taken to have: 2 for V1 and V2 with names of 14, as
+ * MINIX keeps them, and 1 for the rest, which MINIX does not read big-
+ * endian, as Linux writes them on big-endian machines.
  */
 uint32_t mfs_default_map_word(int, uint32_t);
 

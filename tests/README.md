@@ -69,7 +69,8 @@ top of `tests/mkimage.c`).  The scripts:
   empty tree, with the maximum file size and map tail bits of MINIX, or
   of Linux for names of 30 characters, or as `-m` and `-e` give; the
   maps of a big-endian V3 as those of the little-endian one, and those
-  of every version in words of 8, 16, 32 and 64 bits with `-W`;
+  of every version in words of 8, 16, 32 and 64 bits with `-W`, and by
+  default of 16 bits for names of 14 and of bytes for names of 30;
   defaults, sizes, `-N`, the boot block, and the options it must refuse.
   With `-d`, the test tree goes into every format and comes back out
   with its modes, sizes and times; hard and symbolic links, pipes, `-o`,
@@ -110,21 +111,22 @@ top of `tests/mkimage.c`).  The scripts:
   size into the image mkimage makes in the other byte order, and back,
   the maps of V3 unchanged; `-W old:new` writes the maps of the
   big-endian test tree anew in each width as mkimage writes them, and
-  `-B` reads and writes them in the width `-W` gives; `-l` keeps every
-  name and file of the test tree, with a directory that needs an
-  indirect zone, through 14 -> 30 -> 14, lists all names too long for 14
-  characters and changes nothing, changes nothing when the directories
-  would not fit, and refuses V3; `-s` keeps every file of the test tree
-  through a growth the zone map has room for, one that moves the inode
-  table and the zones, and a shrink back; it shrinks an image whose
-  files lie past the new end (mkimage `skip=`) by moving them down,
-  changes nothing for a size too small, and refuses to outgrow V1 and to
-  resize one side of a disk; with `-k` the image file keeps its size,
-  the file system shrinks inside it and grows back as far as it holds,
-  but no further; `-B`, `-l` and `-s` refuse a file system not marked
-  clean without `-f`, and work after `fsck_minixfs -y`; a change asked
-  for with one that is refused, such as `-B be -s 1`, `-B be -m big` or
-  `-l` on V3, does not happen either; bad values are usage errors.
+  `-B` reads and writes them in the width `-W` gives, and `-l` in that
+  of the new name length; `-l` keeps every name and file of the test
+  tree, with a directory that needs an indirect zone, through 14 -> 30
+  -> 14, lists all names too long for 14 characters and changes nothing,
+  changes nothing when the directories would not fit, and refuses V3;
+  `-s` keeps every file of the test tree through a growth the zone map
+  has room for, one that moves the inode table and the zones, and a
+  shrink back; it shrinks an image whose files lie past the new end
+  (mkimage `skip=`) by moving them down, changes nothing for a size too
+  small, and refuses to outgrow V1 and to resize one side of a disk;
+  with `-k` the image file keeps its size, the file system shrinks
+  inside it and grows back as far as it holds, but no further; `-B`,
+  `-l` and `-s` refuse a file system not marked clean without `-f`, and
+  work after `fsck_minixfs -y`; a change asked for with one that is
+  refused, such as `-B be -s 1`, `-B be -m big` or `-l` on V3, does not
+  happen either; bad values are usage errors.
 - `t_utillinux.sh` - where util-linux is installed: `fsck.minix` accepts
   the test images and those of `newfs_minixfs`, images from `mkfs.minix`
   are readable and pass `fsck_minixfs`, a zone map with no tail bits
