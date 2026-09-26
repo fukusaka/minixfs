@@ -98,6 +98,7 @@ writes it by default, to what mkfs.minix of Linux writes, or to
 from 1 to 2147483647.
 Linux and the tools of this package keep files to it; see CAVEATS in
 .Xr minixfs 5 .
+A size below that of the largest file is refused, and nothing changes.
 .It Fl M Ar size : Ns Ar heads : Ns Ar side
 Change an image that holds the file system in the tracks of one side of
 a disk only, as for

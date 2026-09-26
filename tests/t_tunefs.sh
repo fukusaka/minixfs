@@ -86,6 +86,24 @@ for fs in "1 le" "2 be" "3 le" "3 be"; do
 	check_status "$v: -e 1 sets them" 0
 done
 
+# -m does not go below the largest file, which would then no longer be
+# read in full, and changes nothing then, also under -N.
+v="-m below a file"
+rm -f "$T/img" "$T/f"
+"$NEWFS_MINIXFS" -V 2 -s 400 "$T/img" >/dev/null
+awk 'BEGIN { for (i = 0; i < 20000; i++) printf "x" }' >"$T/f"
+"$MINIXFS" put "$T/img" "$T/f" /f
+cp "$T/img" "$T/before"
+run "$TUNEFS_MINIXFS" -m 19999 "$T/img"
+check_err "$v: is refused" \
+    "inode 2 holds 20000 bytes, more than 19999; nothing changed"
+check_same_file "$v: and nothing changes" "$T/before" "$T/img"
+run "$TUNEFS_MINIXFS" -N -m 19999 "$T/img"
+check_err "$v: is refused under -N too" "more than 19999"
+run "$TUNEFS_MINIXFS" -m 20000 "$T/img"
+check_status "$v: the size of the file itself is taken" 0
+check_info "$v: and set" "$T/img" "max file size" 20000
+
 # -B: the test tree converted to the other byte order is the image that
 # mkimage makes in that order, and converting it back gives the original.
 for format in 1/14 1/30 2/14 2/30 3/1024 3/4096; do

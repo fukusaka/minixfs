@@ -89,7 +89,8 @@ top of `tests/mkimage.c`).  The scripts:
 - `t_tunefs.sh` - `tunefs_minixfs` prints the settings, `-N` writes
   nothing, and `-c`, `-m` and `-e` each leave a file system that
   `fsck_minixfs` passes and that has what was asked for, in several
-  versions and byte orders; `-B` turns the test tree of every format
+  versions and byte orders; `-m` below the largest file is refused and
+  changes nothing; `-B` turns the test tree of every format
   and zone size into the image mkimage makes in the other byte order,
   and back; `-l` keeps every name and file of the test tree, with a
   directory that needs an indirect zone, through 14 -> 30 -> 14,

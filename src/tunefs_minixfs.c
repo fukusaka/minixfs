@@ -433,6 +433,32 @@ resize(struct mfs *fs, const struct options *o, int flags, const char *done)
 }
 
 /*
+ * The largest file of the file system, for -m, which may not go below
+ * it; its inode goes to *ino.  Free inodes, of mode 0, and devices,
+ * whose size is no file, are passed over.
+ */
+static uint32_t
+largest_file(struct mfs *fs, const struct options *o, uint32_t *ino)
+{
+	struct mfs_inode ip;
+	uint32_t i, max;
+	int r;
+
+	max = 0;
+	*ino = 0;
+	for (i = 1; i <= fs->ninodes; i++) {
+		if ((r = mfs_get_inode(fs, i, &ip)) < 0)
+			errx(1, "%s: inode %" PRIu32 ": %s; nothing changed",
+			    o->image, i, strerror(-r));
+		if (ip.mode == 0 || mfs_is_dev(&ip) || ip.size <= max)
+			continue;
+		max = ip.size;
+		*ino = i;
+	}
+	return max;
+}
+
+/*
  * Whatever of the options can be refused is refused before anything is
  * written, so that nothing changes then.  Only what an earlier change
  * alters escapes: -s after -l, whose directories take other zones.
@@ -440,6 +466,7 @@ resize(struct mfs *fs, const struct options *o, int flags, const char *done)
 static void
 check_all(struct mfs *fs, const struct options *o, int write)
 {
+	uint32_t big, ino, max;
 	int r;
 
 	if (fs->vmd && o->order != -1)
@@ -463,8 +490,13 @@ check_all(struct mfs *fs, const struct options *o, int write)
 			errx(1, "%s: name length: %s; nothing changed",
 			    o->image, strerror(-r));
 	}
-	if (o->max != NULL)
-		(void)max_size(fs, o->max);
+	if (o->max != NULL) {
+		max = max_size(fs, o->max);
+		if ((big = largest_file(fs, o, &ino)) > max)
+			errx(1, "%s: inode %" PRIu32 " holds %" PRIu32 " bytes, "
+			    "more than %" PRIu32 "; nothing changed", o->image,
+			    ino, big, max);
+	}
 	if (o->nblocks != 0) {
 		if (o->tracks.size != 0)
 			errx(1, "%s: an image of one side of a disk cannot "
