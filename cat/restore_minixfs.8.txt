@@ -39,8 +39,8 @@ DESCRIPTION
              The dump; ‘-’ is standard input.
 
      -M size:heads:side
-             Write to an image that holds the file system in the tracks of one
-             side of a disk only, as minixfs(1) reads it.
+             Write to an image containing the file system on one disk side.
+             See minixfs(1) for the track layout.
 
      -N      Check everything, and write nothing.
 

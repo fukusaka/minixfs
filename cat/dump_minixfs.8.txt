@@ -46,8 +46,8 @@ DESCRIPTION
              The label of the dump, 16 characters at most; “none” by default.
 
      -M size:heads:side
-             Read an image that holds the file system in the tracks of one
-             side of a disk only, as minixfs(1) does.
+             Read an image containing the file system on one disk side.  See
+             minixfs(1) for the track layout.
 
      -T date
              Dump what changed since date, given as ctime(3) prints it,

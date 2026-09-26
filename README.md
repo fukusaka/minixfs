@@ -7,8 +7,8 @@ Written from scratch in portable C for Linux, FreeBSD, NetBSD and MINIX 3.
 
 ## Supported formats
 
-V1, V2, V3 and Minix-vmd images are supported. The byte order is detected
-automatically; both little-endian and big-endian images can be read.
+Supports V1, V2, V3 and Minix-vmd images, with automatic detection of
+little-endian and big-endian byte order.
 
 | Magic  | Version | Names | Origin |
 |--------|---------|-------|--------|
@@ -91,7 +91,7 @@ copies a directory tree into one:
 `-V` is required. With `-d`, a new image is sized for the tree unless
 `-s` specifies its size. `-F` reads an mtree specification such as METALOG.
 The first 1024 bytes, reserved for boot code, are preserved.
-The maximum file size is what MINIX reads in full; `-m linux` gives
+The default maximum file size is MINIX-compatible; `-m linux` gives
 that of Linux.
 
 ### Check and repair
@@ -130,10 +130,10 @@ reads NetBSD, FreeBSD, Linux and older BSD dumps.
     newfs_minixfs -V 3 -s 16384 new.img
     restore_minixfs -r -f usr.0 new.img
 
-Choose a destination size large enough for the restored files.
-Restore a full dump into an empty file system, then its incremental dumps
-in order. Keep `restoresymtable` between restores; it records the previous
-restore and inode mapping. Restoring also removes names absent from the dump.
+Allow enough space for the restored files. Restore the full dump into an
+empty file system, then apply incremental dumps in order. Keep
+`restoresymtable` for the next incremental restore. Names absent from the
+dump are removed.
 
 After a recoverable failure such as insufficient space or a truncated
 dump, correct the cause and retry the same dump. After an I/O error or

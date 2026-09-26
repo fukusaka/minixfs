@@ -77,8 +77,8 @@ DESCRIPTION
              and nothing changes.
 
      -M size:heads:side
-             Change an image that holds the file system in the tracks of one
-             side of a disk only, as for minixfs(1).  Its size cannot change.
+             Modify an image containing the file system on one disk side.  See
+             minixfs(1) for the track layout.  Its size cannot change.
 
 EXIT STATUS
      tunefs_minixfs exits with 0 on success, 1 if anything failed, and 2 for a
@@ -100,21 +100,16 @@ AUTHORS
      Shoichi Fukusaka
 
 CAVEATS
-     The changes of -B, -l and -s rewrite more than the super block and the
-     maps.  They expect a file system that fsck_minixfs(8) passes and that is
-     not mounted, and one cut short leaves it half changed: keep a copy.
-     Linux and MINIX 3 take the clean mark away while they have a file system
-     mounted for writing, and would write their own idea of it back over the
-     change, so these refuse a file system that is not marked clean unless -f
-     is given.  fsck_minixfs -y marks a file system clean that it finds
-     consistent, which also serves for V1 and V2 file systems made by MINIX,
-     where the mark is never set.  Neither MINIX nor Linux can change the size
-     of a mounted file system.
+     Before using -B, -l or -s, unmount the image, check it with
+     fsck_minixfs(8) and keep a backup.  Interruption can leave the conversion
+     incomplete.  These options require a clean image unless -f is given;
+     forcing a change does not make it safe on a mounted file system.
+     fsck_minixfs -y marks a consistent image clean, including V1 and V2
+     images created by MINIX without a clean flag.
 
-     Whatever of the options can be refused is refused before anything is
-     written, and nothing changes then; but whether -s fits can change with
-     the directories that -l writes, and it then fails saying what was changed
-     before it.
+     Invalid requests are rejected before writing.  When combining -l and -s,
+     resizing may fail because the converted directories change the space
+     required.  The error reports any changes already applied.
 
      -B and -l do not apply to Minix-vmd.
 

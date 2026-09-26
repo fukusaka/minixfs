@@ -113,10 +113,13 @@ than the inode table allows, a maximum file size other than the one
 MINIX works out, and zones of more than 256 blocks; and files larger than
 the maximum file size, past which Linux maps no block.
 .It Fl M Ar size : Ns Ar heads : Ns Ar side
-Check, and repair in place, an image that holds the file system in the
-tracks of one side of a disk only, as for
-.Xr minixfs 1 ;
-the other side is left alone.
+Check an image containing the file system on one disk side.
+See
+.Xr minixfs 1
+for the track layout.
+With
+.Fl y ,
+repair only the selected side.
 .El
 .Sh EXIT STATUS
 .Nm

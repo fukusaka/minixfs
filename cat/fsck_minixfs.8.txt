@@ -77,9 +77,9 @@ DESCRIPTION
              maps no block.
 
      -M size:heads:side
-             Check, and repair in place, an image that holds the file system
-             in the tracks of one side of a disk only, as for minixfs(1); the
-             other side is left alone.
+             Check an image containing the file system on one disk side.  See
+             minixfs(1) for the track layout.  With -y, repair only the
+             selected side.
 
 EXIT STATUS
      fsck_minixfs exits with 0 if the file system is consistent, after the

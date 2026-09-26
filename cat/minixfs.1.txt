@@ -94,16 +94,19 @@ DESCRIPTION
              stored and are counted as left out.
 
      put [-Rdin] [-o uid:gid] image host ... path
-             Copy files of the host into the image, as extract copies them
-             out: into the directory path under their own names, or as path if
-             that is not a directory yet.  Regular files, symbolic links and
-             pipes go in with their modes and mtimes; directories with -R, and
-             what is in them; devices with -d only.  Sockets cannot go in, and
-             are counted in a warning at the end with the devices left out.  A
-             name in the way is replaced, unless -n keeps it, or -i asks
-             first, on standard error, and takes an answer from standard
-             input; a directory in the way of a directory is entered.  A file
-             that runs out of room is removed again.
+             Copy host files into the image, preserving modes and modification
+             times.  If path is a directory, copy files into it under their
+             original names; otherwise use path as the destination name.
+             Regular files, symbolic links and pipes are copied by default.
+             -R also copies directories recursively; -d also copies devices.
+             Skipped devices and unsupported sockets are counted in a final
+             warning.
+
+             Existing names are replaced unless -n keeps them or -i requests
+             confirmation on standard error and reads the reply from standard
+             input.  Existing directories are merged with incoming
+             directories.  If copying a file runs out of space, the partial
+             file is removed.
 
      mkdir [-p] [-m mode] [-o uid:gid] image path ...
              Make directories, of mode 0755 unless -m gives one in octal; with
@@ -134,14 +137,11 @@ DESCRIPTION
      group, unless -o specifies numeric IDs.  The IDs must fit the inode
      fields; V1 group IDs are limited to 255.
 
-     The image is locked while a command has it open, as mount_minixfs -w
-     locks it, and its clean mark is away until the command is done, so that
-     one cut short leaves it for fsck_minixfs.  So does a write that fails in
-     a way that may leave the image out of order, such as an error of the
-     device, as against a refusal made before anything is written or a lack of
-     room.  A file system that is not marked clean may be mounted elsewhere
-     and is refused, unless -f is given; the flex directories of Minix-vmd,
-     which cannot be written, are refused always.
+     Write commands lock the image and clear its clean flag until completion.
+     Interruption or a write error that may corrupt the image leaves the flag
+     cleared; check the image with fsck_minixfs.  Refusals before writing and
+     insufficient space do not prevent the flag from being restored.  Unclean
+     images require -f; Minix-vmd flex directories cannot be written.
 
 OPTIONS
      -M size:heads:side

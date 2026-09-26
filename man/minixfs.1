@@ -210,28 +210,27 @@ Names and link targets longer than ustar holds go into pax extended
 headers.
 Sockets cannot be stored and are counted as left out.
 .It Cm put Oo Fl Rdin Oc Oo Fl o Ar uid : Ns Ar gid Oc Ar image Ar host ... Ar path
-Copy files of the host into the image, as
-.Cm extract
-copies them out: into the directory
+Copy host files into the image, preserving modes and modification times.
+If
 .Ar path
-under their own names, or as
+is a directory, copy files into it under their original names;
+otherwise use
 .Ar path
-if that is not a directory yet.
-Regular files, symbolic links and pipes go in with their modes and
-mtimes; directories with
-.Fl R ,
-and what is in them; devices with
+as the destination name.
+Regular files, symbolic links and pipes are copied by default.
+.Fl R
+also copies directories recursively;
 .Fl d
-only.
-Sockets cannot go in, and are counted in a warning at the end with the
-devices left out.
-A name in the way is replaced, unless
+also copies devices.
+Skipped devices and unsupported sockets are counted in a final warning.
+.Pp
+Existing names are replaced unless
 .Fl n
-keeps it, or
+keeps them or
 .Fl i
-asks first, on standard error, and takes an answer from standard input;
-a directory in the way of a directory is entered.
-A file that runs out of room is removed again.
+requests confirmation on standard error and reads the reply from standard input.
+Existing directories are merged with incoming directories.
+If copying a file runs out of space, the partial file is removed.
 .It Cm mkdir Oo Fl p Oc Oo Fl m Ar mode Oc Oo Fl o Ar uid : Ns Ar gid Oc Ar image Ar path ...
 Make directories, of mode 0755 unless
 .Fl m
@@ -287,19 +286,15 @@ group, unless
 specifies numeric IDs.
 The IDs must fit the inode fields; V1 group IDs are limited to 255.
 .Pp
-The image is locked while a command has it open, as
-.Nm mount_minixfs Fl w
-locks it, and its clean mark is away until the command is done, so that
-one cut short leaves it for
+Write commands lock the image and clear its clean flag until completion.
+Interruption or a write error that may corrupt the image leaves the flag
+cleared; check the image with
 .Nm fsck_minixfs .
-So does a write that fails in a way that may leave the image out of
-order, such as an error of the device, as against a refusal made before
-anything is written or a lack of room.
-A file system that is not marked clean may be mounted elsewhere and is
-refused, unless
-.Fl f
-is given; the flex directories of Minix-vmd, which cannot be written,
-are refused always.
+Refusals before writing and insufficient space do not prevent the flag
+from being restored.
+Unclean images require
+.Fl f ;
+Minix-vmd flex directories cannot be written.
 .Sh OPTIONS
 .Bl -tag -width Ds
 .It Fl M Ar size : Ns Ar heads : Ns Ar side
