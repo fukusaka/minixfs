@@ -123,8 +123,10 @@ $ tunefs_minixfs -s 2880 floppy.img
 .Sh SEE ALSO
 .Xr minixfs 1 ,
 .Xr minixfs 5 ,
+.Xr dump_minixfs 8 ,
 .Xr fsck_minixfs 8 ,
-.Xr newfs_minixfs 8
+.Xr newfs_minixfs 8 ,
+.Xr restore_minixfs 8
 .Sh AUTHORS
 .An Shoichi Fukusaka
 .Sh CAVEATS
@@ -156,4 +158,11 @@ The error reports any changes already applied.
 .Fl B
 and
 .Fl l
-do not apply to Minix-vmd.
+refuse Minix-vmd.
+To move a file system into or out of flex directories, dump it with
+.Xr dump_minixfs 8
+and restore it with
+.Xr restore_minixfs 8
+into one that
+.Xr newfs_minixfs 8
+makes.

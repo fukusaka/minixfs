@@ -127,8 +127,10 @@ $ tunefs_minixfs -s 2880 floppy.img
 .Sh SEE ALSO
 .Xr minixfs 1 ,
 .Xr minixfs 5 ,
+.Xr dump_minixfs 8 ,
 .Xr fsck_minixfs 8 ,
-.Xr newfs_minixfs 8
+.Xr newfs_minixfs 8 ,
+.Xr restore_minixfs 8
 .Sh AUTHORS
 .An Shoichi Fukusaka
 .Sh CAVEATS
@@ -158,4 +160,11 @@ MINIX が印を付けずに作った V1・V2 イメージも対象です。
 .Fl B
 と
 .Fl l
-は Minix-vmd には使えません。
+は Minix-vmd を拒みます。
+flex ディレクトリとの間で移すには、\:
+.Xr dump_minixfs 8
+でダンプし、\:
+.Xr newfs_minixfs 8
+で作ったファイルシステムに\:
+.Xr restore_minixfs 8
+でリストアします。

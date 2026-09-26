@@ -94,7 +94,8 @@ EXAMPLES
            $ tunefs_minixfs -s 2880 floppy.img
 
 SEE ALSO
-     minixfs(1), minixfs(5), fsck_minixfs(8), newfs_minixfs(8)
+     minixfs(1), minixfs(5), dump_minixfs(8), fsck_minixfs(8),
+     newfs_minixfs(8), restore_minixfs(8)
 
 AUTHORS
      Shoichi Fukusaka
@@ -111,6 +112,8 @@ CAVEATS
      resizing may fail because the converted directories change the space
      required.  The error reports any changes already applied.
 
-     -B and -l do not apply to Minix-vmd.
+     -B and -l refuse Minix-vmd.  To move a file system into or out of flex
+     directories, dump it with dump_minixfs(8) and restore it with
+     restore_minixfs(8) into one that newfs_minixfs(8) makes.
 
 minixfs                       September 26, 2026                       minixfs

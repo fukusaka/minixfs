@@ -98,7 +98,8 @@ EXAMPLES
            $ tunefs_minixfs -s 2880 floppy.img
 
 SEE ALSO
-     minixfs(1), minixfs(5), fsck_minixfs(8), newfs_minixfs(8)
+     minixfs(1), minixfs(5), dump_minixfs(8), fsck_minixfs(8),
+     newfs_minixfs(8), restore_minixfs(8)
 
 AUTHORS
      Shoichi Fukusaka
@@ -116,6 +117,8 @@ CAVEATS
      の併用では、ディレクトリ変換で必要容量が変わり、容量変更が失敗する場合があります。
      その場合は、適用済みの変更をエラーとともに示します。
 
-     -B と -l は Minix-vmd には使えません。
+     -B と -l は Minix-vmd を拒みます。 flex ディレクトリとの間で移すには、
+     dump_minixfs(8) でダンプし、 newfs_minixfs(8) で作ったファイルシステムに
+     restore_minixfs(8) でリストアします。
 
 minixfs                       September 26, 2026                       minixfs

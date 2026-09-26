@@ -10,12 +10,12 @@ SYNOPSIS
                    [-s blocks] [-t time] [-z log-zone-size] image
 
 DESCRIPTION
-     newfs_minixfs makes a MINIX file system of version 1, 2 or 3 in the file
-     or device image; see minixfs(5).  It holds an empty root directory or,
-     with -d, a copy of a directory.  The first 1024 bytes of image, where a
-     boot block may be, are left alone.  The file system is marked clean.  The
-     image is locked with fcntl(2) while it is written, and one that another
-     program holds is refused.
+     newfs_minixfs makes a MINIX file system of version 1, 2 or 3, or one of
+     Minix-vmd, in the file or device image; see minixfs(5).  It holds an
+     empty root directory or, with -d, a copy of a directory.  The first 1024
+     bytes of image, where a boot block may be, are left alone.  The file
+     system is marked clean.  The image is locked with fcntl(2) while it is
+     written, and one that another program holds is refused.
 
      The size comes from -s, which also makes the image file or cuts it to
      that size, or else from the size of an existing file.  With -d and
