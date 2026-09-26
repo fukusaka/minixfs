@@ -82,8 +82,9 @@ top of `tests/mkimage.c`).  The scripts:
   consistent image as it was.  `-y -l` links trees that nothing names,
   also in a loop, into a `/lost+found` that it makes or finds; `-e`
   checks and sets the bits past the end of the maps; `-w` notes spare
-  map blocks, a gap before the data zones and a maximum file size
-  other than MINIX's, and nothing about a layout as MINIX makes it.  A
+  map blocks, a gap before the data zones, a maximum file size other
+  than MINIX's and a file past the maximum file size, and nothing about
+  a layout as MINIX makes it.  A
   directory holding more directories than the walk first has room for
   is checked too.
 - `t_tunefs.sh` - `tunefs_minixfs` prints the settings, `-N` writes

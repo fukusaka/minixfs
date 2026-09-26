@@ -72,7 +72,9 @@ DESCRIPTION
      -w      Note, as warnings that are not problems, what the fsck of MINIX 3
              warns about: map blocks beyond what the maps need, a first data
              zone later than the inode table allows, a maximum file size other
-             than the one MINIX works out, and zones of more than 256 blocks.
+             than the one MINIX works out, and zones of more than 256 blocks;
+             and files larger than the maximum file size, past which Linux
+             maps no block.
 
      -M size:heads:side
              Check, and repair in place, an image that holds the file system

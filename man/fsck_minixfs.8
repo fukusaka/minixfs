@@ -110,7 +110,8 @@ neither is wrong unless this says which to expect.
 Note, as warnings that are not problems, what the fsck of MINIX 3 warns
 about: map blocks beyond what the maps need, a first data zone later
 than the inode table allows, a maximum file size other than the one
-MINIX works out, and zones of more than 256 blocks.
+MINIX works out, and zones of more than 256 blocks; and files larger than
+the maximum file size, past which Linux maps no block.
 .It Fl M Ar size : Ns Ar heads : Ns Ar side
 Check, and repair in place, an image that holds the file system in the
 tracks of one side of a disk only, as for

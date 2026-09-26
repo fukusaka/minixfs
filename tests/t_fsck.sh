@@ -468,6 +468,22 @@ run "$FSCK_MINIXFS" -w "$T/img"
 check_out_has "-w notes a maximum file size other than MINIX's" \
     ": warning: the maximum file size is 1000000, where MINIX works out \
 2147483647\$"
+
+# A file past the maximum file size is whole, but Linux maps no block
+# past it and none of the systems lets it grow: -w notes it, and it is no
+# problem.
+rm -f "$T/img" "$T/f"
+"$NEWFS_MINIXFS" -V 2 -s 400 "$T/img" >/dev/null
+awk 'BEGIN { for (i = 0; i < 20000; i++) printf "x" }' >"$T/f"
+"$MINIXFS" put "$T/img" "$T/f" /f
+set_super "$T/img" maxsize 10000
+run "$FSCK_MINIXFS" "$T/img"
+check_status "a file past the maximum file size is no problem" 0
+check_true "without -w it is not noted" \
+    test "$(grep -c ': warning: ' "$T/out")" -eq 0
+run "$FSCK_MINIXFS" -w "$T/img"
+check_out_has "-w notes a file past the maximum file size" \
+    ": warning: /f: size 20000 is more than the maximum file size, 10000\$"
 spec_small "version=2 order=be" >"$T/spec"
 mkimage "$T/spec" "$T/img"
 run "$FSCK_MINIXFS" -w "$T/img"

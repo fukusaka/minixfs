@@ -206,6 +206,21 @@ problem(struct check *c, int r, const char *fmt, ...)
 	(void)putchar('\n');
 }
 
+/* With -w, note something that works but is not as MINIX makes it. */
+static void
+warning(struct check *c, const char *fmt, ...)
+{
+	va_list ap;
+
+	if (!c->warn || c->quiet)
+		return;
+	(void)printf("%s: warning: ", c->image);
+	va_start(ap, fmt);
+	(void)vprintf(fmt, ap);
+	va_end(ap);
+	(void)putchar('\n');
+}
+
 static int
 test_bit(const unsigned char *bits, uint32_t n)
 {
@@ -389,6 +404,11 @@ check_size(struct check *c, struct mfs_inode *ip, const struct place *pl)
 		problem(c, put_inode(c, ip), "%s: size %" PRIu32 " is more "
 		    "than the zones reach", path_of(c, pl), size);
 	}
+	/* Linux maps no block past the maximum file size. */
+	if (!mfs_is_dev(ip) && ip->size > mfs_max_write(&c->fs))
+		warning(c, "%s: size %" PRIu32 " is more than the maximum "
+		    "file size, %" PRIu32, path_of(c, pl), ip->size,
+		    c->fs.max_size);
 	if (mfs_is_dir(ip) && ip->size % c->fs.dirent_size != 0) {
 		size = ip->size;
 		ip->size -= ip->size % c->fs.dirent_size;
@@ -1225,21 +1245,6 @@ check_maps(struct check *c)
 		problem(c, r, "the zone map cannot be written");
 	free(imap);
 	free(zmap);
-}
-
-/* With -w, note something that works but is not as MINIX makes it. */
-static void
-warning(struct check *c, const char *fmt, ...)
-{
-	va_list ap;
-
-	if (!c->warn || c->quiet)
-		return;
-	(void)printf("%s: warning: ", c->image);
-	va_start(ap, fmt);
-	(void)vprintf(fmt, ap);
-	va_end(ap);
-	(void)putchar('\n');
 }
 
 /* Blocks of a map for n bits. */
