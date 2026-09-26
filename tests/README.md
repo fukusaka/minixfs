@@ -67,7 +67,9 @@ top of `tests/mkimage.c`).  The scripts:
   goes into every format and comes back out with its modes, sizes and
   times; hard and symbolic links, pipes, `-o`, owners of `-o` that are
   no numbers or past their range, the size made to fit, `-N`, sizes too
-  small, names too long and files past the maximum file size; and, where fakeroot(1) is
+  small, names too long and files past the maximum file size; a tree of
+  many empty files, whose inode table the size made to fit has room
+  for; and, where fakeroot(1) is
   installed, devices.  With `-F`, a specification in both forms sets
   modes, owners (by name, from `-P`) and times, adds devices, links,
   pipes, empty files and escaped names, skips optional entries, `-x`

@@ -391,8 +391,14 @@ size_for(struct options *o, const struct tree_need *need)
 		if (r < 0)
 			plan(o, &l);		/* says why, and exits */
 		if (!o->inodes && l.ninodes < need->inodes) {
+			/* The inode table can leave too few blocks. */
 			o->params.ninodes = (uint32_t)need->inodes;
-			plan(o, &l);
+			if ((r = mfs_plan(&o->params, &l)) == -ENOSPC) {
+				nblocks += zone;
+				continue;
+			}
+			if (r < 0)
+				plan(o, &l);	/* says why, and exits */
 		}
 		if (l.ninodes < need->inodes)
 			errx(1, "%s: the tree needs %ju inodes, more than -i "

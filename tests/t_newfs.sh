@@ -315,6 +315,27 @@ tree_kinds() {
 	fi
 }
 
+# -d without -s: a tree of many empty files needs more inodes than the
+# size of its zones gives, and their table more blocks.
+many_inodes() {
+	rm -rf "$T/t"
+	mkdir "$T/t"
+	i=0
+	while [ "$i" -lt 400 ]; do
+		: >"$T/t/f$i"
+		i=$((i + 1))
+	done
+	for opts in "-V 1 -l 30" "-V 2"; do
+		rm -f "$T/img"
+		# The options are split on purpose.
+		# shellcheck disable=SC2086
+		run "$NEWFS_MINIXFS" $opts -o 0:0 -d "$T/t" "$T/img"
+		check_status "$opts: the size is made for 400 empty files" 0
+		run "$FSCK_MINIXFS" "$T/img"
+		check_status "$opts: fsck passes the 400 empty files" 0
+	done
+}
+
 # -F: an mtree(8) specification in both forms overrides and adds, with
 # names from the files of -P; -x leaves out what it does not name.
 from_spec() {
@@ -434,6 +455,7 @@ sizes
 refusals
 from_tree
 tree_kinds
+many_inodes
 from_spec
 
 finish
