@@ -30,6 +30,11 @@ is installed.  They print TAP.  Variables:
 - `TEST_SHELL` - the shell for the scripts (default `sh`)
 - `JUNIT_XML=FILE` - also write the results as JUnit XML
 - `FUZZ_COUNT`, `FUZZ_SEED` - size and seed of the random damage test
+- `VMD_FSCK=DIR` - `t_vmd.sh` checks what is written into flex
+  directories with the fsck of Minix-vmd 1.7.0 as well, which
+  `sh tests/vmd-fsck.sh SRC.TGZ DIR` builds into `DIR` from
+  `1.7.0/SRC.TGZ` of the Minix-vmd distribution; nothing of Minix-vmd is
+  kept in this tree
 - `UTILLINUX_NOSYNC=yes` - `t_utillinux.sh` has strace(1) skip the
   sync(2) calls of `fsck.minix`, three a run, which wait for every file
   system of the host; where strace cannot (it is Linux only), the test
@@ -130,7 +135,11 @@ top of `tests/mkimage.c`).  The scripts:
 - `t_vmd.sh` - Minix-vmd, as `tests/mkimage` writes it with `vmd`: the
   variant and its zone size and clean flag, names of every length up to
   60 in flex directories, entries that start a new block, `fsck` and
-  `fsck -y` on them, the clean flag set and cleared alone, `tunefs -B`
+  `fsck -y` on them; entries added, linked, renamed and removed through
+  the library (`tests/mfsop`) as Minix-vmd does it, a new directory of
+  two slots, an entry that does not fit in a block starting the next and
+  freed slots taken again, which the fsck of Minix-vmd passes where
+  `VMD_FSCK` is set; the clean flag set and cleared alone, `tunefs -B`
   and `-l` refused, and `-s` working.  `t_read.sh` reads the test tree
   as Minix-vmd V1 and V2 as well.
 - `t_restore.sh` - `restore_minixfs` restores dumps of the test tree

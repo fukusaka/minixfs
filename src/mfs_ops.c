@@ -92,8 +92,6 @@ check_name(const struct mfs *fs, const char *name)
 		return -EINVAL;
 	if (strlen(name) > fs->namelen)
 		return -ENAMETOOLONG;
-	if (fs->flex)
-		return -ENOTSUP;
 	return 0;
 }
 

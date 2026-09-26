@@ -373,8 +373,7 @@ int	mfs_put_inode(struct mfs *, const struct mfs_inode *);
  * Set the inode number of the directory entry at byte offset off of the
  * directory *dp; 0 removes the entry.  Returns 0 or a negative errno
  * value.  This works on the flex directories of Minix-vmd too, where
- * removing an entry frees each of its slots, as Minix-vmd does, and
- * mfs_put_entry() and mfs_add_entry() give -ENOTSUP.
+ * removing an entry frees each of its slots, as Minix-vmd does.
  */
 int	mfs_set_entry(struct mfs *, const struct mfs_inode *, uint32_t,
 	    uint32_t);
@@ -382,8 +381,9 @@ int	mfs_set_entry(struct mfs *, const struct mfs_inode *, uint32_t,
 /*
  * Write a whole directory entry, inode number ino and name, at byte
  * offset off of the directory *dp.  The offset may be anywhere in the
- * zones of *dp, also past its size.  Returns 0, -ENAMETOOLONG, or
- * another negative errno value.
+ * zones of *dp, also past its size.  Returns 0, -ENAMETOOLONG, -ENOTSUP
+ * in a flex directory of Minix-vmd, whose entries are not all of one
+ * size, or another negative errno value.
  */
 int	mfs_put_entry(struct mfs *, const struct mfs_inode *, uint32_t,
 	    uint32_t, const char *);
@@ -437,8 +437,12 @@ int	mfs_pwrite(struct mfs *, struct mfs_inode *, const void *, size_t,
 
 /*
  * Add an entry name, naming ino, to the directory *dp: in the first free
- * entry, or at the end.  *dp changes as for mfs_pwrite().  Returns 0,
- * -ENAMETOOLONG or another negative errno value.
+ * entry, or at the end.  In a flex directory of Minix-vmd, where an entry
+ * takes a slot of 8 bytes and one more for each 8 bytes of the name
+ * after its first 4, as Minix-vmd adds one: where enough free slots
+ * follow one another within a block, or else at the start of a new
+ * block.  *dp changes as for mfs_pwrite().  Returns 0, -ENAMETOOLONG or
+ * another negative errno value.
  */
 int	mfs_add_entry(struct mfs *, struct mfs_inode *, const char *,
 	    uint32_t);
@@ -489,9 +493,8 @@ int	mfs_sync(struct mfs *);
  * Changing names (mfs_ops.c), as the system calls of the same names do.
  * Directories are given by inode number; names are single components.
  * Each returns 0 or a negative errno value: -EEXIST, -ENOENT, -ENOTDIR,
- * -EISDIR, -ENOTEMPTY, -EMLINK, -ENAMETOOLONG, -ENOSPC, or -ENOTSUP for
- * the flex directories of Minix-vmd, among others.  Times are those to
- * give the inodes that change.
+ * -EISDIR, -ENOTEMPTY, -EMLINK, -ENAMETOOLONG, -ENOSPC, among others.
+ * Times are those to give the inodes that change.
  */
 
 /* What a new inode gets. */

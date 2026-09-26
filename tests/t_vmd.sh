@@ -5,8 +5,11 @@
 # Minix-vmd: its super block keeps the zone size in a byte and flags in
 # the next, and its flex directories take entries of 8-byte slots.  Names
 # of every length up to 60 read back, entries that would cross a block
-# start the next one, and the clean flag is its own; what writes entries
-# of a fixed size refuses, and the rest works.
+# start the next one, and the clean flag is its own.  The library adds,
+# links, renames and removes entries of flex directories as Minix-vmd
+# does, which its own fsck passes where VMD_FSCK names it; what writes
+# entries at a place of its own, as fsck does, refuses, and the rest
+# works.
 
 # shellcheck source=tests/lib.sh
 . ./tests/lib.sh
@@ -30,6 +33,35 @@ free_counts() {
 				bad++
 		print bad + 0
 	    }'
+}
+
+# vmd_fsck NAME IMAGE - the fsck of Minix-vmd, where VMD_FSCK names the
+# directory tests/vmd-fsck.sh built it into, passes IMAGE.  It reads only
+# the byte order of the machine, little-endian here.
+vmd_fsck() {
+	if [ -z "${VMD_FSCK:-}" ]; then
+		skip "$1" "VMD_FSCK is not set; see tests/vmd-fsck.sh"
+	elif [ "$order" != le ]; then
+		skip "$1" "the fsck of Minix-vmd reads its own byte order"
+	else
+		run "$VMD_FSCK/fsck${version}f" "$2"
+		check_status "$1" 0
+	fi
+}
+
+# size_in IMAGE DIR NAME - the size of NAME in the directory DIR of IMAGE.
+size_in() {
+	"$MINIXFS" ls -l "$1" "$2" | awk -v n="$3" '$NF == n { print $5 }'
+}
+
+# Names of 30 characters, which take 5 slots: 25 fill 125 of the 128
+# slots of a block.
+thirty() {
+	i=0
+	while [ "$i" -lt "$1" ]; do
+		printf "%s thirty_characters_long_name_%02d\n" "$2" "$i"
+		i=$((i + 1))
+	done
 }
 
 for fs in "1 le" "2 le" "2 be"; do
@@ -99,6 +131,61 @@ for fs in "1 le" "2 le" "2 be"; do
 	check_out_has "$v: fsck -y sets it again" ": marked clean\$"
 	check_same_file "$v: the flag was all that changed" "$T/before" \
 	    "$T/img"
+
+	# Entries go into flex directories as Minix-vmd enters them, in an
+	# image without the entry of a free inode, whose maps end in clear
+	# bits and whose maximum file size is that of MINIX, as the mkfs of
+	# Minix-vmd makes it.
+	cp "$T/good" "$T/w.img"
+	"$FSCK_MINIXFS" -y "$T/w.img" >/dev/null
+	"$TUNEFS_MINIXFS" -e 0 -m minix "$T/w.img" >/dev/null
+	vmd_fsck "$v: the fsck of Minix-vmd passes the image" "$T/w.img"
+	{
+		echo "mkdir /w 0755"
+		for n in $names $long; do
+			echo "mknod /w/$n f 0644"
+		done
+		echo "link /w/a /w/linked_to_a"
+		echo "rename /w/abcd /w/renamed_from_abcd"
+		echo "unlink /w/abcde"
+		echo "mkdir /w/sub 0755"
+		echo "rmdir /w/sub"
+		echo "mkdir /w/empty 0755"
+	} | "$MFSOP" "$T/w.img" >"$T/ops"
+	check_true "$v: names are added, linked, renamed and removed" \
+	    test "$(grep -vc ' ok$' "$T/ops")" -eq 0
+	run "$MINIXFS" ls "$T/w.img" /w
+	for n in $names $long linked_to_a renamed_from_abcd empty; do
+		case $n in abcd|abcde) ;; *) echo "$n" ;; esac
+	done | sort >"$T/want"
+	sort "$T/out" >"$T/got"
+	check_same_file "$v: and read back" "$T/want" "$T/got"
+	check_true "$v: a new directory holds . and .. in a slot each" \
+	    test "$(size_in "$T/w.img" /w empty)" -eq 16
+	run "$FSCK_MINIXFS" "$T/w.img"
+	check_status "$v: fsck passes the flex directories" 0
+	vmd_fsck "$v: so does the fsck of Minix-vmd" "$T/w.img"
+
+	# An entry that does not fit in what is left of a block starts the
+	# next, and freed slots are taken again.
+	cp "$T/good" "$T/w.img"
+	"$FSCK_MINIXFS" -y "$T/w.img" >/dev/null
+	"$TUNEFS_MINIXFS" -e 0 -m minix "$T/w.img" >/dev/null
+	{
+		echo "mkdir /b 0755"
+		thirty 26 "mknod /b/"
+	} | sed 's|/ |/|; s|$| f 0644|; 1s| f 0644$||' | "$MFSOP" "$T/w.img" \
+	    >"$T/ops"
+	check_true "$v: the 26th entry of 5 slots starts a new block" \
+	    test "$(size_in "$T/w.img" / b)" -eq 1064
+	printf 'unlink /b/thirty_characters_long_name_00\n%s\n' \
+	    "mknod /b/thirty_characters_long_name_99 f 0644" |
+	    "$MFSOP" "$T/w.img" >"$T/ops"
+	check_true "$v: a freed entry is taken again" \
+	    test "$(size_in "$T/w.img" / b)" -eq 1064
+	run "$FSCK_MINIXFS" "$T/w.img"
+	check_status "$v: fsck passes the directory of two blocks" 0
+	vmd_fsck "$v: so does the fsck of Minix-vmd, again" "$T/w.img"
 
 	run "$TUNEFS_MINIXFS" -B be "$T/img"
 	check_err "$v: -B refuses Minix-vmd" "Minix-vmd"
