@@ -440,7 +440,12 @@ put_file(struct put *p, const char *host, const struct stat *st,
 	    (r = mfs_make(&p->c->fs, dir, name, &n, &ip)) < 0)
 		return failed(p->c, path, r);
 	if (copy_in(p, host, &ip) == -1) {
-		/* Nothing half copied stays. */
+		/*
+		 * Nothing half copied stays.  The zones of what was copied
+		 * are in *ip only, which goes to the disk first, for
+		 * mfs_unlink() to free them.
+		 */
+		(void)mfs_put_inode(&p->c->fs, &ip);
 		(void)mfs_unlink(&p->c->fs, dir, name, now());
 		return -1;
 	}

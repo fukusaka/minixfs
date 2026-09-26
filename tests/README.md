@@ -204,8 +204,9 @@ top of `tests/mkimage.c`).  The scripts:
   not replace a file; `put -R` and `ln` take a name without the slashes
   after it; names too long, the root, a directory below
   itself, a link to a directory, bad modes and owners are refused; a
-  file that runs out of room, or that is larger than the maximum file
-  size of the super block, leaves nothing; a refusal leaves the image
+  file that runs out of room, also after the first 64 KiB it copies, or
+  that is larger than the maximum file size of the super block, leaves
+  nothing; a refusal leaves the image
   marked clean, and a write that fails on a zone number outside the
   data area, or whose fsync(2) fails (made to by strace(1) on Linux),
   does not; a file system not marked clean is refused without

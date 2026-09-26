@@ -316,6 +316,16 @@ run "$MINIXFS" ls "$T/img" /
 check_true "$v: nothing of it stays" test ! -s "$T/out"
 run "$FSCK_MINIXFS" "$T/img"
 check_status "$v: fsck finds nothing wrong" 0
+# So does one that runs out of room after the first 64 KiB it copies,
+# whose zones up to then must be freed as well.
+rm -f "$T/img"
+must "$NEWFS_MINIXFS" -V 2 -s 100 "$T/img"
+awk 'BEGIN { for (i = 0; i < 150000; i++) printf "x" }' >"$T/f"
+run "$MINIXFS" put "$T/img" "$T/f" /big
+check_err "$v: a file larger than a copy at a time is refused" \
+    "No space left"
+run "$FSCK_MINIXFS" "$T/img"
+check_status "$v: and the zones it took are free again" 0
 
 # A file past the maximum file size of the super block is refused, as
 # Linux refuses it, although the zones reach further; so is a file cut
