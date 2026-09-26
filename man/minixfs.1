@@ -330,21 +330,21 @@ Each command reports every problem it meets and goes on where it can.
 .Sh EXAMPLES
 List an image and copy one file out of it:
 .Bd -literal -offset indent
-$ minixfs ls -l root.img /etc
-$ minixfs cat root.img /etc/passwd > passwd
+$ minixfs ls -l root.img etc
+$ minixfs cat root.img etc/passwd > passwd
 .Ed
 .Pp
 Find where the boot program lies, as installboot of MINIX writes it into
 the boot block:
 .Bd -literal -offset indent
-$ minixfs blocks -r root.img /boot
+$ minixfs blocks -r root.img boot
 .Ed
 .Pp
 Put a tree into an image, and a file over one that is there, asking
 first:
 .Bd -literal -offset indent
-$ minixfs put -R usr.img src /usr
-$ minixfs put -i usr.img passwd /etc/passwd
+$ minixfs put -R usr.img src usr
+$ minixfs put -i usr.img passwd etc/passwd
 .Ed
 .Pp
 Move the whole tree, devices and hard links included, onto a new image:
@@ -354,7 +354,7 @@ Move the whole tree, devices and hard links included, onto a new image:
 .Ed
 .Pp
 Unpack the two
-.Pa /usr
+.Pa usr
 disks of a set into one tree:
 .Bd -literal -offset indent
 $ minixfs extract usr1.img usr && minixfs extract usr2.img usr

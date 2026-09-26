@@ -175,25 +175,25 @@ EXIT STATUS
 EXAMPLES
      イメージを一覧し、ファイルを 1 つ取り出します。
 
-           $ minixfs ls -l root.img /etc
-           $ minixfs cat root.img /etc/passwd > passwd
+           $ minixfs ls -l root.img etc
+           $ minixfs cat root.img etc/passwd > passwd
 
      MINIX の installboot
      がブートブロックに書き込むように、ブートプログラムの置き場所を調べます。
 
-           $ minixfs blocks -r root.img /boot
+           $ minixfs blocks -r root.img boot
 
      ディレクトリツリーをイメージに入れ、既存のファイルの上に確認してからファイルを入れます。
 
-           $ minixfs put -R usr.img src /usr
-           $ minixfs put -i usr.img passwd /etc/passwd
+           $ minixfs put -R usr.img src usr
+           $ minixfs put -i usr.img passwd etc/passwd
 
      デバイスとハードリンクも含めて、ディレクトリツリー全体を新しいイメージに移します。
 
            # mkdir tree && minixfs tar old.img | tar -xpf - -C tree
            # newfs_minixfs -V 3 -d tree new.img
 
-     2 枚組の /usr のディスクを、1 つのディレクトリツリーに展開します。
+     2 枚組の usr のディスクを、1 つのディレクトリツリーに展開します。
 
            $ minixfs extract usr1.img usr && minixfs extract usr2.img usr
 

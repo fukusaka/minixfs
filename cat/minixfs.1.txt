@@ -165,26 +165,26 @@ EXIT STATUS
 EXAMPLES
      List an image and copy one file out of it:
 
-           $ minixfs ls -l root.img /etc
-           $ minixfs cat root.img /etc/passwd > passwd
+           $ minixfs ls -l root.img etc
+           $ minixfs cat root.img etc/passwd > passwd
 
      Find where the boot program lies, as installboot of MINIX writes it into
      the boot block:
 
-           $ minixfs blocks -r root.img /boot
+           $ minixfs blocks -r root.img boot
 
      Put a tree into an image, and a file over one that is there, asking
      first:
 
-           $ minixfs put -R usr.img src /usr
-           $ minixfs put -i usr.img passwd /etc/passwd
+           $ minixfs put -R usr.img src usr
+           $ minixfs put -i usr.img passwd etc/passwd
 
      Move the whole tree, devices and hard links included, onto a new image:
 
            # mkdir tree && minixfs tar old.img | tar -xpf - -C tree
            # newfs_minixfs -V 3 -d tree new.img
 
-     Unpack the two /usr disks of a set into one tree:
+     Unpack the two usr disks of a set into one tree:
 
            $ minixfs extract usr1.img usr && minixfs extract usr2.img usr
 

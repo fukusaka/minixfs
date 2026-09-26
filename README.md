@@ -55,10 +55,10 @@ An image can be a file or a device. Each command below links to its manual.
 
 [minixfs(1)](cat/minixfs.1.txt) lists, extracts and modifies files without mounting:
 
-    minixfs ls -l root.img /etc
-    minixfs cat root.img /etc/passwd > passwd
+    minixfs ls -l root.img etc
+    minixfs cat root.img etc/passwd > passwd
     minixfs extract root.img out
-    minixfs put -R usr.img src /usr
+    minixfs put -R usr.img src usr
 
 `extract` and `put` replace existing names. Use `put -n` to keep them or
 `put -i` to confirm replacement. `extract` requires `-d` and root privileges
@@ -102,7 +102,7 @@ that of Linux.
     fsck_minixfs -y -l usr.img
 
 `-y` repairs the image. Inodes with no directory references are freed
-unless `-l` saves them under `/lost+found`. After repair, the image is checked again and
+unless `-l` saves them under `lost+found`. After repair, the image is checked again and
 marked clean only if no problems remain.
 
 ### Change file system settings

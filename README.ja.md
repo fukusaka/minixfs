@@ -52,10 +52,10 @@ MINIX 3 のサービス設定は [mount_minixfs(8)](cat/ja/mount_minixfs.8.txt) 
 
 [minixfs(1)](cat/ja/minixfs.1.txt) でファイルを一覧・抽出・変更できます。
 
-    minixfs ls -l root.img /etc
-    minixfs cat root.img /etc/passwd > passwd
+    minixfs ls -l root.img etc
+    minixfs cat root.img etc/passwd > passwd
     minixfs extract root.img out
-    minixfs put -R usr.img src /usr
+    minixfs put -R usr.img src usr
 
 `extract` と `put` は既存の名前を置き換えます。`put -n` は既存のものを残し、`put -i` は
 置き換える前に確認します。`extract` でデバイスを作るには `-d` と root 権限が必要です。
@@ -93,7 +93,7 @@ MINIX 3 での書き込みは不安定です。各 OS の制限と既知のデ�
     fsck_minixfs root.img
     fsck_minixfs -y -l usr.img
 
-`-y` で修復します。未参照 inode（ディレクトリから参照されていない inode）は解放しますが、`-l` を併用すると `/lost+found` に保存します。
+`-y` で修復します。未参照 inode（ディレクトリから参照されていない inode）は解放しますが、`-l` を併用すると `lost+found` に保存します。
 修復後に再検査し、問題が残っていなければ clean の印を付けます。
 
 ### 設定を変更する

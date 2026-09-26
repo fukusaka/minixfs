@@ -59,10 +59,10 @@ DESCRIPTION
              fcntl(2)
              でロックし、ほかのプログラムがロックしているイメージは拒みます。
 
-     -l      -y と一緒に使い、未参照 inode を、解放せずに /lost+found
+     -l      -y と一緒に使い、未参照 inode を、解放せずに lost+found
              へつなぎます。 名前は ‘#’ と inode
              番号で、ディレクトリならその下のディレクトリツリーごとつなぎます。
-             /lost+found がなければ作ります。 MINIX と Linux には /lost+found
+             lost+found がなければ作ります。 MINIX と Linux には lost+found
              がなく、その fsck はこうした inode
              を解放するので、これは既定にしていません。
 
@@ -102,6 +102,6 @@ AUTHORS
 
 BUGS
      Minix-vmd の flex ディレクトリも検査しますが、そこへ ‘.’ や ‘..’
-     を書き戻したり、 /lost+found を作ったりはしません。
+     を書き戻したり、 lost+found を作ったりはしません。
 
 minixfs                       September 26, 2026                       minixfs

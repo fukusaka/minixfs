@@ -89,15 +89,15 @@ while it is written, and one that another program holds is refused.
 With
 .Fl y ,
 link unreferenced inodes into
-.Pa /lost+found
+.Pa lost+found
 as
 .Ql #
 and their inode number, trees below directories and all, rather than
 freeing them;
-.Pa /lost+found
+.Pa lost+found
 is made if it is not there.
 MINIX and Linux have no
-.Pa /lost+found ,
+.Pa lost+found ,
 and their fsck frees such inodes, which is why this is not the default.
 .It Fl e Cm 0 | 1
 Check that the bits of each map past the last inode or zone are 0 or 1,
@@ -142,5 +142,5 @@ The flex directories of Minix-vmd are checked, but
 and
 .Ql \&..
 are not put back there, nor is
-.Pa /lost+found
+.Pa lost+found
 made in them.

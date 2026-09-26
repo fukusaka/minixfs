@@ -326,19 +326,19 @@ clean の印のないファイルシステムは\:どこかにマウントされ
 .Sh EXAMPLES
 イメージを一覧し、\:ファイルを 1 つ取り出します。
 .Bd -literal -offset indent
-$ minixfs ls -l root.img /etc
-$ minixfs cat root.img /etc/passwd > passwd
+$ minixfs ls -l root.img etc
+$ minixfs cat root.img etc/passwd > passwd
 .Ed
 .Pp
 MINIX の installboot がブートブロックに書き込むように、\:ブートプログラムの置き場所を調べます。
 .Bd -literal -offset indent
-$ minixfs blocks -r root.img /boot
+$ minixfs blocks -r root.img boot
 .Ed
 .Pp
 ディレクトリツリーをイメージに入れ、\:既存のファイルの上に\:確認してから\:ファイルを入れます。
 .Bd -literal -offset indent
-$ minixfs put -R usr.img src /usr
-$ minixfs put -i usr.img passwd /etc/passwd
+$ minixfs put -R usr.img src usr
+$ minixfs put -i usr.img passwd etc/passwd
 .Ed
 .Pp
 デバイスとハードリンクも含めて、\:ディレクトリツリー全体を新しいイメージに移します。
@@ -348,7 +348,7 @@ $ minixfs put -i usr.img passwd /etc/passwd
 .Ed
 .Pp
 2 枚組の
-.Pa /usr
+.Pa usr
 のディスクを、\:1 つのディレクトリツリーに展開します。
 .Bd -literal -offset indent
 $ minixfs extract usr1.img usr && minixfs extract usr2.img usr
