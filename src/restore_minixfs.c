@@ -1023,10 +1023,10 @@ check_file(struct restore *r, const struct dump_header *h,
 	n = check_attrs(r, h, path);
 	switch (h->mode & MFS_S_IFMT) {
 	case MFS_S_IFREG:
-		if (h->size > r->fs.max_file || h->size > UINT32_MAX) {
-			problem(r, "%s: %ju bytes are more than a file of "
-			    "V%d holds", path, (uintmax_t)h->size,
-			    r->fs.version);
+		if (h->size > mfs_max_write(&r->fs) || h->size > UINT32_MAX) {
+			problem(r, "%s: %ju bytes are more than the largest "
+			    "file, %ju", path, (uintmax_t)h->size,
+			    (uintmax_t)mfs_max_write(&r->fs));
 			n++;
 		}
 		break;

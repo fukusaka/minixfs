@@ -71,8 +71,8 @@ DESCRIPTION
              Set the maximum file size in the super block to what MINIX works
              out from the zones that the double indirect zone reaches, to what
              Linux and newfs_minixfs(8) write, or to bytes, from 1 to
-             2147483647.  Linux keeps files to it; the tools of this package
-             do not.  See CAVEATS in minixfs(5).
+             2147483647.  Linux and the tools of this package keep files to
+             it; see CAVEATS in minixfs(5).
 
      -M size:heads:side
              Change an image that holds the file system in the tracks of one

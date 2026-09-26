@@ -313,15 +313,15 @@ MINIX 3 after 3.3.0 refuses zones of more than one block.
 .Sh CAVEATS
 MINIX reads the part of a file past what the double indirect zone
 reaches as zeros, without an error.
-In V2 and V3, Linux writes past it, through the triple indirect zone,
-up to the maximum file size in the super block, which its mkfs.minix
-and
+In V2 and V3, Linux and this package write past it, through the triple
+indirect zone, up to the maximum file size in the super block, which
+mkfs.minix of Linux and
 .Xr newfs_minixfs 8
-set to 2147483647; this package writes past it whatever that size is.
+set to 2147483647.
 A file over 67378176 bytes in V2 with 1024-byte blocks is thus not read
 in full by MINIX.
 .Ql tunefs_minixfs -m minix
-keeps Linux to what MINIX reads.
+keeps both to what MINIX reads.
 .Pp
 MINIX 3 after 3.3.0 does not mount a file system whose zones are of more
 than one block, as

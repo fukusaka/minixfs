@@ -733,6 +733,38 @@ if [ "$minix" = no ]; then
 	fi
 fi
 
+# Writing, or cutting a file to grow, past the maximum file size of the
+# super block fails with EFBIG, as on Linux.
+if [ "$minix" = no ]; then
+	rm -f "$T/max.img"
+	"$NEWFS_MINIXFS" -V 2 -s 400 -d "$T/empty" \
+	    -o "$(id -u):$(id -g)" "$T/max.img" >/dev/null
+	echo "mkdir /bin 0755" | "$MFSOP" "$T/max.img" >/dev/null
+	"$TUNEFS_MINIXFS" -m 10000 "$T/max.img" >/dev/null
+	if mount_image "$T/max.img" "$mnt" -w; then
+		run as_mounter dd if=/dev/zero of="$mnt/f" bs=10000 count=1
+		check_status "-w, maximum file size: a file of it is written" 0
+		run as_mounter env LC_ALL=C dd if=/dev/zero of="$mnt/g" \
+		    bs=10001 count=1
+		check_err "-w, maximum file size: a larger one is not" \
+		    "File too large"
+		# With no input, dd cuts the file to seek= with ftruncate(2),
+		# as POSIX asks, but some dd ignore its failure, so the size
+		# tells.
+		run as_mounter dd if=/dev/null of="$mnt/f" bs=1 seek=10001
+		run as_mounter wc -c "$mnt/f"
+		check_true "-w, maximum file size: nor is one cut to grow" \
+		    test "$(awk '{ print $1 }' "$T/out")" -eq 10000
+		unmount_image "$mnt"
+		run "$FSCK_MINIXFS" "$T/max.img"
+		check_status "-w, maximum file size: fsck finds nothing wrong" 0
+	else
+		kill_mount
+		fail "-w, maximum file size: the image is mounted" \
+		    "$(head -5 "$T/fuse.err")"
+	fi
+fi
+
 # A sync of the mount that fails, here the first fsync(2) of the program,
 # made to fail by strace(1) where it can (Linux), keeps the mark away at
 # the unmount, although the sync of the unmount works.  The children of

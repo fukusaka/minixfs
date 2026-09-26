@@ -428,7 +428,7 @@ int	mfs_alloc_zone(struct mfs *, uint32_t *);
  * Should it fail, what it wrote past the old end is taken back, with the
  * zones it took for that; what it wrote before the old end stays.  *ip
  * changes in memory only, for the caller to write back with
- * mfs_put_inode().  Returns 0, -EFBIG past the reach of the zones, -ENOSPC,
+ * mfs_put_inode().  Returns 0, -EFBIG past mfs_max_write(), -ENOSPC,
  * -EIO for a zone number on the way outside the data area, which is not
  * written through, or another negative errno value.
  */
@@ -478,8 +478,7 @@ void	mfs_maps_through(struct mfs *, int);
  * the caller to write back with mfs_put_inode().  A zone number outside
  * the data area is dropped from what goes; in the zone that is cleared,
  * it is -EIO, and nothing changes.  Returns 0, -EINVAL for a device,
- * -EFBIG past the reach of the zones, -EIO, or another negative errno
- * value.
+ * -EFBIG past mfs_max_write(), -EIO, or another negative errno value.
  */
 int	mfs_resize(struct mfs *, struct mfs_inode *, uint32_t);
 
@@ -664,6 +663,14 @@ uint32_t mfs_max_size(int, uint32_t);
  * uses, but no more than the largest signed 32-bit size.
  */
 uint32_t mfs_minix_max_size(const struct mfs *);
+
+/*
+ * The largest file that may be written: what the zone slots reach, and
+ * no more than the maximum file size of the super block, as Linux keeps
+ * to it, unless that is 0 or past the largest signed 32-bit size, which
+ * fsck_minixfs puts right.
+ */
+uint64_t mfs_max_write(const struct mfs *);
 
 /*
  * Check the parameters and lay the file system out in *l.  Returns 0,

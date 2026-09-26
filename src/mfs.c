@@ -340,6 +340,14 @@ mfs_minix_max_size(const struct mfs *fs)
 	return (uint32_t)max;
 }
 
+uint64_t
+mfs_max_write(const struct mfs *fs)
+{
+	if (fs->max_size == 0 || fs->max_size > INT32_MAX)
+		return fs->max_file;
+	return fs->max_size < fs->max_file ? fs->max_size : fs->max_file;
+}
+
 int
 mfs_read_device(struct mfs *fs, void *buf, size_t len, off_t off)
 {

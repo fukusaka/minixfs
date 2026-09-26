@@ -281,6 +281,8 @@ tree_shape(const struct options *o, uint32_t block_size, struct tree_fs *f)
 	f->log_zone_size = o->params.log_zone_size;
 	f->namelen = o->params.namelen != 0 ? o->params.namelen :
 	    o->params.version == 3 ? 60 : 14;
+	f->max_size = mfs_max_size(o->params.version,
+	    o->params.log_zone_size);
 	if (o->owner == NULL)
 		return;
 	if ((gid = strchr(o->owner, ':')) == NULL)

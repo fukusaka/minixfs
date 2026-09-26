@@ -461,7 +461,7 @@ mfs_resize(struct mfs *fs, struct mfs_inode *ip, uint32_t size)
 		return r;
 	if (mfs_is_dev(ip))
 		return -EINVAL;
-	if (size > fs->max_file)
+	if (size > mfs_max_write(fs))
 		return -EFBIG;
 	if (size != ip->size &&
 	    (r = cut_back(fs, ip, size < ip->size ? size : ip->size)) < 0)
@@ -493,7 +493,7 @@ mfs_pwrite(struct mfs *fs, struct mfs_inode *ip, const void *buf,
 	if ((r = load_maps(fs)) < 0)
 		return r;
 	end = (uint64_t)off + len;
-	if (end > fs->max_file || end > UINT32_MAX)
+	if (end > mfs_max_write(fs) || end > UINT32_MAX)
 		return -EFBIG;
 	old = ip->size;
 	p = buf;

@@ -170,7 +170,10 @@ indirects(const struct tree_fs *f)
 	return f->block_size / (f->version == 1 ? 2 : 4);
 }
 
-/* The largest file the zones of f reach. */
+/*
+ * The largest file that goes into f: what its zones reach, and no more
+ * than the maximum file size of its super block, as mfs_max_write().
+ */
 static uint64_t
 max_file(const struct tree_fs *f)
 {
@@ -181,7 +184,9 @@ max_file(const struct tree_fs *f)
 	if (f->version != 1)
 		zones += n * n * n;
 	zones *= (uint64_t)f->block_size << f->log_zone_size;
-	return zones < UINT32_MAX ? zones : UINT32_MAX;
+	if (zones > f->max_size)
+		zones = f->max_size;
+	return zones;
 }
 
 /* Zones for a file of bytes bytes: data, and the indirect zones. */
@@ -515,8 +520,9 @@ scan_entry(struct scan *s, struct node *n, const char *name,
 		size = n->link != NULL ? strlen(n->link) :
 		    n->host != NULL ? (uint64_t)n->st.st_size : 0;
 		if (size > max_file(f))
-			problem(s, where(n), "%ju bytes are more than a file "
-			    "of V%d holds", (uintmax_t)size, f->version);
+			problem(s, where(n), "%ju bytes are more than the "
+			    "largest file, %ju", (uintmax_t)size,
+			    (uintmax_t)max_file(f));
 		/* MINIX reads a link from its first block, with a NUL. */
 		else if (n->type == MFS_S_IFLNK &&
 		    (size == 0 || size >= f->block_size))

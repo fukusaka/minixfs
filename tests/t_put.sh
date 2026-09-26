@@ -317,6 +317,24 @@ check_true "$v: nothing of it stays" test ! -s "$T/out"
 run "$FSCK_MINIXFS" "$T/img"
 check_status "$v: fsck finds nothing wrong" 0
 
+# A file past the maximum file size of the super block is refused, as
+# Linux refuses it, although the zones reach further; so is a file cut
+# to grow past it through the mount, in t_fuse.sh.
+v="maximum file size"
+rm -f "$T/img" "$T/f"
+must "$NEWFS_MINIXFS" -V 2 -s 400 "$T/img"
+must "$TUNEFS_MINIXFS" -m 10000 "$T/img"
+dd if=/dev/zero of="$T/f" bs=10000 count=1 2>/dev/null
+run "$MINIXFS" put "$T/img" "$T/f" /f
+check_status "$v: a file of that size goes in" 0
+echo x >> "$T/f"
+run "$MINIXFS" put "$T/img" "$T/f" /g
+check_err "$v: a larger one is refused" "File too large"
+run "$MINIXFS" ls "$T/img" /
+check_true "$v: and nothing of it stays" test "$(cat "$T/out")" = f
+run "$FSCK_MINIXFS" "$T/img"
+check_status "$v: fsck finds nothing wrong" 0
+
 # A file system not marked clean is refused without -f, and the flex
 # directories of Minix-vmd always.
 v="not clean"

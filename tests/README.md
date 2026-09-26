@@ -138,8 +138,9 @@ top of `tests/mkimage.c`).  The scripts:
   dump from standard input restores; a full dump into a file system
   that is not empty, a compressed dump, a file that is no dump, names
   too long, a group too large for V1 (unless `-o`), a device number
-  that does not fit, a file system not marked clean and flex
-  directories are refused, with nothing written; a dump in a file that
+  that does not fit, a file past the maximum file size of the super
+  block, a file system not marked clean and flex directories are
+  refused, with nothing written; a dump in a file that
   is cut short is refused before anything is written, and leaves no
   table; `-N` writes nothing; sockets are left out.  While it writes
   the image is not marked clean: a restore killed then leaves it so, and
@@ -190,7 +191,8 @@ top of `tests/mkimage.c`).  The scripts:
   not replace a file; `put -R` and `ln` take a name without the slashes
   after it; names too long, the root, a directory below
   itself, a link to a directory, bad modes and owners are refused; a
-  file that runs out of room leaves nothing; a refusal leaves the image
+  file that runs out of room, or that is larger than the maximum file
+  size of the super block, leaves nothing; a refusal leaves the image
   marked clean, and a write that fails on a zone number outside the
   data area, or whose fsync(2) fails (made to by strace(1) on Linux),
   does not; a file system not marked clean is refused without
@@ -218,7 +220,9 @@ top of `tests/mkimage.c`).  The scripts:
   under is not in the directory but where it is kept there, and a file
   renamed to such a name is renamed as to any other if it is not open,
   and kept till the unmount if it is; a file system not marked clean is
-  mounted read-only, and a change that fails on a zone number outside
+  mounted read-only; writing or cutting a file to grow past the maximum
+  file size of the super block fails with EFBIG; and a change that
+  fails on a zone number outside
   the data area, or a sync whose fsync(2) fails (made to by strace(1)
   on Linux), keeps the mark away at the unmount.  On FreeBSD no hard
   link is made through the mount.  On NetBSD the list of every name,

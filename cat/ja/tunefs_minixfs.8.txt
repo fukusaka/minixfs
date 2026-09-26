@@ -75,7 +75,7 @@ DESCRIPTION
              の届く範囲から MINIX が計算する値、 linux は Linux と
              newfs_minixfs(8) が書く値、 bytes は 1 から 2147483647
              までの数値です。 Linux
-             はファイルをこの大きさまでに抑えますが、このパッケージの道具は抑えません。
+             とこのパッケージの道具は、ファイルをこの大きさまでに抑えます。
              minixfs(5) の CAVEATS を参照してください。
 
      -M size:heads:side

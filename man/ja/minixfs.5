@@ -291,14 +291,13 @@ MINIX 3.3.0 は V3 だけを読みます。
 .El
 .Sh CAVEATS
 MINIX は、\:ファイルのうち\:二重間接 zone が\:届く範囲より先を、\:エラーなしで 0 として読みます。
-V2 と V3 では、\:Linux は\:三重間接 zone を使って、\:superblock の最大ファイルサイズまで\:その先を書きます。
-mkfs.minix と
+V2 と V3 では、\:Linux と\:このパッケージは\:三重間接 zone を使って、\:superblock の最大ファイルサイズまで\:その先を書きます。
+Linux の mkfs.minix と
 .Xr newfs_minixfs 8
 は、\:この値を 2147483647 にします。
-このパッケージは、\:この値に\:かかわらず\:その先を書きます。
 そのため、\:1024 バイトのブロックの V2 で 67378176 バイトを超えるファイルは、\:MINIX では全部は読めません。
 .Ql tunefs_minixfs -m minix
-で、\:Linux が書く大きさを MINIX が読める範囲に\:抑えられます。
+で、\:どちらも MINIX が読める範囲に\:抑えられます。
 .Pp
 3.3.0 より後の MINIX 3 は、\:
 .Xr newfs_minixfs 8

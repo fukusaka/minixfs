@@ -233,6 +233,16 @@ run "$RESTORE_MINIXFS" -r -s "$T/symtab" -f "$T/dump" "$T/img"
 check_err "a symbolic link of a block is refused" \
     "a symbolic link of 1100 bytes"
 
+# A file past the maximum file size of the super block is refused, as
+# Linux would not take it, although the zones reach further.
+echo "file /f 0644 0 0 644198400 10001 1" >"$T/max.spec"
+must "$MKDUMP" "$T/max.spec" "$T/dump"
+fresh
+must "$TUNEFS_MINIXFS" -m 10000 "$T/img"
+run "$RESTORE_MINIXFS" -r -s "$T/symtab" -f "$T/dump" "$T/img"
+check_err "a file past the maximum file size is refused" \
+    "/f: 10001 bytes are more than the largest file, 10000"
+
 cat >"$T/dev.spec" <<EOF
 dev  /big c 300 1 0600 0 0 644198400
 dev  /ok c 4 1 0600 0 0 644198400
