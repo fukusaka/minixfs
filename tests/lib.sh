@@ -463,9 +463,17 @@ get_inode() {
 	get_number "$1" $((_get_inode_base + $2)) "$3"
 }
 
+# map_blocks IMAGE OUT - copy the blocks of both bit maps of IMAGE to OUT.
+map_blocks() {
+	_map_blocks_bs=$(info_field "$1" "block size")
+	dd if="$1" of="$2" bs="$_map_blocks_bs" skip=2 \
+	    count=$(($(info_field "$1" "inode map blocks") + \
+	    $(info_field "$1" "zone map blocks"))) 2>/dev/null
+}
+
 # set_map_bit IMAGE imap|zmap BIT 0|1 - clear or set a bit of a bit map.
-# The maps are arrays of words, 16 bits wide in V1 and V2 and 32 bits in
-# V3, in the byte order of the image.
+# The maps of V1 and V2 are arrays of 16-bit words in the byte order of
+# the image; those of V3 are arrays of bytes.
 set_map_bit() {
 	_set_map_bit_bs=$(info_field "$1" "block size")
 	_set_map_bit_start=$((2 * _set_map_bit_bs))
@@ -474,12 +482,9 @@ set_map_bit() {
 		    $(info_field "$1" "inode map blocks") * _set_map_bit_bs))
 	fi
 	_set_map_bit_byte=$(($3 / 8))
-	if [ "$(info_field "$1" "byte order")" = big-endian ]; then
-		if [ "$(info_field "$1" version)" -eq 3 ]; then
-			_set_map_bit_byte=$((_set_map_bit_byte ^ 3))
-		else
-			_set_map_bit_byte=$((_set_map_bit_byte ^ 1))
-		fi
+	if [ "$(info_field "$1" "byte order")" = big-endian ] &&
+	    [ "$(info_field "$1" version)" -ne 3 ]; then
+		_set_map_bit_byte=$((_set_map_bit_byte ^ 1))
 	fi
 	_set_map_bit_off=$((_set_map_bit_start + _set_map_bit_byte))
 	# od of FreeBSD pads the number with blanks, which its sh does not

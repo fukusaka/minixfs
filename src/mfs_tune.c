@@ -182,10 +182,12 @@ swap_dirblock(const struct mfs *fs, unsigned char *buf)
 		swap(buf + off, fs->dirent_ino);
 }
 
+/* The maps of V3 are bytes in both byte orders; see mfs_map_bit(). */
 static void
 swap_map(const struct mfs *fs, unsigned char *buf)
 {
-	swap_words(buf, fs->block_size, fs->version == 3 ? 4 : 2);
+	if (fs->version != 3)
+		swap_words(buf, fs->block_size, 2);
 }
 
 /* Swap the inodes of an inode table block; first is its first inode. */

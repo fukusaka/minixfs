@@ -130,6 +130,12 @@ for logzone in 0 1; do
 	tuned "-B be"
 	check_same_file "$v: -B be gives the big-endian image" "$T/be" \
 	    "$T/img"
+	if [ "$version" -eq 3 ]; then
+		map_blocks "$T/le" "$T/le.maps"
+		map_blocks "$T/img" "$T/img.maps"
+		check_same_file "$v: -B be leaves the maps of V3 as they are" \
+		    "$T/le.maps" "$T/img.maps"
+	fi
 	run "$TUNEFS_MINIXFS" -B le "$T/img"
 	tuned "-B le"
 	check_same_file "$v: -B le gives the original back" "$T/le" \

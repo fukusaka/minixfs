@@ -232,8 +232,9 @@ write_map(int fd, const struct mfs_params *p, const struct mfs_layout *l,
 			bit = (uint64_t)b * per + i;
 			if (bit <= used || (bit > last && p->map_end)) {
 				byte = i / 8;
-				if (p->order == MFS_BIG_ENDIAN)
-					byte ^= p->version == 3 ? 3 : 1;
+				if (p->order == MFS_BIG_ENDIAN &&
+				    p->version != 3)
+					byte ^= 1;
 				buf[byte] |= (unsigned char)(1 << (i % 8));
 			}
 		}

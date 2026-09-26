@@ -588,10 +588,10 @@ int	mfs_rename(struct mfs *, uint32_t, const char *, uint32_t,
 
 /*
  * Store every number of the file system in byte order order: the super
- * block, the words of the bit maps, the inodes, the indirect zones and
- * the inode numbers of directory entries.  Returns 0, -ENOTSUP for
- * Minix-vmd, or a negative errno value, after which nothing has been
- * written if it came from reading.
+ * block, the words of the bit maps of V1 and V2 (those of V3 are bytes),
+ * the inodes, the indirect zones and the inode numbers of directory
+ * entries.  Returns 0, -ENOTSUP for Minix-vmd, or a negative errno
+ * value, after which nothing has been written if it came from reading.
  */
 int	mfs_convert_order(struct mfs *, enum mfs_order);
 

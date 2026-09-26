@@ -933,8 +933,10 @@ mfs_load_map(struct mfs *fs, enum mfs_map which, unsigned char **mapp)
 }
 
 /*
- * The maps are arrays of words, 16 bits wide in V1 and V2 and 32 bits in
- * V3, in the byte order of the image.
+ * The maps of V1 and V2 are arrays of 16-bit words in the byte order of
+ * the image, as MINIX keeps them.  Those of V3 are arrays of bytes in
+ * either byte order, as Linux writes them on big-endian machines, the
+ * only V3 there is in that order.
  */
 int
 mfs_map_bit(const struct mfs *fs, const unsigned char *map, uint32_t n)
@@ -942,8 +944,8 @@ mfs_map_bit(const struct mfs *fs, const unsigned char *map, uint32_t n)
 	uint32_t byte;
 
 	byte = n / 8;
-	if (fs->order == MFS_BIG_ENDIAN)
-		byte ^= fs->version == 3 ? 3 : 1;
+	if (fs->order == MFS_BIG_ENDIAN && fs->version != 3)
+		byte ^= 1;
 	return (map[byte] >> (n % 8)) & 1;
 }
 
@@ -1243,8 +1245,8 @@ mfs_set_map_bit(const struct mfs *fs, unsigned char *map, uint32_t n, int v)
 	uint32_t byte;
 
 	byte = n / 8;
-	if (fs->order == MFS_BIG_ENDIAN)
-		byte ^= fs->version == 3 ? 3 : 1;
+	if (fs->order == MFS_BIG_ENDIAN && fs->version != 3)
+		byte ^= 1;
 	if (v)
 		map[byte] |= (unsigned char)(1 << (n % 8));
 	else

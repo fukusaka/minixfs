@@ -245,9 +245,10 @@ get_zone(const struct image *img, const unsigned char *p)
 }
 
 /*
- * MINIX keeps its bit maps as arrays of words: 16 bits in MINIX 1 and 2,
- * 32 bits in MINIX 3.  On a big-endian machine the bytes of each word
- * are therefore reversed relative to the PC.
+ * MINIX keeps the bit maps of V1 and V2 as arrays of 16-bit words, whose
+ * bytes a big-endian machine reverses relative to the PC.  Those of V3
+ * are arrays of bytes in either order, as Linux writes them on a
+ * big-endian machine.
  */
 static void
 set_bit(const struct image *img, unsigned char *map, uint32_t bit)
@@ -255,8 +256,8 @@ set_bit(const struct image *img, unsigned char *map, uint32_t bit)
 	uint32_t byte;
 
 	byte = bit / 8;
-	if (img->big_endian)
-		byte ^= img->version == 3 ? 3 : 1;
+	if (img->big_endian && img->version != 3)
+		byte ^= 1;
 	map[byte] |= (unsigned char)(1 << (bit % 8));
 }
 

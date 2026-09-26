@@ -486,9 +486,33 @@ map_ends() {
 	    "^bits past the end of the maps: 1\$"
 }
 
+# The maps of V3 are bytes in both byte orders, as Linux writes them on
+# a big-endian machine: those of a big-endian V3 are those of the
+# little-endian one.  V1 and V2 keep 16-bit words, as MINIX does.
+map_order() {
+	for b in 1024 4096; do
+		for order in le be; do
+			rm -f "$T/$order.img"
+			"$NEWFS_MINIXFS" -V 3 -b "$b" -B "$order" -s 512 \
+			    -i 100 "$T/$order.img" >/dev/null
+			map_blocks "$T/$order.img" "$T/$order.maps"
+		done
+		check_same_file "V3/$b: big-endian maps as little-endian ones" \
+		    "$T/le.maps" "$T/be.maps"
+	done
+	rm -f "$T/img"
+	"$NEWFS_MINIXFS" -V 2 -B be -s 512 "$T/img" >/dev/null
+	# od pads the numbers with blanks or zeros, as the system has it.
+	word=$(od -An -tu1 -j 2048 -N 2 "$T/img" |
+	    awk '{ print $1 + 0, $2 + 0 }')
+	check_true "V2: a big-endian inode map starts with the word 3" \
+	    test "$word" = "0 3"
+}
+
 formats
 max_sizes
 map_ends
+map_order
 defaults
 sizes
 refusals

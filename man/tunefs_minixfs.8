@@ -40,8 +40,9 @@ Print what the other options would change, and write nothing.
 .It Fl B Cm le | be
 Store every number of the file system in the other byte order,
 little-endian as on the PC or big-endian as on the Atari ST and the
-Amiga: the super block, the words of the bit maps, the inodes, the
-indirect zones and the inode numbers of directory entries.
+Amiga: the super block, the words of the bit maps of V1 and V2, the
+inodes, the indirect zones and the inode numbers of directory entries.
+The bit maps of V3 are bytes in both orders and stay as they are.
 Everything is read before anything is written.
 .It Fl l Cm 14 | 30
 Give a V1 or V2 file system names of 14 characters, as in MINIX, or 30,

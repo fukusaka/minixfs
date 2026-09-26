@@ -440,6 +440,33 @@ run "$FSCK_MINIXFS" "$T/img"
 check_out_has "an empty file system from newfs_minixfs is consistent" \
     "1 of 704 inodes and 1 of 2033 zones in use, 0 problems\$"
 
+# The maps of a big-endian V3 are bytes, as Linux writes them; with the
+# bytes of each 32-bit word reversed, as they once were written here, the
+# maps disagree with the files, and -y writes them anew.
+rm -f "$T/img" "$T/le"
+"$NEWFS_MINIXFS" -V 3 -b 1024 -B be -s 2048 "$T/img" >/dev/null
+"$MINIXFS" mkdir "$T/img" d
+"$NEWFS_MINIXFS" -V 3 -b 1024 -B le -s 2048 "$T/le" >/dev/null
+"$MINIXFS" mkdir "$T/le" d
+od -An -tu1 -v -j 2048 -N 2048 "$T/img" | awk '
+    { for (i = 1; i <= NF; i++) b[n++] = $i }
+    END { for (g = 0; g < n; g += 4) for (k = 3; k >= 0; k--)
+	printf "\\%03o", b[g + k] }' >"$T/words"
+# The escapes are the format.
+# shellcheck disable=SC2059
+printf "$(cat "$T/words")" |
+    dd of="$T/img" bs=1 seek=2048 conv=notrunc 2>/dev/null
+run "$FSCK_MINIXFS" "$T/img"
+check_found "maps of 32-bit words in a big-endian V3 disagree" \
+    "inode 1 is in use but free in the inode map"
+"$FSCK_MINIXFS" -y "$T/img" >/dev/null
+run "$FSCK_MINIXFS" "$T/img"
+check_status "-y writes them as bytes" 0
+map_blocks "$T/img" "$T/img.maps"
+map_blocks "$T/le" "$T/le.maps"
+check_same_file "as those of the little-endian V3" "$T/le.maps" \
+    "$T/img.maps"
+
 # -w notes what the fsck of MINIX 3 warns about or reports, and none of it
 # is a problem.
 spec_small "version=3 block=4096 order=le end=0" >"$T/spec"

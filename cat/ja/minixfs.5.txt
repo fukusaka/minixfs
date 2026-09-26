@@ -88,14 +88,15 @@ DESCRIPTION
      inode マップのビット i は、inode i が使用中なら立ちます。 zone
      マップのビット i は、zone「最初のデータ zone + i -
      1」が使用中なら立ちます。 どちらのマップもビット 0
-     は使わず、常に立てておきます。 マップは、V1 と V2 では 16 ビット、V3 では
-     32 ビットの語の配列で、ファイルシステムのバイト順で書き、語のビット 0
-     が最下位です。 最後の inode や zone より後ろのビットは、MINIX と Minix-
-     vmd の mkfs は 0、Linux の mkfs.minix は 1 にします。 MINIX 2.0.4、Minix-
-     vmd 1.7.0、MINIX 3 の fsck は1 を足りない inode や zone
-     として報告し、Linux のカーネルは0 を空きに数えて、マップが埋まると1
-     つずつ立てます。 MINIX 1.3 と 1.6.25 の fsck とfsck.minix
-     はここを見ません。
+     は使わず、常に立てておきます。 V1 と V2
+     のマップはファイルシステムのバイト順の 16 ビットの語の配列、V3
+     のマップはどちらのバイト順でもバイトの配列で、ビッグエンディアン機の
+     Linux と同じです。 語やバイトのビット 0 が最下位です。 最後の inode や
+     zone より後ろのビットは、MINIX と Minix-vmd の mkfs は 0、Linux の
+     mkfs.minix は 1 にします。 MINIX 2.0.4、Minix-vmd 1.7.0、MINIX 3 の fsck
+     は1 を足りない inode や zone として報告し、Linux のカーネルは0
+     を空きに数えて、マップが埋まると1 つずつ立てます。 MINIX 1.3 と 1.6.25 の
+     fsck とfsck.minix はここを見ません。
 
    inode
      inode 1 がルートディレクトリで、inode 0 はありません。 V1 の inode は 32

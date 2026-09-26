@@ -13,6 +13,9 @@
 #    fsck.minix must accept what fsck_minixfs -y repaired.
 #
 # FSCK_MINIX and MKFS_MINIX name the tools (default: from PATH).
+# UTILLINUX_SRC names a tree of the util-linux sources, whose tests hold
+# as hexdumps the images that mkfs.minix makes on a big-endian machine;
+# the big-endian V3 is read from there.
 #
 # fsck.minix calls sync(2) three times each run, which waits for every
 # file system of the host, and takes most of the time of this test.
@@ -229,6 +232,59 @@ mkfs_full_map() {
 		check_status "names of $n: the new bits past the end are $end" 0
 	done
 }
+
+# be_v3: the big-endian V3 that mkfs.minix makes, from the hexdump -C
+# in the tests of util-linux: numbers big-endian, maps as bytes.
+be_v3() {
+	_be_v3_dump=$UTILLINUX_SRC/tests/expected/minix/fsck-images-v3c60.BE
+	if [ ! -f "$_be_v3_dump" ]; then
+		skip "the big-endian V3 of mkfs.minix is read" \
+		    "no $_be_v3_dump"
+		return
+	fi
+	# Each line gives 16 bytes at an offset, "*" repeats the line
+	# before up to the next offset, and the last offset is the size.
+	awk '
+	function hex(s,    i, v) {
+		v = 0
+		for (i = 1; i <= length(s); i++)
+			v = v * 16 + index("0123456789abcdef",
+			    substr(s, i, 1)) - 1
+		return v
+	}
+	function put(    i) {
+		printf "printf \047"
+		for (i = 0; i < 16; i++)
+			printf "\\%03o", b[i]
+		printf "\047\n"
+	}
+	/^\*$/ { rep = 1; next }
+	/^[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]/ {
+		off = hex($1)
+		if (rep)
+			for (o = last + 16; o < off; o += 16)
+				put()
+		rep = 0
+		if (NF < 17)
+			exit
+		for (i = 0; i < 16; i++)
+			b[i] = hex($(i + 2))
+		put()
+		last = off
+	}' "$_be_v3_dump" >"$T/be_v3.sh"
+	sh "$T/be_v3.sh" >"$T/img"
+	check_info "the big-endian V3 of mkfs.minix is read as such" \
+	    "$T/img" "byte order" big-endian
+	run "$FSCK_MINIXFS" "$T/img"
+	check_status "and passes fsck_minixfs, maps and all" 0
+}
+
+if [ -n "${UTILLINUX_SRC:-}" ]; then
+	be_v3
+else
+	skip "the big-endian V3 of mkfs.minix is read" \
+	    "UTILLINUX_SRC is not set"
+fi
 
 if have "$MKFS_MINIX"; then
 	mkfs_readable

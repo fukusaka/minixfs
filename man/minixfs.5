@@ -101,8 +101,9 @@ of the zone map when zone first data zone +
 .Em i
 \- 1 is.
 Bit 0 of both is never used and is always set.
-The maps are arrays of words of 16 bits in V1 and V2 and of 32 bits in
-V3, in the byte order of the file system, bit 0 of a word being its
+The maps of V1 and V2 are arrays of 16-bit words in the byte order of
+the file system, and those of V3 arrays of bytes in either order, as
+Linux writes them on big-endian machines; bit 0 of a word or byte is its
 lowest.
 The bits past the last inode or zone are clear as the mkfs of MINIX and
 of Minix-vmd leaves them, or set as mkfs.minix of Linux does.
