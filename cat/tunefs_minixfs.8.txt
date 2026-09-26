@@ -32,10 +32,11 @@ DESCRIPTION
              entries.  Everything is read before anything is written.  be8,
              be16, be32 and be64 give also the bits in a word of the bit maps,
              and on a big-endian file system write the maps anew in that
-             width; the width it has is found as minixfs(5) says.  be takes 16
-             for V1 and V2 with names of 14 and 8 for the rest.  Without a
-             width, -l writes the maps of a big-endian file system in that of
-             its new name length.
+             width; the width it has is found as minixfs(5) says.  From
+             little-endian, be takes 16 for V1 and V2 with names of 14 and 8
+             for the rest; on a big-endian file system it keeps the width the
+             maps have.  Without a width, -l writes the maps of a big-endian
+             file system in that of its new name length.
 
      -l 14 | 30
              Give a V1 or V2 file system names of 14 characters, as in MINIX,

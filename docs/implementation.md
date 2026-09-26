@@ -48,6 +48,9 @@ The commands:
 - The comment at the top of each command says how it goes about its
   work, such as the inode numbers that `dump_minixfs` gives in the
   dump and why.
+- The comment before `mfs_parse_order()` in `src/mfs.h` gives how the
+  width of the words of the bit maps of a big-endian file system is
+  found.
 - `src/compat.h` says why each difference between the systems is
   there, such as the ioctl that gives the size of a device.
 - `tests/README.md` says what each test script covers.

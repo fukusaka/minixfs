@@ -53,8 +53,10 @@ give also the bits in a word of the bit maps, and on a big-endian file
 system write the maps anew in that width; the width it has is found as
 .Xr minixfs 5
 says.
+From little-endian,
 .Cm be
-takes 16 for V1 and V2 with names of 14 and 8 for the rest.
+takes 16 for V1 and V2 with names of 14 and 8 for the rest; on a
+big-endian file system it keeps the width the maps have.
 Without a width,
 .Fl l
 writes the maps of a big-endian file system in that of its new name

@@ -201,11 +201,12 @@ int	mfs_parse_tracks(const char *, struct mfs_tracks *);
  * are the same bytes; big-endian, they are not, and the systems differ:
  * MINIX keeps words of 16 bits, util-linux bytes, and the Linux kernel
  * bytes or words as the machine has them.  mfs_open_tracks() finds the
- * width of a big-endian file system: the one whose inode map, in its
- * first block, agrees best with the inodes in use and with bit 0 set;
- * where several agree as well, the one of those whose zone map, in its
- * first block, agrees best with the zones those inodes use; and where
- * that does not tell either, mfs_default_map_word().
+ * width of a big-endian file system: of the widths whose inode map, in
+ * its first block, agrees best with the inodes in use and with bit 0
+ * set, those whose zone map, in its first block, agrees best with the
+ * zones those inodes use, where more than one are left; and of those
+ * still left, mfs_default_map_word() if it is one, or else the
+ * narrowest.
  */
 
 /*
