@@ -110,7 +110,7 @@ AUTHORS
      Shoichi Fukusaka
 
 BUGS
-     MINIX 3 では、libpuffs
+     librefuse が FUSE 2 の形の MINIX 3（3.4.0 など）では、libpuffs
      が新しい節を誤って扱うので、書き込みは当てになりません。
      マウントを通して作ったシンボリックリンクはリンク先を失い、FIFO
      は有効な種類なしに作られ、文字デバイスはブロックデバイスとして作られます。

@@ -28,7 +28,7 @@ FDOPS =		tests/fdops
 # fuse".  FUSE_CFLAGS and FUSE_LIBS come from pkg-config where libfuse 3
 # is installed; on NetBSD, give FUSE_LIBS="-lrefuse -lpuffs".
 # FUSE_VERSION is the FUSE_USE_VERSION to build against: 31, or 26 for
-# the FUSE 2 interface.
+# the FUSE 2 interface; "make fuse-minix" chooses it on MINIX 3.
 FUSEPROG =	mount_minixfs
 FUSE_VERSION =	31
 FUSE_CFLAGS !=	(pkg-config --cflags fuse3) 2>/dev/null || true
@@ -119,11 +119,19 @@ $(FUSEPROG): src/mount_minixfs.c src/compat.h src/mfs.h $(LIBOBJS)
 	    -o $(FUSEPROG) src/mount_minixfs.c $(LIBOBJS) $(LDFLAGS) \
 	    $(FUSE_LIBS)
 
-# MINIX 3 runs a FUSE file system as a service that mount(8) starts:
-# its librefuse has the interface of FUSE 2, its libpuffs has the main()
-# of the program (PUFFS_SERVICE), and services are linked statically.
+# MINIX 3 runs a FUSE file system as a service that mount(8) starts: its
+# libpuffs has the main() of the program (PUFFS_SERVICE), and services
+# are linked statically.  Its librefuse has the interface of FUSE 3 from
+# the one of NetBSD 10, and of FUSE 2 before: the version of FUSE_H
+# chooses.
+FUSE_H =	/usr/include/fuse.h
+
 fuse-minix:
-	$(MAKE) fuse FUSE_VERSION=26 LDFLAGS=-static \
+	v=$$(sed -n 's/^#define[ 	]*_REFUSE_MAJOR_VERSION_[ 	]*\([0-9]*\).*/\1/p' \
+	    $(FUSE_H)); \
+	if [ "$${v:-0}" -ge 3 ]; then fv=31; else fv=26; fi; \
+	echo "FUSE_VERSION=$$fv: the librefuse of $(FUSE_H) has FUSE $${v:-2}"; \
+	$(MAKE) fuse FUSE_VERSION=$$fv LDFLAGS=-static \
 	    FUSE_CFLAGS=-DPUFFS_SERVICE \
 	    FUSE_LIBS="-lrefuse -lpuffs -lfsdriver -lsys -ltimers"
 

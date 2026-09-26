@@ -40,7 +40,7 @@ The FUSE mount tool is built separately:
     make fuse                                            # libfuse 3
     make fuse FUSE_LIBS="-lrefuse -lpuffs"                 # NetBSD
     make fuse FUSE_LIBS="-lrefuse -lpuffs" FUSE_VERSION=26 # older librefuse
-    make fuse-minix                                      # MINIX 3
+    make fuse-minix                                      # MINIX 3, FUSE 3 or 2
 
 `FUSE_CFLAGS` and `FUSE_LIBS` default to the output of `pkg-config fuse3`.
 On FreeBSD, install fusefs-libs3 and pkgconf, load the kernel module with
@@ -81,7 +81,8 @@ files or `put -i` to confirm replacement.
 `-s` specifies a size. `-l flex` creates Minix-vmd format.
 On BSD, unmount with `umount /mnt`.
 See [mount_minixfs(8), BUGS](cat/mount_minixfs.8.txt) for platform
-limitations, including unreliable writes on MINIX 3.
+limitations, including unreliable writes on MINIX 3 whose librefuse has
+the FUSE 2 interface.
 
 ### Check and change settings
 

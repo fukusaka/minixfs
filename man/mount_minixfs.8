@@ -180,8 +180,8 @@ $ fusermount3 -u /mnt
 .Sh AUTHORS
 .An Shoichi Fukusaka
 .Sh BUGS
-On MINIX 3, writing is not reliable, as libpuffs gets the new nodes
-wrong: a symbolic link made through the mount loses its target, a pipe
+On MINIX 3 whose librefuse has the interface of FUSE 2, as that of
+3.4.0, writing is not reliable, as libpuffs gets the new nodes wrong: a symbolic link made through the mount loses its target, a pipe
 is made with no valid type, and a character device is made a block
 device.
 .Pp

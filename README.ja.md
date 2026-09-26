@@ -36,7 +36,7 @@ FUSE のマウントコマンドは別途ビルドします。
     make fuse                                            # libfuse 3
     make fuse FUSE_LIBS="-lrefuse -lpuffs"                 # NetBSD
     make fuse FUSE_LIBS="-lrefuse -lpuffs" FUSE_VERSION=26 # 古い librefuse
-    make fuse-minix                                      # MINIX 3
+    make fuse-minix                                      # MINIX 3、FUSE 3 か 2
 
 `FUSE_CFLAGS` と `FUSE_LIBS` の既定は `pkg-config fuse3` の出力です。
 FreeBSD では fusefs-libs3 と pkgconf をインストールし、`kldload fusefs` でカーネルモジュールを
@@ -74,7 +74,7 @@ MINIX 3 のサービス設定は [mount_minixfs(8)](cat/ja/mount_minixfs.8.txt) 
 
 `-V` は必須です。`-d` で新規作成するときは、`-s` がなければ必要容量を自動計算します。
 `-l flex` は Minix-vmd 形式です。BSD のアンマウントは `umount /mnt` です。
-MINIX 3 の書き込みは不安定です。OS 固有の制限と既知の不具合は [mount_minixfs(8) の BUGS](cat/ja/mount_minixfs.8.txt) を参照してください。
+librefuse が FUSE 2 の形の MINIX 3 では、書き込みが不安定です。OS 固有の制限と既知の不具合は [mount_minixfs(8) の BUGS](cat/ja/mount_minixfs.8.txt) を参照してください。
 
 ### 検査と設定変更
 

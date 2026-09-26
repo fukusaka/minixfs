@@ -13,7 +13,10 @@
  * The file system is served through the high-level FUSE API, which
  * libfuse (Linux, FreeBSD) and librefuse (NetBSD, MINIX 3) both provide.
  * FUSE_USE_VERSION selects the form of that API: 31 (FUSE 3, the
- * default) or 26 (FUSE 2, for older librefuse).
+ * default) or 26 (FUSE 2, for older librefuse, which "make fuse-minix"
+ * takes where the librefuse of MINIX 3 is older than FUSE 3).  With FUSE
+ * 2, a file open and removed cannot be reached through its path, which is
+ * all that some operations take.
  *
  * The mount is read-only, and with -w read-write.  A file system that is
  * not marked clean is mounted read-only all the same, with a warning.  While it is mounted for
