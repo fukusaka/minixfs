@@ -32,6 +32,7 @@ struct tree_fs {
 	uint32_t	block_size;
 	uint32_t	log_zone_size;
 	uint32_t	namelen;
+	int		flex;		/* flex directories of Minix-vmd */
 	uint32_t	max_size;	/* of the super block */
 	int		owned;		/* every file gets uid and gid */
 	uint32_t	uid;

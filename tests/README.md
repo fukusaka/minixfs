@@ -60,20 +60,20 @@ top of `tests/mkimage.c`).  The scripts:
 - `t_fuzz.sh` - images with random bytes damaged: every command must end
   with status 0 or 1 (`fsck_minixfs`: up to 3), without crashing and
   without writing outside `DEST`.
-- `t_newfs.sh` - `newfs_minixfs` makes, in every format, the image that
-  `tests/mkimage` makes from an empty tree, with the maximum file size
-  MINIX works out, that of Linux with `-m linux` or a number; defaults,
-  sizes, `-N`, the boot block, and the options it must refuse.  With `-d`, the test tree
-  goes into every format and comes back out with its modes, sizes and
-  times; hard and symbolic links, pipes, `-o`, owners of `-o` that are
-  no numbers or past their range, the size made to fit, `-N`, sizes too
-  small, names too long and files past the maximum file size; a tree of
-  many empty files, whose inode table the size made to fit has room
-  for; and, where fakeroot(1) is
-  installed, devices.  With `-F`, a specification in both forms sets
-  modes, owners (by name, from `-P`) and times, adds devices, links,
-  pipes, empty files and escaped names, skips optional entries, `-x`
-  leaves out what it does not name, and bad entries change nothing.
+- `t_newfs.sh` - `newfs_minixfs` makes, in every format and the flex
+  format of Minix-vmd, the image that `tests/mkimage` makes from an
+  empty tree, with the maximum file size MINIX works out, that of Linux
+  with `-m linux` or a number; defaults, sizes, `-N`, the boot block,
+  and the options it must refuse.  With `-d`, the test tree goes into
+  every format and comes back out with its modes, sizes and times; hard
+  and symbolic links, pipes, `-o`, owners of `-o` that are no numbers or
+  past their range, the size made to fit, `-N`, sizes too small, names
+  too long and files past the maximum file size; a tree of many empty
+  files, whose inode table the size made to fit has room for; and, where
+  fakeroot(1) is installed, devices.  With `-F`, a specification in both
+  forms sets modes, owners (by name, from `-P`) and times, adds devices,
+  links, pipes, empty files and escaped names, skips optional entries,
+  `-x` leaves out what it does not name, and bad entries change nothing.
 - `t_fsck.sh` - `fsck_minixfs` passes the test tree in every format and
   an empty file system, and finds each kind of damage in every version
   and byte order: a bad maximum file size, which becomes MINIX's, a
@@ -143,29 +143,32 @@ top of `tests/mkimage.c`).  The scripts:
   freed slots taken again, which the fsck of Minix-vmd passes where
   `VMD_FSCK` is set; `fsck -y` putting `.` and `..` back, moving an
   entry out of the slot of `.`, and making `/lost+found` there with
-  `-l`, which the fsck of Minix-vmd passes too; the clean flag set and cleared alone, `tunefs -B`
-  and `-l` refused, and `-s` working.  `t_read.sh` reads the test tree
+  `-l`, which the fsck of Minix-vmd passes too; `newfs_minixfs -l flex`
+  copying a tree with a directory of 17 blocks of 60-character names
+  into an image made just large enough, which the fsck of Minix-vmd
+  passes; the clean flag set and cleared alone, `tunefs -B` and `-l`
+  refused, and `-s` working.  `t_read.sh` reads the test tree
   as Minix-vmd V1 and V2 as well.
 - `t_restore.sh` - `restore_minixfs` restores dumps of the test tree
   that `tests/mkdump` writes in the formats of 4.4BSD, 4.3BSD and file
   systems before 4.2BSD (directories of V7), UFS2, and Linux dump with
   runs in c_addr, in either byte order, as the tree mkimage makes of the
-  same spec, which `fsck_minixfs` passes; `-t` lists every name, and
-  the extended attributes of UFS2 and Linux are counted as left out.  A
-  dump from standard input restores; a full dump into a file system
-  that is not empty, a compressed dump, a file that is no dump, names
-  too long, a group too large for V1 (unless `-o`), a device number
-  that does not fit, a file past the maximum file size of the super
-  block and a file system not marked clean are refused, with nothing
-  written; the tree goes into the flex directories of Minix-vmd, and
-  their dump into a file system of V2, as it was; a dump in a file that
-  is cut short is refused before anything is written, and leaves no
-  table; `-N` writes nothing; sockets are left out.  While it writes
-  the image is not marked clean: a restore killed then leaves it so, and
-  the next is refused; one from standard input that is cut short leaves
-  it clean again and in order, as does one that runs out of room (in
-  `t_dump.sh`); an error of the image, such as a zone number outside
-  the data area, leaves it not clean.
+  same spec, which `fsck_minixfs` passes; `-t` lists every name, and the
+  extended attributes of UFS2 and Linux are counted as left out.  A dump
+  from standard input restores; a full dump into a file system that is
+  not empty, a compressed dump, a file that is no dump, names too long,
+  a group too large for V1 (unless `-o`), a device number that does not
+  fit, a file past the maximum file size of the super block and a file
+  system not marked clean are refused, with nothing written; the tree
+  goes into the flex directories of a file system that `newfs_minixfs -l
+  flex` makes, and their dump into a file system of V2, as it was; a
+  dump in a file that is cut short is refused before anything is
+  written, and leaves no table; `-N` writes nothing; sockets are left
+  out.  While it writes the image is not marked clean: a restore killed
+  then leaves it so, and the next is refused; one from standard input
+  that is cut short leaves it clean again and in order, as does one that
+  runs out of room (in `t_dump.sh`); an error of the image, such as a
+  zone number outside the data area, leaves it not clean.
 - `t_dump.sh` - `dump_minixfs` of the test tree in V1, V2 with 30
   characters, V3 with blocks of 4096 bytes, zones of two blocks and
   Minix-vmd, in either byte order, restores as the image itself, in the

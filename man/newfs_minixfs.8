@@ -18,7 +18,7 @@
 .Op Fl o Ar uid : Ns Ar gid
 .Oc
 .Op Fl i Ar inodes
-.Op Fl l Ar name-length
+.Op Fl l Ar name-length | Cm flex
 .Op Fl m Cm minix | linux | Ar bytes
 .Op Fl s Ar blocks
 .Op Fl t Ar time
@@ -157,10 +157,15 @@ The number of inodes, rounded up to fill the blocks of the inode table;
 by default one for about every three blocks, or more if the tree of
 .Fl d
 needs them.
-.It Fl l Ar name-length
+.It Fl l Ar name-length | Cm flex
 The length of names in V1 and V2: 14, as in MINIX and the default, or
 30, the extension of Linux, which has magic numbers of its own.
 V3 names are always 60 characters.
+.Cm flex
+makes a V1 or V2 file system of Minix-vmd, whose flex directories hold
+names of up to 60 characters, as its mkfs makes one: with the magic
+number of names of 14, the super block of Minix-vmd, and the bits of
+the maps past the last inode and zone clear.
 .It Fl m Cm minix | linux | Ar bytes
 The maximum file size in the super block: what MINIX works out from the
 zones that the double indirect zone reaches, the default, so that MINIX

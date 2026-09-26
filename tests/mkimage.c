@@ -34,11 +34,12 @@
  * indirect zone, as the mkfs of MINIX writes it, or N.
  * vmd makes a V1 or V2 file system as Minix-vmd does: its super block
  * keeps the zone size in a byte, flags (flex directories, clean) in the
- * next and 0x7f, 0x13 at byte 18, and its flex directories hold entries
- * of 8-byte slots, with names of up to 60 characters.  An entry takes a
- * slot for the inode number, the count of extra slots and 5 bytes of the
- * name, and the extra slots for the rest, the name ending with a NUL; an
- * entry that would cross a block starts the next one instead.
+ * next and 0x7f, 0x13 at byte 18, the bits of its maps past the end are
+ * clear, and its flex directories hold entries of 8-byte slots, with
+ * names of up to 60 characters.  An entry takes a slot for the inode
+ * number, the count of extra slots and 5 bytes of the name, and the
+ * extra slots for the rest, the name ending with a NUL; an entry that
+ * would cross a block starts the next one instead.
  *
  * MODE is octal permission bits.  File contents are a pattern made from
  * SEED; bytes inside a hole are zero, and zones that lie wholly inside a
@@ -1030,7 +1031,10 @@ mark_inodes(const struct image *img, unsigned char *map,
 	}
 }
 
-/* Bit 0 of each map is never used; bits past the end are set. */
+/*
+ * Bit 0 of each map is never used; bits past the end are set, or left
+ * clear for Minix-vmd, as its mkfs leaves them.
+ */
 static void
 write_maps(const struct image *img)
 {
@@ -1040,14 +1044,14 @@ write_maps(const struct image *img)
 	bits = img->bsize * 8;
 	map = img->data + (size_t)START_BLOCK * img->bsize;
 	for (bit = 0; bit < img->imap_blocks * bits; bit++)
-		if (bit == 0 || bit > img->ninodes)
+		if (bit == 0 || (bit > img->ninodes && !img->vmd))
 			set_bit(img, map, bit);
 	mark_inodes(img, map, &img->root);
 	map += (size_t)img->imap_blocks * img->bsize;
 	for (bit = 0; bit < img->zmap_blocks * bits; bit++)
 		if (bit == 0 || (bit > img->skip &&
 		    bit <= img->next_zone - img->firstdatazone) ||
-		    bit > img->nzones - img->firstdatazone)
+		    (bit > img->nzones - img->firstdatazone && !img->vmd))
 			set_bit(img, map, bit);
 }
 

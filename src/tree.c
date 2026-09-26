@@ -469,6 +469,23 @@ problem(struct scan *s, const char *path, const char *fmt, ...)
 
 static int scan_dir(struct scan *, const char *, const char *);
 
+/*
+ * The slots of a flex directory used, slots in all, once an entry of a
+ * name of len bytes is added after them: entries go in one after another
+ * and do not cross a block.
+ */
+static uint64_t
+flex_slots(const struct tree_fs *f, uint64_t slots, size_t len)
+{
+	uint64_t need, per;
+
+	per = f->block_size / 8;
+	need = MFS_FLEX_SLOTS(len);
+	if (slots % per + need > per)
+		slots += per - slots % per;
+	return slots + need;
+}
+
 /* One entry below a directory; returns 1 if it takes an entry there. */
 static int
 scan_entry(struct scan *s, struct node *n, const char *name,
@@ -545,7 +562,7 @@ static int
 scan_dir(struct scan *s, const char *host, const char *rel)
 {
 	struct node n;
-	uint64_t entries;
+	uint64_t entries, slots;
 	uint32_t subdirs;
 	size_t i, count;
 	char **names;
@@ -554,12 +571,15 @@ scan_dir(struct scan *s, const char *host, const char *rel)
 	if ((names = node_names(s->f, host, rel, &count)) == NULL)
 		return -1;
 	entries = 2;
+	slots = 2;
 	subdirs = 0;
 	r = 0;
 	for (i = 0; i < count && r != -1; i++) {
 		if ((r = node_at(s->f, host, rel, names[i], &n)) == 0 &&
-		    (r = scan_entry(s, &n, names[i], &subdirs)) == 1)
+		    (r = scan_entry(s, &n, names[i], &subdirs)) == 1) {
 			entries++;
+			slots = flex_slots(s->f, slots, strlen(names[i]));
+		}
 		node_free(&n);
 	}
 	free_names(names, count);
@@ -569,7 +589,7 @@ scan_dir(struct scan *s, const char *host, const char *rel)
 	    MFS_MAX_LINKS))
 		problem(s, host != NULL ? host : rel, "%" PRIu32 " directories "
 		    "below it are more than a link count holds", subdirs);
-	s->need->zones += file_zones(s->f,
+	s->need->zones += file_zones(s->f, s->f->flex ? slots * 8 :
 	    entries * ((s->f->version == 3 ? 4 : 2) + s->f->namelen));
 	return 0;
 }

@@ -6,8 +6,8 @@ NAME
 SYNOPSIS
      newfs_minixfs -V version [-N] [-B le | be] [-b block-size] [-d directory
                    [-F specfile [-P dbdir [-x]]] [-o uid:gid]] [-i inodes]
-                   [-l name-length] [-m minix | linux | bytes] [-s blocks]
-                   [-t time] [-z log-zone-size] image
+                   [-l name-length | flex] [-m minix | linux | bytes]
+                   [-s blocks] [-t time] [-z log-zone-size] image
 
 DESCRIPTION
      newfs_minixfs は、ファイルまたはデバイス image に、版 1・2・3 の MINIX
@@ -91,10 +91,15 @@ DESCRIPTION
              既定はおよそ 3 ブロックに 1 つで、 -d
              のディレクトリツリーがそれより多く要ればその数にします。
 
-     -l name-length
+     -l name-length | flex
              V1 と V2 の名前の長さです。 MINIX と同じ 14（既定）か、Linux
              の拡張の 30 で、30 のほうは専用のマジック番号を持ちます。 V3
-             の名前は常に 60 文字です。
+             の名前は常に 60 文字です。 flex は、60 文字までの名前を持つ flex
+             ディレクトリの、Minix-vmd の V1 か V2
+             のファイルシステムを作ります。 Minix-vmd の mkfs
+             と同じく、マジック番号は 14 文字のもの、superblock は Minix-vmd
+             のものにし、マップの最後の inode や zone より後ろのビットは 0
+             のままにします。
 
      -m minix | linux | bytes
              superblock の最大ファイルサイズです。 minix は、二重間接 zone

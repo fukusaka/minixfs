@@ -34,10 +34,11 @@ vs_mkimage() {
 	    "$T/want.img" "$T/got.img"
 }
 
-# Every format, byte order and zone size, against mkimage.
+# Every format, byte order and zone size, against mkimage; flex is
+# Minix-vmd.
 formats() {
-	for format in 1:14:1024 1:30:1024 2:14:1024 2:30:1024 3:60:1024 \
-	    3:60:4096; do
+	for format in 1:14:1024 1:30:1024 1:flex:1024 2:14:1024 2:30:1024 \
+	    2:flex:1024 3:60:1024 3:60:4096; do
 	for order in le be; do
 	for logzone in 0 1; do
 		version=${format%%:*}
@@ -47,6 +48,9 @@ formats() {
 		if [ "$version" -eq 3 ]; then
 			opts="-b $bsize"
 			spec="block=$bsize"
+		elif [ "$namelen" = flex ]; then
+			opts="-l flex"
+			spec=vmd
 		else
 			opts="-l $namelen"
 			spec="namelen=$namelen"
@@ -143,6 +147,8 @@ refusals() {
 	check_status "V3 has no name length to choose" 2
 	run "$NEWFS_MINIXFS" -V 2 -l 20 -s 100 "$T/img"
 	check_status "a name length of 20 is refused" 2
+	run "$NEWFS_MINIXFS" -V 3 -l flex -s 100 "$T/img"
+	check_status "V3 has no flex directories" 2
 	run "$NEWFS_MINIXFS" -V 3 -b 1500 -s 100 "$T/img"
 	check_status "a block size of 1500 is refused" 2
 	run "$NEWFS_MINIXFS" -V 1 -B middle -s 100 "$T/img"

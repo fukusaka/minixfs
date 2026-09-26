@@ -8,9 +8,10 @@
 # refuses: compressed dumps, full dumps into file systems that are not
 # empty, names, owners and devices that do not fit, file systems that are
 # not clean; -N writes nothing.  The tree goes into flex directories of
-# Minix-vmd too, and comes back out of them into a file system of V2.  While it writes,
-# the image is not marked clean, and the mark comes back unless an
-# operation on the image failed other than for a lack of room.
+# Minix-vmd too, of a file system that newfs_minixfs -l flex makes, and
+# comes back out of them into a file system of V2.  While it writes, the
+# image is not marked clean, and the mark comes back unless an operation
+# on the image failed other than for a lack of room.
 
 # shellcheck source=tests/lib.sh
 . ./tests/lib.sh
@@ -268,12 +269,9 @@ must "$TUNEFS_MINIXFS" -c dirty "$T/img"
 run "$RESTORE_MINIXFS" -r -s "$T/symtab" -f "$T/dump" "$T/img"
 check_err "a file system not marked clean is refused" "not marked clean"
 
-cat >"$T/vmd.spec" <<EOF
-fs version=2 order=le blocks=4096 inodes=1024 vmd
-EOF
-rm -f "$T/symtab"
+rm -f "$T/symtab" "$T/img"
 must "$MKDUMP" -h nfs "$T/spec" "$T/dump"
-mkimage "$T/vmd.spec" "$T/img"
+must "$NEWFS_MINIXFS" -V 2 -l flex -s 4096 -i 1024 "$T/img"
 run "$RESTORE_MINIXFS" -r -s "$T/symtab" -f "$T/dump" "$T/img"
 check_status "flex directories: the tree is restored into them" 0
 run "$MINIXFS" tar "$T/img"

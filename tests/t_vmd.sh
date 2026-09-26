@@ -69,7 +69,7 @@ for fs in "1 le" "2 le" "2 be"; do
 	v="V$version/$order"
 	{
 		echo "fs version=$version vmd order=$order blocks=2048" \
-		    "inodes=256"
+		    "inodes=256 maxsize=minix"
 		echo "dir /d 0755 0 0 0"
 		i=0
 		for n in $names $long; do
@@ -132,12 +132,9 @@ for fs in "1 le" "2 le" "2 be"; do
 	    "$T/img"
 
 	# Entries go into flex directories as Minix-vmd enters them, in an
-	# image without the entry of a free inode, whose maps end in clear
-	# bits and whose maximum file size is that of MINIX, as the mkfs of
-	# Minix-vmd makes it.
+	# image without the entry of a free inode.
 	cp "$T/good" "$T/w.img"
 	"$FSCK_MINIXFS" -y "$T/w.img" >/dev/null
-	"$TUNEFS_MINIXFS" -e 0 -m minix "$T/w.img" >/dev/null
 	vmd_fsck "$v: the fsck of Minix-vmd passes the image" "$T/w.img"
 	{
 		echo "mkdir /w 0755"
@@ -169,7 +166,6 @@ for fs in "1 le" "2 le" "2 be"; do
 	# next, and freed slots are taken again.
 	cp "$T/good" "$T/w.img"
 	"$FSCK_MINIXFS" -y "$T/w.img" >/dev/null
-	"$TUNEFS_MINIXFS" -e 0 -m minix "$T/w.img" >/dev/null
 	{
 		echo "mkdir /b 0755"
 		thirty 26 "mknod /b/"
@@ -191,7 +187,6 @@ for fs in "1 le" "2 le" "2 be"; do
 	# inode 2, and a, its first file, inode 3.
 	cp "$T/good" "$T/w.img"
 	"$FSCK_MINIXFS" -y "$T/w.img" >/dev/null
-	"$TUNEFS_MINIXFS" -e 0 -m minix "$T/w.img" >/dev/null
 	cp "$T/w.img" "$T/base.img"
 	dz=$(($(get_inode "$T/w.img" 2 zone0) * 1024))
 	poke_number "$T/w.img" "$dz" 16 0
@@ -231,6 +226,32 @@ for fs in "1 le" "2 le" "2 be"; do
 	run "$FSCK_MINIXFS" "$T/w.img"
 	check_status "$v: nothing is left after -y -l" 0
 	vmd_fsck "$v: the fsck of Minix-vmd passes /lost+found" "$T/w.img"
+
+	# newfs_minixfs -l flex copies a tree in as Minix-vmd enters the
+	# entries, into an image just large enough by its count of the
+	# slots: 256 entries of 8 slots, 16 to a block with "." and ".." in
+	# the first, take 17 blocks, where as many fixed entries of 62 bytes
+	# would take 16.
+	rm -rf "$T/tree" "$T/n.img"
+	mkdir -p "$T/tree/c"
+	i=0
+	while [ "$i" -lt 256 ]; do
+		: >"$T/tree/c/$(printf '%.57s%03d' "$long" "$i")"
+		i=$((i + 1))
+	done
+	run "$NEWFS_MINIXFS" -V "$version" -l flex -B "$order" -o 0:0 \
+	    -d "$T/tree" "$T/n.img"
+	check_status "$v: newfs_minixfs -l flex copies a tree" 0
+	check_true "$v: 256 entries of 8 slots take 17 blocks" \
+	    test "$(size_in "$T/n.img" / c)" -eq $((16 * 1024 + 64))
+	run "$MINIXFS" ls "$T/n.img" /c
+	check_out_has "$v: names of 60 characters go in" \
+	    "^$(printf '%.57s' "$long")255\$"
+	run "$FSCK_MINIXFS" "$T/n.img"
+	check_status "$v: fsck passes what newfs_minixfs made" 0
+	check_out_has "$v: whose zones are all in use" \
+	    ' \([0-9]*\) of \1 zones in use'
+	vmd_fsck "$v: so does the fsck of Minix-vmd, of newfs" "$T/n.img"
 
 	run "$TUNEFS_MINIXFS" -B be "$T/img"
 	check_err "$v: -B refuses Minix-vmd" "Minix-vmd"

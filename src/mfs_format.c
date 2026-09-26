@@ -10,6 +10,13 @@
  * zone after the inode table.  mfs_format() writes the super block, the
  * maps, the inode table and a root directory holding "." and "..".
  *
+ * A file system of Minix-vmd with flex directories is laid out as that
+ * of MINIX of its version, with the magic number of names of 14, and
+ * differs as the mkfs of Minix-vmd makes it: the super block has the
+ * zone size in one byte, the flags in the next and 0x7f, 0x13 where
+ * Linux keeps its state; the bits of the maps past the last inode and
+ * zone are left clear; and "." and ".." take a slot each.
+ *
  * The first 1024 bytes of the device, where a boot block may live, are
  * left alone.
  */
@@ -32,7 +39,7 @@
 static int
 plan_sizes(const struct mfs_params *p, struct mfs_layout *l)
 {
-	if (p->version < 1 || p->version > 3)
+	if (p->version < 1 || p->version > 3 || (p->flex && p->version == 3))
 		return -EINVAL;
 	if (p->version == 3) {
 		l->block_size = p->block_size != 0 ? p->block_size : V3_BLOCK;
@@ -47,8 +54,9 @@ plan_sizes(const struct mfs_params *p, struct mfs_layout *l)
 		if (p->block_size != 0 && p->block_size != STATIC_BLOCK)
 			return -EINVAL;
 		l->block_size = STATIC_BLOCK;
-		l->namelen = p->namelen != 0 ? p->namelen : 14;
-		if (l->namelen != 14 && l->namelen != 30)
+		l->namelen = p->namelen != 0 ? p->namelen : p->flex ? 60 : 14;
+		if (p->flex ? l->namelen != 60 :
+		    l->namelen != 14 && l->namelen != 30)
 			return -EINVAL;
 	}
 	if (p->log_zone_size > MAX_LOG_ZONE)
@@ -126,13 +134,13 @@ mfs_plan(const struct mfs_params *p, struct mfs_layout *l)
 	l->max_size = p->max_size != 0 ? p->max_size :
 	    mfs_minix_size(p->version, l->block_size, p->log_zone_size);
 	if (p->version == 1) {
-		l->magic = l->namelen == 14 ? MFS_MAGIC_V1 : MFS_MAGIC_V1L;
+		l->magic = l->namelen == 30 ? MFS_MAGIC_V1L : MFS_MAGIC_V1;
 	} else {
 		if (p->version == 3)
 			l->magic = MFS_MAGIC_V3;
 		else
-			l->magic = l->namelen == 14 ? MFS_MAGIC_V2 :
-			    MFS_MAGIC_V2L;
+			l->magic = l->namelen == 30 ? MFS_MAGIC_V2L :
+			    MFS_MAGIC_V2;
 	}
 	return 0;
 }
@@ -180,7 +188,13 @@ fill_super(const struct mfs_params *p, const struct mfs_layout *l,
 	put16(o, sb + SB12_LOGZONE, p->log_zone_size);
 	put32(o, sb + SB12_MAXSIZE, l->max_size);
 	put16(o, sb + SB12_MAGIC, l->magic);
-	put16(o, sb + SB12_STATE, MFS_STATE_VALID);
+	if (p->flex) {
+		sb[SBVMD_LOGZONE] = (unsigned char)p->log_zone_size;
+		sb[SBVMD_FLAGS] = MFS_VMD_FLEX | MFS_VMD_CLEAN;
+		sb[SBVMD_MAGIC] = SBVMD_MAGIC0;
+		sb[SBVMD_MAGIC + 1] = SBVMD_MAGIC1;
+	} else
+		put16(o, sb + SB12_STATE, MFS_STATE_VALID);
 	if (p->version == 2)
 		put32(o, sb + SB12_ZONES, l->nzones);
 }
@@ -188,8 +202,8 @@ fill_super(const struct mfs_params *p, const struct mfs_layout *l,
 /*
  * Write a bit map of nblocks blocks at block start in which bits 0 to
  * used are set, bits up to last are clear, and the bits after last are
- * set.  The maps are arrays of words, 16 bits wide in V1 and V2 and 32
- * bits in V3, in the byte order of the image.
+ * set, or clear for Minix-vmd.  The maps are arrays of words, 16 bits
+ * wide in V1 and V2 and 32 bits in V3, in the byte order of the image.
  */
 static int
 write_map(int fd, const struct mfs_params *p, const struct mfs_layout *l,
@@ -205,7 +219,7 @@ write_map(int fd, const struct mfs_params *p, const struct mfs_layout *l,
 		(void)memset(buf, 0, l->block_size);
 		for (i = 0; i < per; i++) {
 			bit = (uint64_t)b * per + i;
-			if (bit <= used || bit > last) {
+			if (bit <= used || (bit > last && !p->flex)) {
 				byte = i / 8;
 				if (p->order == MFS_BIG_ENDIAN)
 					byte ^= p->version == 3 ? 3 : 1;
@@ -229,7 +243,8 @@ fill_root(const struct mfs_params *p, const struct mfs_layout *l,
 	uint32_t size;
 
 	o = p->order;
-	size = 2 * ((p->version == 3 ? 4 : 2) + l->namelen);
+	size = p->flex ? 2 * FLEX_SLOT :
+	    2 * ((p->version == 3 ? 4 : 2) + l->namelen);
 	if (p->version == 1) {
 		put16(o, ip + I1_MODE, ROOT_MODE);
 		put32(o, ip + I1_FSIZE, size);
@@ -254,6 +269,14 @@ fill_root_dir(const struct mfs_params *p, const struct mfs_layout *l,
 {
 	uint32_t ino, size;
 
+	if (p->flex) {
+		put16(p->order, d, MFS_ROOT_INO);
+		d[FLEX_NAME] = '.';
+		put16(p->order, d + FLEX_SLOT, MFS_ROOT_INO);
+		d[FLEX_SLOT + FLEX_NAME] = '.';
+		d[FLEX_SLOT + FLEX_NAME + 1] = '.';
+		return;
+	}
 	ino = p->version == 3 ? 4 : 2;
 	size = ino + l->namelen;
 	if (ino == 4) {

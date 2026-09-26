@@ -79,8 +79,9 @@ MINIX 3 での書き込みは不安定です。各 OS の制限と既知のデ�
 
     newfs_minixfs -V 1 -s 360 floppy.img
     newfs_minixfs -V 2 -d tree -o 0:0 tree.img
+    newfs_minixfs -V 2 -l flex -s 2048 vmd.img
 
-`-V` は必須です。`-d` で新規イメージを作る場合、`-s` がなければツリーに必要な容量を確保します。
+`-V` は必須です。`-l flex` で Minix-vmd のファイルシステムを作ります。`-d` で新規イメージを作る場合、`-s` がなければツリーに必要な容量を確保します。
 `-F` は METALOG などの mtree 指定を読み込みます。ブートコード用の先頭 1024 バイトは保持します。
 最大ファイルサイズの既定は MINIX 互換です。`-m linux` で Linux と同じ上限にできます。
 

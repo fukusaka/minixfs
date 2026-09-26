@@ -6,14 +6,16 @@
  *
  *	newfs_minixfs -V version [-N] [-B le|be] [-b block-size]
  *	    [-d directory [-F specfile [-P dbdir] [-x]] [-o uid:gid]]
- *	    [-i inodes] [-l name-length] [-m minix|linux|bytes]
+ *	    [-i inodes] [-l name-length|flex] [-m minix|linux|bytes]
  *	    [-s blocks] [-t time] [-z log-zone-size] image
  *
  * The version has to be given.  The size is taken from -s, or else from
  * the size of an existing image file; with -s, an image file is created
  * or cut to that size.  -N prints the layout and writes nothing.  The
  * maximum file size is what MINIX works out, all that it reads, unless
- * -m gives that of Linux or a number.
+ * -m gives that of Linux or a number.  -l flex makes a V1 or V2 file
+ * system of Minix-vmd, whose flex directories hold names of up to 60
+ * characters.
  *
  * With -d, the file system holds a copy of the directory: its files,
  * directories, symbolic links, devices and pipes, with their modes,
@@ -72,7 +74,7 @@ usage(void)
 	(void)fprintf(stderr,
 	    "usage: newfs_minixfs -V version [-N] [-B le|be] [-b block-size]\n"
 	    "           [-d directory [-F specfile [-P dbdir] [-x]]\n"
-	    "           [-o uid:gid]] [-i inodes] [-l name-length]\n"
+	    "           [-o uid:gid]] [-i inodes] [-l name-length|flex]\n"
 	    "           [-m minix|linux|bytes] [-s blocks] [-t time]\n"
 	    "           [-z log-zone-size] image\n");
 	exit(2);
@@ -138,7 +140,13 @@ parse(int argc, char **argv, struct options *o)
 			o->inodes = 1;
 			break;
 		case 'l':
-			p->namelen = number("name length", optarg);
+			if (strcmp(optarg, "flex") == 0) {
+				p->flex = 1;
+				p->namelen = 0;
+			} else {
+				p->flex = 0;
+				p->namelen = number("name length", optarg);
+			}
 			break;
 		case 'N':
 			o->dry_run = 1;
@@ -176,6 +184,8 @@ check_options(const struct mfs_params *p)
 {
 	if (p->version < 1 || p->version > 3)
 		errx(2, "version %d: only 1, 2 and 3 exist", p->version);
+	if (p->version == 3 && p->flex)
+		errx(2, "flex directories are of Minix-vmd, which is V1 or V2");
 	if (p->version == 3) {
 		if (p->namelen != 0 && p->namelen != 60)
 			errx(2, "V3 names are 60 characters");
@@ -236,7 +246,8 @@ print_layout(const struct mfs_params *p, const struct mfs_layout *l)
 	(void)printf("byte order: %s\n",
 	    p->order == MFS_BIG_ENDIAN ? "big-endian" : "little-endian");
 	(void)printf("magic: 0x%04" PRIx16 "\n", l->magic);
-	(void)printf("name length: %" PRIu32 "\n", l->namelen);
+	(void)printf("name length: %" PRIu32 "%s\n", l->namelen,
+	    p->flex ? ", flex" : "");
 	(void)printf("block size: %" PRIu32 "\n", l->block_size);
 	(void)printf("blocks: %" PRIu32 "\n", l->nblocks);
 	(void)printf("inodes: %" PRIu32 "\n", l->ninodes);
@@ -310,8 +321,9 @@ tree_shape(const struct options *o, uint32_t block_size, struct tree_fs *f)
 	f->version = o->params.version;
 	f->block_size = block_size;
 	f->log_zone_size = o->params.log_zone_size;
+	f->flex = o->params.flex;
 	f->namelen = o->params.namelen != 0 ? o->params.namelen :
-	    o->params.version == 3 ? 60 : 14;
+	    o->params.version == 3 || o->params.flex ? 60 : 14;
 	f->max_size = o->params.max_size;
 	if (o->owner == NULL)
 		return;

@@ -86,9 +86,11 @@ copies a directory tree into one:
 
     newfs_minixfs -V 1 -s 360 floppy.img
     newfs_minixfs -V 2 -d tree -o 0:0 tree.img
+    newfs_minixfs -V 2 -l flex -s 2048 vmd.img
 
-`-V` is required. With `-d`, a new image is sized for the tree unless
-`-s` specifies its size. `-F` reads an mtree specification such as METALOG.
+`-V` is required. `-l flex` makes a Minix-vmd file system. With `-d`, a
+new image is sized for the tree unless `-s` specifies its size. `-F`
+reads an mtree specification such as METALOG.
 The first 1024 bytes, reserved for boot code, are preserved.
 The default maximum file size is MINIX-compatible; `-m linux` gives
 that of Linux.

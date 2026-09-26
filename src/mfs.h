@@ -649,7 +649,8 @@ struct mfs_params {
 	enum mfs_order	order;
 	int		version;	/* 1, 2 or 3 */
 	uint32_t	block_size;	/* 0: 1024, or 4096 for V3 */
-	uint32_t	namelen;	/* 0: 14, or 60 for V3 */
+	uint32_t	namelen;	/* 0: 14, or 60 for V3 and flex */
+	int		flex;		/* Minix-vmd, V1 or V2: flex directories */
 	uint32_t	nblocks;	/* size in blocks */
 	uint32_t	ninodes;	/* 0: one for every 3 blocks */
 	uint32_t	log_zone_size;
